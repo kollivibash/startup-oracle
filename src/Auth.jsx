@@ -1,0 +1,390 @@
+import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
+
+const F = "'Plus Jakarta Sans', system-ui, sans-serif";
+const C = {
+  black:'#0a0a0a', white:'#ffffff', border:'#e0e0e0',
+  surface:'#f5f5f5', muted:'#999999', body:'#555555',
+  light:'#f0f0f0', error:'#c0392b',
+};
+
+const strength = pw => {
+  let s = 0;
+  if (pw.length >= 8)           s++;
+  if (/[A-Z]/.test(pw))         s++;
+  if (/[0-9]/.test(pw))         s++;
+  if (/[^A-Za-z0-9]/.test(pw))  s++;
+  return s;
+};
+
+const GoogleIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+    <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+    <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+  </svg>
+);
+
+const GitHubIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="#0a0a0a">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+  </svg>
+);
+
+const Spinner = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation:'spin 0.7s linear infinite' }}>
+    <circle cx="8" cy="8" r="6" fill="none" stroke="#ccc" strokeWidth="2.5"/>
+    <path d="M8 2a6 6 0 016 6" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round"/>
+  </svg>
+);
+
+const SocialBtn = ({ icon, label }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+        border:`1.5px solid ${hov?'#aaa':C.border}`, borderRadius:4,
+        background:hov?C.light:C.white, padding:'12px 16px',
+        fontSize:14, fontWeight:600, color:C.black, cursor:'pointer',
+        transition:'all 0.15s', fontFamily:F }}>
+      {icon}<span>{label}</span>
+    </button>
+  );
+};
+
+const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
+  const [focused, setFocused] = useState(false);
+  const [show, setShow]       = useState(false);
+  const isPass = type === 'password';
+  return (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:7 }}>
+        <label style={{ fontSize:13, fontWeight:700, color:C.black }}>{label}</label>
+        {right}
+      </div>
+      <div style={{ position:'relative' }}>
+        <input type={isPass&&show?'text':type} value={value} onChange={e=>onChange(e.target.value)}
+          placeholder={placeholder} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+          style={{ display:'block', width:'100%', border:`1.5px solid ${error?C.error:focused?C.black:C.border}`,
+            borderRadius:4, padding:isPass?'13px 44px 13px 16px':'13px 16px',
+            fontSize:15, color:C.black, background:C.white, transition:'border-color 0.15s',
+            fontFamily:F, outline:'none', boxSizing:'border-box' }}/>
+        {isPass && (
+          <button onClick={()=>setShow(s=>!s)}
+            style={{ position:'absolute', right:14, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:14, color:C.muted, fontFamily:F }}>
+            {show?'Hide':'Show'}
+          </button>
+        )}
+      </div>
+      {error && <div style={{ fontSize:12, color:C.error, marginTop:6, fontWeight:500 }}>{error}</div>}
+      {hint && !error && <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>{hint}</div>}
+    </div>
+  );
+};
+
+const Divider = ({ label }) => (
+  <div style={{ display:'flex', alignItems:'center', gap:14, margin:'24px 0' }}>
+    <div style={{ flex:1, height:1, background:C.border }}/>
+    <span style={{ fontSize:12, color:C.muted, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' }}>{label}</span>
+    <div style={{ flex:1, height:1, background:C.border }}/>
+  </div>
+);
+
+const StrengthBar = ({ password }) => {
+  if (!password) return null;
+  const s = strength(password);
+  const labels = ['','Weak','Fair','Good','Strong'];
+  const colors = ['','#c0392b','#e67e22','#2980b9','#27ae60'];
+  return (
+    <div style={{ marginTop:-10, marginBottom:20 }}>
+      <div style={{ display:'flex', gap:4, marginBottom:5 }}>
+        {[1,2,3,4].map(i=>(
+          <div key={i} style={{ flex:1, height:3, borderRadius:2, background:i<=s?colors[s]:C.border, transition:'background 0.2s' }}/>
+        ))}
+      </div>
+      <span style={{ fontSize:12, color:colors[s], fontWeight:600 }}>{labels[s]}</span>
+    </div>
+  );
+};
+
+const SignIn = ({ onSwitch, onSuccess }) => {
+  const [email,setEmail]   = useState('');
+  const [pass,setPass]     = useState('');
+  const [errors,setErrors] = useState({});
+  const [loading,setLoading] = useState(false);
+  const [shake,setShake]   = useState(false);
+
+  const validate = () => {
+    const e = {};
+    if (!email.includes('@')) e.email = 'Enter a valid email address';
+    if (pass.length < 6)      e.pass  = 'Password must be at least 6 characters';
+    return e;
+  };
+
+  const submit = async () => {
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); setShake(true); setTimeout(()=>setShake(false),500); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    setLoading(false);
+    if (error) { setErrors({ pass: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
+    onSuccess();
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom:36 }}>
+        <h1 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
+        <p style={{ fontSize:15, color:C.muted }}>Sign in to your IdeaProof account</p>
+      </div>
+      <div style={{ display:'flex', gap:10, marginBottom:4 }}>
+        <SocialBtn icon={<GoogleIcon/>} label="Google"/>
+        <SocialBtn icon={<GitHubIcon/>} label="GitHub"/>
+      </div>
+      <Divider label="or continue with email"/>
+      <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
+        <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}}
+          placeholder="you@example.com" error={errors.email}/>
+        <Field label="Password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
+          placeholder="Your password" error={errors.pass}
+          right={<a href="#" style={{ fontSize:12, color:C.body, fontWeight:600, textDecoration:'none' }}>Forgot password?</a>}/>
+      </div>
+      <button onClick={submit} disabled={loading}
+        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
+        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Signing in…</span>:'Sign In →'}
+      </button>
+      <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
+        Don't have an account?{' '}
+        <span onClick={onSwitch} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Create one free</span>
+      </p>
+    </div>
+  );
+};
+
+const SignUp = ({ onSwitch, onSuccess }) => {
+  const [name,setName]     = useState('');
+  const [email,setEmail]   = useState('');
+  const [pass,setPass]     = useState('');
+  const [role,setRole]     = useState('');
+  const [agreed,setAgreed] = useState(false);
+  const [errors,setErrors] = useState({});
+  const [loading,setLoading] = useState(false);
+  const [shake,setShake]   = useState(false);
+
+  const ROLES = ['First-time founder','Serial entrepreneur','Student / Hackathon','Investor','Just curious'];
+
+  const validate = () => {
+    const e = {};
+    if (!name.trim())         e.name  = 'Enter your name';
+    if (!email.includes('@')) e.email = 'Enter a valid email address';
+    if (strength(pass) < 2)   e.pass  = 'Choose a stronger password';
+    if (!role)                e.role  = 'Select how you describe yourself';
+    if (!agreed)              e.agree = 'Please accept the terms to continue';
+    return e;
+  };
+
+  const submit = async () => {
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); setShake(true); setTimeout(()=>setShake(false),500); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({
+      email, password: pass,
+      options: { data: { full_name: name, role } }
+    });
+    setLoading(false);
+    if (error) { setErrors({ email: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
+    onSuccess(true);
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom:32 }}>
+        <h1 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Create your account</h1>
+        <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
+      </div>
+      <div style={{ display:'flex', gap:10, marginBottom:4 }}>
+        <SocialBtn icon={<GoogleIcon/>} label="Google"/>
+        <SocialBtn icon={<GitHubIcon/>} label="GitHub"/>
+      </div>
+      <Divider label="or sign up with email"/>
+      <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
+        <Field label="Full name" value={name} onChange={v=>{setName(v);setErrors(e=>({...e,name:''}));}} placeholder="Jane Smith" error={errors.name}/>
+        <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}} placeholder="you@example.com" error={errors.email}/>
+        <Field label="Password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
+          placeholder="Choose a strong password" error={errors.pass} hint="Min. 8 chars, uppercase, number recommended"/>
+        <StrengthBar password={pass}/>
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.black, marginBottom:8 }}>I am a…</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {ROLES.map(r=>(
+              <button key={r} onClick={()=>{setRole(r);setErrors(e=>({...e,role:''}));}}
+                style={{ borderRadius:100, padding:'8px 16px', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F,
+                  border:role===r?'none':`1.5px solid ${C.border}`,
+                  background:role===r?C.black:C.white, color:role===r?C.white:C.body, transition:'all 0.15s' }}>{r}</button>
+            ))}
+          </div>
+          {errors.role && <div style={{ fontSize:12, color:C.error, marginTop:6, fontWeight:500 }}>{errors.role}</div>}
+        </div>
+        <div onClick={()=>{setAgreed(a=>!a);setErrors(e=>({...e,agree:''}));}}
+          style={{ display:'flex', alignItems:'flex-start', gap:12, cursor:'pointer', marginBottom:24, userSelect:'none' }}>
+          <div style={{ width:18, height:18, flexShrink:0, marginTop:2, border:`2px solid ${errors.agree?C.error:agreed?C.black:C.border}`, borderRadius:3, background:agreed?C.black:'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}>
+            {agreed && <span style={{ color:C.white, fontSize:10, fontWeight:900 }}>✓</span>}
+          </div>
+          <p style={{ fontSize:13, color:C.body, lineHeight:1.55 }}>
+            I agree to the <span style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Terms of Service</span> and <span style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Privacy Policy</span>
+          </p>
+        </div>
+        {errors.agree && <div style={{ fontSize:12, color:C.error, marginTop:-16, marginBottom:16, fontWeight:500 }}>{errors.agree}</div>}
+      </div>
+      <button onClick={submit} disabled={loading}
+        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F }}>
+        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Creating account…</span>:'Create Account →'}
+      </button>
+      <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
+        Already have an account?{' '}
+        <span onClick={onSwitch} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Sign in</span>
+      </p>
+    </div>
+  );
+};
+
+const Success = ({ isNew, onSubmitIdea, onCommunity, afterAuth }) => (
+  <div style={{ textAlign:'center', padding:'24px 0' }}>
+    <div style={{ width:64, height:64, borderRadius:'50%', background:C.black, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 28px', fontSize:26 }}>
+      <span style={{ color:C.white, fontWeight:900 }}>✓</span>
+    </div>
+    <h2 style={{ fontSize:26, fontWeight:800, color:C.black, letterSpacing:'-0.8px', marginBottom:10 }}>
+      {isNew?'Account created!':'Welcome back!'}
+    </h2>
+    <p style={{ fontSize:15, color:C.muted, lineHeight:1.65, marginBottom:36 }}>
+      Redirecting you now…
+    </p>
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      {afterAuth === 'community'
+        ? <button onClick={onCommunity}
+            style={{ display:'block', width:'100%', background:C.black, color:C.white, borderRadius:4, padding:'14px 24px', fontSize:15, fontWeight:700, border:'none', cursor:'pointer', fontFamily:F }}>
+            Browse Community Ideas →
+          </button>
+        : <button onClick={onSubmitIdea}
+            style={{ display:'block', width:'100%', background:C.black, color:C.white, borderRadius:4, padding:'14px 24px', fontSize:15, fontWeight:700, border:'none', cursor:'pointer', fontFamily:F }}>
+            Validate My Idea →
+          </button>
+      }
+    </div>
+  </div>
+);
+
+const Side = ({ mode }) => {
+  const quotes = [
+    { text:"IdeaProof told me my idea had strong market fit before I wrote a single line of code. Saved me months.", author:"Priya V., Founder" },
+    { text:"The community feedback was brutally honest and exactly what I needed. My pitch is 10× better now.", author:"Marcus T., Entrepreneur" },
+    { text:"I came here skeptical. Left with a clearer roadmap than 3 months of solo thinking gave me.", author:"Yuki T., PhD & Founder" },
+  ];
+  const [qi, setQi] = useState(0);
+  useEffect(()=>{ const t=setInterval(()=>setQi(i=>(i+1)%quotes.length),4000); return ()=>clearInterval(t); },[]);
+  const q = quotes[qi];
+  const stats = [{ n:'12,400+',l:'Ideas validated' },{ n:'4.8 / 5',l:'Avg. rating' },{ n:'3,200+',l:'Active members' }];
+
+  return (
+    <div style={{ flex:'0 0 420px', background:C.black, display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'52px 48px', minHeight:'100vh' }}>
+      <span style={{ fontWeight:800, fontSize:22, color:C.white, letterSpacing:'-0.5px' }}>ideaproof</span>
+      <div>
+        <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.35)', letterSpacing:'2px', textTransform:'uppercase', marginBottom:20 }}>
+          {mode==='signin'?'Trusted by founders':'What you get'}
+        </div>
+        {mode==='signin'?(
+          <div key={qi} style={{ animation:'fadeIn 0.5s ease forwards' }}>
+            <p style={{ fontSize:20, color:C.white, lineHeight:1.65, fontStyle:'italic', marginBottom:20 }}>"{q.text}"</p>
+            <p style={{ fontSize:13, color:'rgba(255,255,255,0.45)', fontWeight:600 }}>— {q.author}</p>
+            <div style={{ display:'flex', gap:6, marginTop:28 }}>
+              {quotes.map((_,i)=>(
+                <div key={i} style={{ width:i===qi?24:8, height:4, borderRadius:2, background:i===qi?C.white:'rgba(255,255,255,0.2)', transition:'all 0.3s' }}/>
+              ))}
+            </div>
+          </div>
+        ):(
+          <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
+            {[
+              { icon:'◈', title:'AI Validation Score', desc:'Get scored on market size, feasibility, originality, and competitive edge.' },
+              { icon:'◎', title:'Community Feedback', desc:'Real founders and investors comment, vote, and suggest improvements.' },
+              { icon:'◉', title:'Actionable Next Steps', desc:'A prioritised list of what to do next — not just analysis, but direction.' },
+            ].map(f=>(
+              <div key={f.title} style={{ display:'flex', gap:16 }}>
+                <div style={{ fontSize:20, color:C.white, marginTop:1, flexShrink:0, width:28 }}>{f.icon}</div>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.white, marginBottom:5 }}>{f.title}</div>
+                  <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)', lineHeight:1.6 }}>{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ display:'flex', gap:0, paddingTop:36, borderTop:'1px solid rgba(255,255,255,0.1)' }}>
+        {stats.map((s,i)=>(
+          <div key={s.n} style={{ flex:1, borderLeft:i>0?'1px solid rgba(255,255,255,0.1)':'none', paddingLeft:i>0?20:0 }}>
+            <div style={{ fontSize:22, fontWeight:800, color:C.white, letterSpacing:'-0.5px' }}>{s.n}</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:4, fontWeight:500 }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
+  const [mode, setMode]       = useState('signin');
+  const [success, setSuccess] = useState(false);
+  const [isNew, setIsNew]     = useState(false);
+
+  const handleSuccess = (newUser=false) => {
+    setIsNew(newUser);
+    setSuccess(true);
+    // Auto-redirect after 1.2s to the destination they came from
+    setTimeout(() => {
+      if (afterAuth === 'community') onCommunity();
+      else onSubmitIdea();
+    }, 1200);
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:C.white, fontFamily:F }}>
+      <style>{`
+        @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+        @keyframes spin { to{transform:rotate(360deg)} }
+        *{box-sizing:border-box}
+      `}</style>
+
+      {/* Navbar */}
+      <div style={{ borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>ideaproof</span>
+        <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
+      </div>
+
+      <div style={{ display:'flex', minHeight:'calc(100vh - 68px)' }}>
+        <div style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'64px 48px', overflowY:'auto' }}>
+          <div style={{ width:'100%', maxWidth:420 }}>
+            {!success && (
+              <div style={{ display:'flex', background:C.surface, borderRadius:6, padding:4, marginBottom:44, gap:4 }}>
+                {[['signin','Sign In'],['signup','Sign Up']].map(([id,label])=>(
+                  <button key={id} onClick={()=>{setMode(id);setSuccess(false);}}
+                    style={{ flex:1, padding:'10px 16px', borderRadius:4, border:'none', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F, transition:'all 0.15s',
+                      background:mode===id?C.black:'transparent', color:mode===id?C.white:C.muted }}>{label}</button>
+                ))}
+              </div>
+            )}
+            {success
+              ? <Success isNew={isNew} onSubmitIdea={onSubmitIdea} onCommunity={onCommunity} afterAuth={afterAuth}/>
+              : mode==='signin'
+                ? <SignIn  onSwitch={()=>setMode('signup')} onSuccess={handleSuccess}/>
+                : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess}/>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
