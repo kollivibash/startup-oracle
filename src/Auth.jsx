@@ -39,10 +39,10 @@ const Spinner = () => (
   </svg>
 );
 
-const SocialBtn = ({ icon, label }) => {
+const SocialBtn = ({ icon, label, onClick }) => {
   const [hov, setHov] = useState(false);
   return (
-    <button onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+    <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:10,
         border:`1.5px solid ${hov?'#aaa':C.border}`, borderRadius:4,
         background:hov?C.light:C.white, padding:'12px 16px',
@@ -52,6 +52,9 @@ const SocialBtn = ({ icon, label }) => {
     </button>
   );
 };
+
+const signInWithOAuth = (provider) =>
+  supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
 
 const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
   const [focused, setFocused] = useState(false);
@@ -139,8 +142,8 @@ const SignIn = ({ onSwitch, onSuccess }) => {
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your IdeaProof account</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-        <SocialBtn icon={<GoogleIcon/>} label="Google"/>
-        <SocialBtn icon={<GitHubIcon/>} label="GitHub"/>
+        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google')}/>
+        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github')}/>
       </div>
       <Divider label="or continue with email"/>
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
@@ -188,12 +191,17 @@ const SignUp = ({ onSwitch, onSuccess }) => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); setShake(true); setTimeout(()=>setShake(false),500); return; }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email, password: pass,
       options: { data: { full_name: name, role } }
     });
     setLoading(false);
     if (error) { setErrors({ email: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
+    // If email confirmation required, data.user exists but session is null
+    if (data?.user && !data?.session) {
+      setErrors({ email: 'Check your email to confirm your account, then sign in.' });
+      return;
+    }
     onSuccess(true);
   };
 
