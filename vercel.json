@@ -1,5 +1,5 @@
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
-  "buildCommand": "npm run build",
+  "buildCommand": "rm -rf node_modules/.vite node_modules/.cache .vercel/cache dist && npm run build",
   "outputDirectory": "dist"
 }
