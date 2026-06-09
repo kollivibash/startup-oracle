@@ -23,8 +23,8 @@ export default function App() {
       const access_token = p.get('access_token')
       const refresh_token = p.get('refresh_token')
       if (access_token && refresh_token) {
-        supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
-          if (error) { alert('Login failed: ' + error.message); return }
+        supabase.auth.setSession({ access_token, refresh_token }).then(({ data, error }) => {
+          if (error || !data?.session) { console.error('setSession failed', error); window.history.replaceState(null, '', window.location.pathname); return }
           navTo()
         })
         return
