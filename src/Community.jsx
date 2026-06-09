@@ -184,7 +184,7 @@ const Modal=({idea,onClose,userRating,onRate,hasUpvoted,onUpvote,onAddComment})=
   );
 };
 
-export default function Community({ onSubmitIdea, onHome }) {
+export default function Community({ onSubmitIdea, onHome, user, onLogout, onSignIn }) {
   const [ideas,setIdeas]       = useState(SEED);
   const [cat,setCat]           = useState("All");
   const [sort,setSort]         = useState("popular");
@@ -222,7 +222,15 @@ export default function Community({ onSubmitIdea, onHome }) {
         <div style={{display:"flex",alignItems:"center",gap:32}}>
           {["How it works","Pricing"].map(l=><span key={l} style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>{l}</span>)}
           <span style={{fontSize:14,color:C.black,fontWeight:700,borderBottom:`2px solid ${C.black}`,paddingBottom:2}}>Browse Ideas</span>
-          <span style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>Sign in</span>
+          {user ? (
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
+              <span style={{fontSize:14,color:C.black,fontWeight:600,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
+              <span onClick={()=>onLogout?.()} style={{fontSize:13,color:C.body,cursor:"pointer",fontWeight:600,border:`1px solid ${C.border}`,borderRadius:BR,padding:"5px 12px"}}>Log out</span>
+            </div>
+          ) : (
+            <span onClick={()=>onSignIn?.()} style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>Sign in</span>
+          )}
           <button onClick={onSubmitIdea} style={{background:C.black,color:C.white,border:"none",borderRadius:BR,padding:"10px 22px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F}}>Submit Idea →</button>
         </div>
       </div>

@@ -335,7 +335,7 @@ const Results = ({ ideaName, data, onReset }) => {
   );
 };
 
-export default function SubmitIdea({ onHome }) {
+export default function SubmitIdea({ onHome, user, onLogout }) {
   const [step, setStep]       = useState(1);
   const [form, setForm]       = useState(INIT);
   const [results, setResults] = useState(null);
@@ -367,7 +367,16 @@ export default function SubmitIdea({ onHome }) {
               ))}
             </div>
           )}
-          <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            {user && (
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%' }}/>}
+                <span style={{ fontSize:13, color:C.black, fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
+                <span onClick={()=>onLogout?.()} style={{ fontSize:13, color:C.muted, fontWeight:600, cursor:'pointer', border:`1px solid ${C.border}`, borderRadius:6, padding:'4px 10px' }}>Log out</span>
+              </div>
+            )}
+            <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
+          </div>
         </div>
       )}
 
