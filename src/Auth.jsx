@@ -113,7 +113,7 @@ const StrengthBar = ({ password }) => {
   );
 };
 
-const SignIn = ({ onSwitch, onSuccess }) => {
+const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
   const [errors,setErrors] = useState({});
@@ -167,7 +167,7 @@ const SignIn = ({ onSwitch, onSuccess }) => {
   );
 };
 
-const SignUp = ({ onSwitch, onSuccess }) => {
+const SignUp = ({ onSwitch, onSuccess, afterAuth }) => {
   const [name,setName]     = useState('');
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
@@ -214,8 +214,8 @@ const SignUp = ({ onSwitch, onSuccess }) => {
         <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-        <SocialBtn icon={<GoogleIcon/>} label="Google"/>
-        <SocialBtn icon={<GitHubIcon/>} label="GitHub"/>
+        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
+        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
       </div>
       <Divider label="or sign up with email"/>
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
@@ -389,8 +389,8 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
             {success
               ? <Success isNew={isNew} onSubmitIdea={onSubmitIdea} onCommunity={onCommunity} afterAuth={afterAuth}/>
               : mode==='signin'
-                ? <SignIn  onSwitch={()=>setMode('signup')} onSuccess={handleSuccess}/>
-                : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess}/>
+                ? <SignIn  onSwitch={()=>setMode('signup')} onSuccess={handleSuccess} afterAuth={afterAuth}/>
+                : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess} afterAuth={afterAuth}/>
             }
           </div>
         </div>
