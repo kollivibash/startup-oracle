@@ -11,13 +11,17 @@ export default function App() {
   const [afterAuth, setAfterAuth] = useState('submit')
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        const dest = localStorage.getItem('afterAuth') || 'submit'
-        localStorage.removeItem('afterAuth')
-        setView(dest)
-      }
-    })
+    const go = (session) => {
+      if (!session) return
+      if (!localStorage.getItem('afterAuth')) return
+      const dest = localStorage.getItem('afterAuth')
+      localStorage.removeItem('afterAuth')
+      window.history.replaceState(null, '', window.location.pathname)
+      setView(dest)
+    }
+    supabase.auth.getSession().then(({ data }) => go(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => go(session))
+    return () => sub.subscription.unsubscribe()
   }, [])
 
   const goAuth = (dest) => { setAfterAuth(dest); setView('auth'); }

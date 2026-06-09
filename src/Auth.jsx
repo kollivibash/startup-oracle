@@ -53,9 +53,10 @@ const SocialBtn = ({ icon, label, onClick }) => {
   );
 };
 
-const signInWithOAuth = (provider, afterAuth) => {
+const signInWithOAuth = async (provider, afterAuth) => {
   localStorage.setItem('afterAuth', afterAuth || 'submit');
-  supabase.auth.signInWithOAuth({ provider, options: { redirectTo: 'https://startup-oracle-git-main-komalip1s-projects.vercel.app' } });
+  const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+  if (error) alert(error.message);
 };
 
 const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
