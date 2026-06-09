@@ -13,8 +13,9 @@ export default function App() {
   useEffect(() => {
     const go = (session) => {
       if (!session) return
-      if (!localStorage.getItem('afterAuth')) return
-      const dest = localStorage.getItem('afterAuth')
+      const params = new URLSearchParams(window.location.search)
+      const dest = params.get('next') || localStorage.getItem('afterAuth')
+      if (!dest) return
       localStorage.removeItem('afterAuth')
       window.history.replaceState(null, '', window.location.pathname)
       setView(dest)

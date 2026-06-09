@@ -54,8 +54,10 @@ const SocialBtn = ({ icon, label, onClick }) => {
 };
 
 const signInWithOAuth = async (provider, afterAuth) => {
-  localStorage.setItem('afterAuth', afterAuth || 'submit');
-  const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+  const next = afterAuth || 'submit';
+  localStorage.setItem('afterAuth', next);
+  const redirectTo = `${window.location.origin}/?next=${next}`;
+  const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
   if (error) alert(error.message);
 };
 
