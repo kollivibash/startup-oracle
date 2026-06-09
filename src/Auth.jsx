@@ -54,7 +54,7 @@ const SocialBtn = ({ icon, label, onClick }) => {
 };
 
 const signInWithOAuth = (provider) =>
-  supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+  supabase.auth.signInWithOAuth({ provider, options: { redirectTo: 'https://startup-oracle-git-main-komalip1s-projects.vercel.app' } });
 
 const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
   const [focused, setFocused] = useState(false);
