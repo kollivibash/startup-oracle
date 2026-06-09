@@ -53,8 +53,10 @@ const SocialBtn = ({ icon, label, onClick }) => {
   );
 };
 
-const signInWithOAuth = (provider) =>
+const signInWithOAuth = (provider, afterAuth) => {
+  localStorage.setItem('afterAuth', afterAuth || 'submit');
   supabase.auth.signInWithOAuth({ provider, options: { redirectTo: 'https://startup-oracle-git-main-komalip1s-projects.vercel.app' } });
+};
 
 const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
   const [focused, setFocused] = useState(false);
@@ -142,8 +144,8 @@ const SignIn = ({ onSwitch, onSuccess }) => {
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your IdeaProof account</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google')}/>
-        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github')}/>
+        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
+        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
       </div>
       <Divider label="or continue with email"/>
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>

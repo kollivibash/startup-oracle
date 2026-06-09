@@ -1,13 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import StartupOracle from './StartupOracle'
 import OracleDashboard from './OracleDashboard'
 import SubmitIdea from './SubmitIdea'
 import Community from './Community'
 import Auth from './Auth'
+import { supabase } from './supabase'
 
 export default function App() {
   const [view, setView]           = useState('oracle')
   const [afterAuth, setAfterAuth] = useState('submit')
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const dest = localStorage.getItem('afterAuth') || 'submit'
+        localStorage.removeItem('afterAuth')
+        setView(dest)
+      }
+    })
+  }, [])
 
   const goAuth = (dest) => { setAfterAuth(dest); setView('auth'); }
 
