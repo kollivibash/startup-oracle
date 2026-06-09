@@ -11,18 +11,28 @@ export default function App() {
   const [afterAuth, setAfterAuth] = useState('submit')
 
   useEffect(() => {
-    const go = (session) => {
-      if (!session) return
-      const params = new URLSearchParams(window.location.search)
-      const dest = params.get('next') || localStorage.getItem('afterAuth')
-      if (!dest) return
+    const navTo = () => {
+      const dest = localStorage.getItem('afterAuth') || 'submit'
       localStorage.removeItem('afterAuth')
       window.history.replaceState(null, '', window.location.pathname)
       setView(dest)
     }
-    supabase.auth.getSession().then(({ data }) => go(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => go(session))
-    return () => sub.subscription.unsubscribe()
+    const hash = window.location.hash
+    if (hash.includes('access_token')) {
+      const p = new URLSearchParams(hash.slice(1))
+      const access_token = p.get('access_token')
+      const refresh_token = p.get('refresh_token')
+      if (access_token && refresh_token) {
+        supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
+          if (error) { alert('Login failed: ' + error.message); return }
+          navTo()
+        })
+        return
+      }
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session && localStorage.getItem('afterAuth')) navTo()
+    })
   }, [])
 
   const goAuth = (dest) => { setAfterAuth(dest); setView('auth'); }
