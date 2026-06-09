@@ -4,7 +4,7 @@ import OracleDashboard from './OracleDashboard'
 import SubmitIdea from './SubmitIdea'
 import Community from './Community'
 import Auth from './Auth'
-import { supabase } from './supabase'
+import { supabase } from './supabaseClient'
 
 export default function App() {
   const [view, setView]           = useState('oracle')
