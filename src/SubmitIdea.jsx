@@ -1,52 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import MasterReport from "./MasterReport";
+import { generateMasterReport } from "./reportEngine";
 
 const C = { black:'#0a0a0a', white:'#ffffff', surface:'#f5f5f5', border:'#e0e0e0', body:'#555555', muted:'#999999', light:'#f9f9f9' };
 const F = "'Plus Jakarta Sans', system-ui, sans-serif";
 const BR = 4;
 const CATS = ['FinTech','SaaS','ClimaTech','Health & Wellness','EdTech','E-commerce','Logistics','HR Tech','Developer Tools','Consumer','Web3','Other'];
-const MSGS = ['Scanning market size and demand signals…','Analysing the competitive landscape…','Evaluating technical feasibility…','Assessing originality and timing…','Compiling your validation report…'];
+const MSGS = [
+  'Scanning market size and demand signals…',
+  'Mapping the competitive landscape…',
+  'Stress-testing unit economics and financials…',
+  'Drafting your full business plan…',
+  'Building brand strategy and visual identity…',
+  'Assembling your marketing suite…',
+  'Compiling the master validation report…',
+];
 const INIT = { name:'', oneliner:'', category:'', stage:'', problem:'', solution:'', market:'', edge:'' };
-
-async function analyseIdea(form) {
-  const key = import.meta.env.VITE_GROQ_API_KEY;
-  const prompt = `You are an elite startup analyst. Analyse this startup idea and return ONLY valid JSON.
-
-Idea: "${form.name}"
-One-liner: "${form.oneliner}"
-Category: ${form.category}
-Stage: ${form.stage}
-Problem: "${form.problem}"
-Solution: "${form.solution}"
-Target customer: "${form.market}"
-Unique insight: "${form.edge||'Not provided'}"
-
-Return this exact JSON (no markdown):
-{
-  "overallScore": <0-100 integer>,
-  "badge": "<one of: Strong Potential | Promising | Needs Refinement | High Risk>",
-  "marketScore": <0-100>,
-  "feasibilityScore": <0-100>,
-  "competitiveEdgeScore": <0-100>,
-  "originalityScore": <0-100>,
-  "summary": "<2-3 sentence AI analysis paragraph specific to this idea>",
-  "strengths": ["<specific strength 1>","<specific strength 2>","<specific strength 3>"],
-  "risks": ["<specific risk 1>","<specific risk 2>","<specific risk 3>"],
-  "nextSteps": [
-    {"title":"<action title>","desc":"<2 sentence specific action>"},
-    {"title":"<action title>","desc":"<2 sentence specific action>"},
-    {"title":"<action title>","desc":"<2 sentence specific action>"}
-  ]
-}
-All content must be specific to "${form.name}" — zero generic startup advice.`;
-
-  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method:"POST",
-    headers:{ Authorization:`Bearer ${key}`, "Content-Type":"application/json" },
-    body: JSON.stringify({ model:"llama-3.3-70b-versatile", messages:[{role:"user",content:prompt}], temperature:0.5, response_format:{type:"json_object"} }),
-  });
-  if (!r.ok) throw new Error(`Groq ${r.status}`);
-  return JSON.parse((await r.json()).choices[0].message.content);
-}
 
 const inputBase = { display:'block', width:'100%', border:`1.5px solid ${C.border}`, borderRadius:BR, padding:'13px 16px', fontSize:15, color:C.black, fontFamily:F, background:C.white, transition:'border-color 0.15s', lineHeight:1.5, outline:'none', boxSizing:'border-box' };
 
@@ -94,37 +63,6 @@ const StepHeader = ({ label, title, subtitle }) => (
     <p style={{ fontSize:16, color:C.muted, lineHeight:1.6 }}>{subtitle}</p>
   </div>
 );
-
-const ScoreRing = ({ score, size, label, delay=0 }) => {
-  const [cur, setCur] = useState(0);
-  useEffect(() => {
-    let raf;
-    const start = performance.now() + delay;
-    const dur = 1100;
-    const tick = now => {
-      if (now < start) { raf = requestAnimationFrame(tick); return; }
-      const p = Math.min((now - start) / dur, 1);
-      setCur(Math.round((1 - Math.pow(1-p, 3)) * score));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  const r = (size-10)/2, circ = 2*Math.PI*r, filled = (cur/100)*circ;
-  return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e5e5" strokeWidth={7}/>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.black} strokeWidth={7}
-          strokeDasharray={`${filled} ${circ-filled}`} strokeLinecap="square"
-          transform={`rotate(-90 ${size/2} ${size/2})`}/>
-        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle"
-          fontSize={Math.round(size*0.23)} fontWeight="800" fill={C.black} fontFamily={F}>{cur}</text>
-      </svg>
-      {label && <div style={{ fontSize:11, fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'0.5px', textAlign:'center', maxWidth:size }}>{label}</div>}
-    </div>
-  );
-};
 
 const Step1 = ({ form, set, onNext }) => {
   const ok = form.name && form.oneliner && form.category && form.stage;
@@ -214,10 +152,11 @@ const Step3 = ({ form, onBack, onSubmit }) => {
 const Loading = ({ form, onDone }) => {
   const [msgIdx, setMsgIdx] = useState(0);
   const [pct, setPct]       = useState(0);
+  const target = useRef(10); // creeps toward this; jumps as each report section lands
   useEffect(() => {
-    const mi = setInterval(()=>setMsgIdx(i=>Math.min(i+1,MSGS.length-1)), 900);
-    const pi = setInterval(()=>setPct(p=>p<90?p+1:p), 80); // stops at 90 until API returns
-    analyseIdea(form)
+    const mi = setInterval(()=>setMsgIdx(i=>(i+1)%MSGS.length), 3500);
+    const pi = setInterval(()=>setPct(p=>p<target.current?p+1:p), 250);
+    generateMasterReport(form, (done,total)=>{ target.current = Math.max(target.current, Math.round((done/total)*94)); })
       .then(data=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone(data), 400); })
       .catch(()=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone(null), 400); });
     return ()=>{ clearInterval(mi); clearInterval(pi); };
@@ -231,6 +170,7 @@ const Loading = ({ form, onDone }) => {
         <div style={{ height:'100%', background:C.black, width:`${pct}%`, transition:'width 0.072s linear' }}/>
       </div>
       <div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>{pct}%</div>
+      <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>Running 6 deep analyses — this takes a minute or two.</div>
       <div style={{ marginTop:56, display:'flex', gap:32, fontSize:13, fontWeight:500 }}>
         {['Market analysis','Feasibility check','Community readiness'].map((l,i)=>(
           <div key={l} style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -245,97 +185,7 @@ const Loading = ({ form, onDone }) => {
   );
 };
 
-const Results = ({ ideaName, data, onReset }) => {
-  const strengths = data?.strengths || ['Large addressable market with fragmented tooling','Clear and specific pain point','Strong recurring revenue potential'];
-  const risks     = data?.risks     || ['Trust barrier with new users','Established incumbents in adjacent space','High early-stage support costs'];
-  const nextSteps = (data?.nextSteps||[{title:'Validate the pain',desc:'Interview 20 potential customers this week.'},{title:'Build a landing page',desc:'Test demand before writing code.'},{title:'Define your wedge',desc:'Pick one feature and nail it first.'}]).map((s,i)=>({...s,n:String(i+1).padStart(2,'0')}));
-  const overall   = data?.overallScore ?? 78;
-  const badge     = data?.badge ?? 'Strong Potential';
-  return (
-    <div style={{ animation:'fadeUp 0.5s ease', fontFamily:F }}>
-      <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:44, marginBottom:56, display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
-        <div>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:14 }}>Validation Report</div>
-          <h1 style={{ fontSize:38, fontWeight:800, color:C.black, letterSpacing:'-1.5px', marginBottom:8 }}>{ideaName||'Your Startup Idea'}</h1>
-          <p style={{ fontSize:15, color:C.muted }}>AI analysis ready · {new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</p>
-        </div>
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:C.surface, border:`1px solid ${C.border}`, borderRadius:BR, padding:'8px 16px', fontSize:14, fontWeight:700, color:C.black, whiteSpace:'nowrap' }}>{badge}</div>
-      </div>
-
-      <div style={{ display:'flex', gap:0, marginBottom:64, paddingBottom:64, borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
-        <div style={{ flex:'0 0 260px', display:'flex', flexDirection:'column', alignItems:'center', borderRight:`1px solid ${C.border}`, paddingRight:56, gap:16 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase' }}>Overall Score</div>
-          <ScoreRing score={overall} size={136} delay={0}/>
-          <div style={{ fontSize:13, color:C.muted }}>out of 100</div>
-        </div>
-        <div style={{ flex:1, paddingLeft:56, display:'grid', gridTemplateColumns:'1fr 1fr', gap:36 }}>
-          <ScoreRing score={data?.marketScore??84}         size={90} label="Market Opportunity" delay={200}/>
-          <ScoreRing score={data?.feasibilityScore??72}    size={90} label="Feasibility"        delay={380}/>
-          <ScoreRing score={data?.competitiveEdgeScore??65} size={90} label="Competitive Edge"   delay={560}/>
-          <ScoreRing score={data?.originalityScore??88}    size={90} label="Originality"        delay={740}/>
-        </div>
-      </div>
-
-      <div style={{ marginBottom:64, paddingBottom:64, borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:20 }}>AI Analysis</div>
-        <p style={{ fontSize:17, color:C.black, lineHeight:1.8, maxWidth:700 }}>{data?.summary || 'AI analysis based on your submission. The scores and insights above reflect the specific details you provided.'}</p>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:56, marginBottom:64, paddingBottom:64, borderBottom:`1px solid ${C.border}` }}>
-        <div>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:28 }}>Strengths</div>
-          {strengths.map((s,i)=>(
-            <div key={i} style={{ display:'flex', gap:14, marginBottom:20 }}>
-              <div style={{ width:22, height:22, flexShrink:0, marginTop:1, borderRadius:'50%', background:C.black, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <span style={{ color:C.white, fontSize:10, fontWeight:900 }}>✓</span>
-              </div>
-              <p style={{ fontSize:15, color:C.black, lineHeight:1.6 }}>{s}</p>
-            </div>
-          ))}
-        </div>
-        <div>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:28 }}>Risks to Watch</div>
-          {risks.map((r,i)=>(
-            <div key={i} style={{ display:'flex', gap:14, marginBottom:20 }}>
-              <div style={{ width:22, height:22, flexShrink:0, marginTop:1, borderRadius:'50%', background:C.surface, border:`1.5px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <span style={{ color:C.muted, fontSize:11, fontWeight:700 }}>!</span>
-              </div>
-              <p style={{ fontSize:15, color:C.body, lineHeight:1.6 }}>{r}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:64, paddingBottom:64, borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:36 }}>Recommended Next Steps</div>
-        <div style={{ display:'flex', gap:32 }}>
-          {nextSteps.map(s=>(
-            <div key={s.n} style={{ flex:1, borderTop:`3px solid ${C.black}`, paddingTop:22 }}>
-              <div style={{ fontSize:12, fontWeight:800, color:C.muted, marginBottom:14, letterSpacing:'1px' }}>{s.n}</div>
-              <h3 style={{ fontSize:18, fontWeight:700, color:C.black, marginBottom:10, lineHeight:1.25 }}>{s.title}</h3>
-              <p style={{ fontSize:14, color:C.body, lineHeight:1.7 }}>{s.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:BR+4, padding:'36px 40px', marginBottom:36, display:'flex', justifyContent:'space-between', alignItems:'center', gap:32 }}>
-        <div>
-          <h3 style={{ fontSize:20, fontWeight:800, color:C.black, marginBottom:8, letterSpacing:'-0.5px' }}>Get community feedback</h3>
-          <p style={{ fontSize:15, color:C.muted, lineHeight:1.6, maxWidth:480 }}>Publish your idea to the Startup Oracle community. Real founders will vote, comment, and help you sharpen it.</p>
-        </div>
-        <button style={{ flexShrink:0, background:C.black, color:C.white, border:'none', borderRadius:BR, padding:'15px 28px', fontSize:15, fontWeight:700, cursor:'pointer', fontFamily:F, whiteSpace:'nowrap' }}>Share with Community →</button>
-      </div>
-
-      <div style={{ display:'flex', gap:10, paddingBottom:80 }}>
-        <button style={{ flex:1, background:C.white, color:C.black, border:`1.5px solid ${C.border}`, borderRadius:BR, padding:'15px 24px', fontSize:15, fontWeight:600, cursor:'pointer', fontFamily:F }}>Download Report</button>
-        <button onClick={onReset} style={{ flex:'0 0 auto', background:C.white, color:C.muted, border:`1.5px solid ${C.border}`, borderRadius:BR, padding:'15px 24px', fontSize:15, fontWeight:600, cursor:'pointer', fontFamily:F }}>Submit another idea</button>
-      </div>
-    </div>
-  );
-};
-
-export default function SubmitIdea({ onHome, user, onLogout, onAccount }) {
+export default function SubmitIdea({ onHome, user, onAccount }) {
   const [step, setStep]       = useState(1);
   const [form, setForm]       = useState(INIT);
   const [results, setResults] = useState(null);
@@ -356,8 +206,8 @@ export default function SubmitIdea({ onHome, user, onLogout, onAccount }) {
         * { box-sizing:border-box; }
       `}</style>
 
-      {/* Nav */}
-      {step !== 'loading' && (
+      {/* Nav — MasterReport brings its own chrome on the results step */}
+      {isForm && (
         <div style={{ position:'sticky', top:0, zIndex:100, background:C.white, borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
           {isForm && (
@@ -386,15 +236,29 @@ export default function SubmitIdea({ onHome, user, onLogout, onAccount }) {
         // Keep a local history so the Account page can show "My Ideas"
         try {
           const prev = JSON.parse(localStorage.getItem('myIdeas') || '[]')
-          prev.unshift({ title: form.name, category: form.category, date: new Date().toISOString(), score: data?.overallScore ?? null })
+          prev.unshift({ title: form.name, category: form.category, date: new Date().toISOString(), score: data?.meta?.overallScore ?? null })
           localStorage.setItem('myIdeas', JSON.stringify(prev.slice(0, 20)))
         } catch (e) { console.error('failed to save idea history', e) }
       }}/>}
 
       {step==='results' && (
-        <div style={{ maxWidth:800, margin:'0 auto', padding:'56px 40px 0' }}>
-          <Results ideaName={form.name} data={results} onReset={()=>{ setForm(INIT); setResults(null); go(1); }}/>
-        </div>
+        results
+          ? <MasterReport
+              data={results.sections}
+              meta={results.meta}
+              ideaName={form.name}
+              onBack={()=>{ setForm(INIT); setResults(null); go(1); }}
+            />
+          : (
+            <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center' }}>
+              <h2 style={{ fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>Analysis failed</h2>
+              <p style={{ fontSize:15, color:C.muted, lineHeight:1.6, marginBottom:28 }}>We couldn't generate your report — the AI service may be rate-limited. Your answers are saved; try again in a moment.</p>
+              <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                <Btn onClick={()=>go('loading')}>Retry analysis</Btn>
+                <Btn onClick={()=>go(3)} secondary>← Back to review</Btn>
+              </div>
+            </div>
+          )
       )}
 
       {isForm && (
