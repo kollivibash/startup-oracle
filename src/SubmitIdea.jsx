@@ -158,7 +158,7 @@ const Loading = ({ form, onDone }) => {
     const pi = setInterval(()=>setPct(p=>p<target.current?p+1:p), 250);
     generateMasterReport(form, (done,total)=>{ target.current = Math.max(target.current, Math.round((done/total)*94)); })
       .then(data=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone(data), 400); })
-      .catch(()=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone(null), 400); });
+      .catch(err=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone({ error: err?.message || 'Unknown error' }), 400); });
     return ()=>{ clearInterval(mi); clearInterval(pi); };
   }, []);
   return (
@@ -233,6 +233,7 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
 
       {step==='loading' && <Loading form={form} onDone={data=>{
         setResults(data); go('results');
+        if (!data?.sections) return; // failed run — don't record it in history
         // Keep a local history so the Account page can show "My Ideas"
         try {
           const prev = JSON.parse(localStorage.getItem('myIdeas') || '[]')
@@ -242,7 +243,7 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
       }}/>}
 
       {step==='results' && (
-        results
+        results?.sections
           ? <MasterReport
               data={results.sections}
               meta={results.meta}
@@ -252,7 +253,10 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
           : (
             <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center' }}>
               <h2 style={{ fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>Analysis failed</h2>
-              <p style={{ fontSize:15, color:C.muted, lineHeight:1.6, marginBottom:28 }}>We couldn't generate your report — the AI service may be rate-limited. Your answers are saved; try again in a moment.</p>
+              <p style={{ fontSize:15, color:C.muted, lineHeight:1.6, marginBottom:28 }}>We couldn't generate your report. Your answers are saved; try again in a moment.</p>
+              {results?.error && (
+                <p style={{ fontSize:12, color:'#B91C1C', fontFamily:'monospace', background:C.light, border:`1px solid ${C.border}`, borderRadius:BR, padding:'12px 16px', marginBottom:28, wordBreak:'break-word', textAlign:'left' }}>{results.error}</p>
+              )}
               <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
                 <Btn onClick={()=>go('loading')}>Retry analysis</Btn>
                 <Btn onClick={()=>go(3)} secondary>← Back to review</Btn>

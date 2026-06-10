@@ -6,7 +6,7 @@ const FORMAT_RULES = `FORMAT RULES for every string value:
 - Plain text only (no markdown symbols like ** or ##).
 - Use ALL-CAPS mini-headers on their own line to break up content.
 - Use "•" for bullet points, "→" for sequences, real line breaks between blocks.
-- Minimum 250 words per value. Dense, specific, decision-ready analysis.
+- 150-250 words per value. Dense, specific, decision-ready analysis.
 - Include concrete numbers (market sizes, prices, percentages, timelines) with stated assumptions.
 - Zero generic startup advice — every paragraph must be specific to this exact idea.`;
 
@@ -108,6 +108,7 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 async function groqJSON(prompt, key) {
   let lastErr;
+  let maxTokens = 4000; // free-tier TPM for this model is ~6k; bigger requests get a 413
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -117,19 +118,29 @@ async function groqJSON(prompt, key) {
           model: MODEL,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.55,
-          max_tokens: 7000,
+          max_tokens: maxTokens,
           response_format: { type: "json_object" },
         }),
       });
+      if (r.status === 413) {
+        maxTokens = Math.max(1500, Math.floor(maxTokens / 2));
+        lastErr = new Error(`Groq 413: request too large, retrying with max_tokens=${maxTokens}`);
+        continue;
+      }
       if (r.status === 429 || r.status >= 500) {
         const wait = Number(r.headers.get("retry-after")) * 1000 || 6000 * (attempt + 1);
+        lastErr = new Error(`Groq ${r.status}, waiting ${Math.round(wait / 1000)}s`);
         await sleep(wait);
         continue;
       }
-      if (!r.ok) throw new Error(`Groq ${r.status}`);
+      if (!r.ok) {
+        const body = await r.text().catch(() => "");
+        throw new Error(`Groq ${r.status}: ${body.slice(0, 300)}`);
+      }
       return JSON.parse((await r.json()).choices[0].message.content);
     } catch (e) {
       lastErr = e;
+      if (/^Groq 4\d\d/.test(e.message) && !e.message.startsWith("Groq 413") && !e.message.startsWith("Groq 429")) throw e; // auth/bad-request errors won't fix themselves
       await sleep(3000 * (attempt + 1));
     }
   }
@@ -159,6 +170,7 @@ export async function generateMasterReport(form, onProgress) {
   if (!key) throw new Error("VITE_GROQ_API_KEY missing — add to .env.local and restart.");
 
   const sections = {};
+  const errors = [];
   let meta = null;
   let done = 0;
   const queue = [...SECTIONS];
@@ -172,12 +184,13 @@ export async function generateMasterReport(form, onProgress) {
         sections[s.id] = out;
       } catch (e) {
         console.error(`section ${s.id} failed`, e);
+        errors.push(`${s.id}: ${e.message}`);
       }
       onProgress?.(++done, SECTIONS.length);
     }
   };
 
-  await Promise.all([worker(), worker(), worker()]);
-  if (!Object.keys(sections).length) throw new Error("All report sections failed");
+  await Promise.all([worker(), worker()]);
+  if (!Object.keys(sections).length) throw new Error(errors[0] || "All report sections failed");
   return { sections, meta };
 }
