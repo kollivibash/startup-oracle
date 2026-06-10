@@ -164,7 +164,7 @@ function Chart({proj,curr}){
 
 const Skel=({h=120})=><div style={{background:"#EDE8E1",borderRadius:14,height:h,opacity:0.7,animation:"pulse 1.4s ease-in-out infinite"}}/>;
 
-export default function StartupOracle({ onSubmitIdea, onCommunity, user, onLogout, onSignIn }){
+export default function StartupOracle({ onSubmitIdea, onCommunity, user, onLogout, onSignIn, onAccount }){
   const [step,setStep]=useState("form"); // form | location | dashboard
   const [tab,setTab]=useState("swot");
   const [loading,setLoading]=useState(false);
@@ -237,8 +237,11 @@ export default function StartupOracle({ onSubmitIdea, onCommunity, user, onLogou
           <span onClick={()=>onCommunity?.()} style={{fontSize:13,color:"#555",cursor:"pointer",fontWeight:500}}>Browse Ideas</span>
           {user ? (
             <div style={{display:"flex",alignItems:"center",gap:12}}>
-              {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
-              <span style={{fontSize:13,color:INK,fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
+              <div onClick={()=>onAccount?.()} title="My Account" style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
+                <span style={{fontSize:13,color:INK,fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
+              </div>
+              <span onClick={()=>onAccount?.()} style={{fontSize:13,color:"#555",cursor:"pointer",fontWeight:500}}>My Account</span>
               <span onClick={()=>onLogout?.()} style={{fontSize:13,color:"#555",cursor:"pointer",fontWeight:600,border:"1px solid #D0D0D0",borderRadius:6,padding:"4px 12px"}}>Log out</span>
             </div>
           ) : (

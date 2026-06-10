@@ -4,6 +4,7 @@ import OracleDashboard from './OracleDashboard'
 import SubmitIdea from './SubmitIdea'
 import Community from './Community'
 import Auth from './Auth'
+import Account from './Account'
 import { supabase } from './supabaseClient'
 
 export default function App() {
@@ -62,13 +63,17 @@ export default function App() {
     try { await supabase.auth.signOut() } catch (e) { console.error('signOut failed', e) }
     setUser(null); setView('oracle')
   }
+  const goAccount = () => { if (user) setView('account'); else { setAfterAuth('account'); setView('auth') } }
 
   // Wait for the stored session before rendering, so the header never
   // flashes "Sign in" for a logged-in user
   if (!authReady) return null
 
-  if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} />
-  if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} />
+  if (view === 'account')   return user
+    ? <Account user={user} onHome={() => setView('oracle')} onLogout={handleLogout} onSubmitIdea={() => setView('submit')} />
+    : null
+  if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} />
+  if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} />
   if (view === 'auth')      return (
     <Auth
       onHome={() => setView('oracle')}
@@ -87,6 +92,7 @@ export default function App() {
             user={user}
             onLogout={handleLogout}
             onSignIn={goSignIn}
+            onAccount={goAccount}
           />
         : <OracleDashboard />}
     </>

@@ -335,7 +335,7 @@ const Results = ({ ideaName, data, onReset }) => {
   );
 };
 
-export default function SubmitIdea({ onHome, user, onLogout }) {
+export default function SubmitIdea({ onHome, user, onLogout, onAccount }) {
   const [step, setStep]       = useState(1);
   const [form, setForm]       = useState(INIT);
   const [results, setResults] = useState(null);
@@ -370,8 +370,10 @@ export default function SubmitIdea({ onHome, user, onLogout }) {
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             {user && (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%' }}/>}
-                <span style={{ fontSize:13, color:C.black, fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
+                <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%' }}/>}
+                  <span style={{ fontSize:13, color:C.black, fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
+                </div>
                 <span onClick={()=>onLogout?.()} style={{ fontSize:13, color:C.muted, fontWeight:600, cursor:'pointer', border:`1px solid ${C.border}`, borderRadius:6, padding:'4px 10px' }}>Log out</span>
               </div>
             )}
@@ -380,7 +382,15 @@ export default function SubmitIdea({ onHome, user, onLogout }) {
         </div>
       )}
 
-      {step==='loading' && <Loading form={form} onDone={data=>{ setResults(data); go('results'); }}/>}
+      {step==='loading' && <Loading form={form} onDone={data=>{
+        setResults(data); go('results');
+        // Keep a local history so the Account page can show "My Ideas"
+        try {
+          const prev = JSON.parse(localStorage.getItem('myIdeas') || '[]')
+          prev.unshift({ title: form.name, category: form.category, date: new Date().toISOString(), score: data?.overallScore ?? null })
+          localStorage.setItem('myIdeas', JSON.stringify(prev.slice(0, 20)))
+        } catch (e) { console.error('failed to save idea history', e) }
+      }}/>}
 
       {step==='results' && (
         <div style={{ maxWidth:800, margin:'0 auto', padding:'56px 40px 0' }}>
