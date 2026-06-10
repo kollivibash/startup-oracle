@@ -374,7 +374,6 @@ export default function SubmitIdea({ onHome, user, onLogout, onAccount }) {
                   {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%' }}/>}
                   <span style={{ fontSize:13, color:C.black, fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
                 </div>
-                <span onClick={()=>onLogout?.()} style={{ fontSize:13, color:C.muted, fontWeight:600, cursor:'pointer', border:`1px solid ${C.border}`, borderRadius:6, padding:'4px 10px' }}>Log out</span>
               </div>
             )}
             <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>

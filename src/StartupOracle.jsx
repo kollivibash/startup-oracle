@@ -241,7 +241,6 @@ export default function StartupOracle({ onSubmitIdea, onCommunity, user, onLogou
                 {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
                 <span style={{fontSize:13,color:INK,fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
               </div>
-              <span onClick={()=>onLogout?.()} style={{fontSize:13,color:"#555",cursor:"pointer",fontWeight:600,border:"1px solid #D0D0D0",borderRadius:6,padding:"4px 12px"}}>Log out</span>
             </div>
           ) : (
             <span onClick={()=>onSignIn?.()} style={{fontSize:13,color:"#555",cursor:"pointer",fontWeight:500}}>Sign in</span>

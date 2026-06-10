@@ -228,7 +228,6 @@ export default function Community({ onSubmitIdea, onHome, user, onLogout, onSign
                 {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
                 <span style={{fontSize:14,color:C.black,fontWeight:600,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
               </div>
-              <span onClick={()=>onLogout?.()} style={{fontSize:13,color:C.body,cursor:"pointer",fontWeight:600,border:`1px solid ${C.border}`,borderRadius:BR,padding:"5px 12px"}}>Log out</span>
             </div>
           ) : (
             <span onClick={()=>onSignIn?.()} style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>Sign in</span>
