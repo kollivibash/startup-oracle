@@ -9,19 +9,84 @@ const REPORT = [
   { id: "marketing", label: "Marketing Suite", icon: "▲", subs: ["Overview", "Ad Copy", "Visual Ads", "Channels", "UGC", "Funnel", "SEO", "Launch"] },
 ];
 
-const PLACEHOLDER = {
-  stats: [
-    { k: "Overall Score", v: "87/100" },
-    { k: "Market Fit", v: "Strong" },
-    { k: "Confidence", v: "High" },
-    { k: "TAM", v: "$4.2B" },
-  ],
-  bullets: [
-    "Primary signal analysis pending full report generation.",
-    "Competitive density mapped across 3 adjacent segments.",
-    "Projected break-even window inside 14–18 months.",
-    "Channel mix weighted toward organic + community-led growth.",
-  ],
+const F = { fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" };
+
+const Bars = ({ d }) => {
+  const items = (d.items || []).filter((i) => i && i.label != null);
+  const max = Math.max(...items.map((i) => Number(i.value) || 0), 1);
+  return (
+    <div className="my-6 rounded-xl border border-neutral-200 bg-white p-5">
+      {d.title && <p className="mb-4 text-[13px] font-bold text-neutral-900">{d.title}</p>}
+      <div className="space-y-3">
+        {items.map((i, n) => (
+          <div key={n} className="flex items-center gap-3">
+            <span className="w-32 shrink-0 truncate text-[12px] font-medium text-neutral-600" title={i.label}>{i.label}</span>
+            <div className="h-5 flex-1 rounded-sm bg-neutral-100">
+              <div className="flex h-full items-center rounded-sm bg-neutral-900 transition-all" style={{ width: `${Math.max((Number(i.value) || 0) / max * 100, 2)}%` }} />
+            </div>
+            <span className="w-16 shrink-0 text-right text-[12px] font-bold text-neutral-900">{i.display ?? i.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Table = ({ d }) => (
+  <div className="my-6 overflow-x-auto rounded-xl border border-neutral-200">
+    {d.title && <p className="border-b border-neutral-200 bg-neutral-50 px-5 py-3 text-[13px] font-bold text-neutral-900">{d.title}</p>}
+    <table className="w-full text-left text-[13px]">
+      <thead>
+        <tr className="border-b border-neutral-200 bg-neutral-50">
+          {(d.cols || []).map((c, i) => (
+            <th key={i} className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-neutral-500">{c}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {(d.rows || []).map((r, i) => (
+          <tr key={i} className="border-b border-neutral-100 last:border-0">
+            {(Array.isArray(r) ? r : [r]).map((c, j) => (
+              <td key={j} className={`px-4 py-3 align-top leading-relaxed ${j === 0 ? "font-semibold text-neutral-900" : "text-neutral-600"}`}>{String(c)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const Block = ({ b }) => {
+  if (typeof b === "string") return <p className="my-4 text-[15px] leading-7 text-neutral-600">{b}</p>;
+  if (!b || typeof b !== "object") return null;
+  if (b.h) return <h3 className="mt-10 mb-3 text-lg font-bold tracking-tight text-neutral-900 first:mt-0">{b.h}</h3>;
+  if (b.p) return <p className="my-4 text-[15px] leading-7 text-neutral-600">{b.p}</p>;
+  if (b.list)
+    return (
+      <ul className="my-4 space-y-2.5">
+        {b.list.map((t, i) => (
+          <li key={i} className="flex gap-3 text-[14px] leading-6 text-neutral-700">
+            <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
+            {String(t)}
+          </li>
+        ))}
+      </ul>
+    );
+  if (b.stats)
+    return (
+      <div className="my-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {b.stats.map((s, i) => (
+          <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{s.label}</p>
+            <p className="mt-1.5 text-xl font-extrabold tracking-tight text-neutral-900">{s.value}</p>
+            {s.sub && <p className="mt-1 text-[11px] leading-4 text-neutral-500">{s.sub}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  if (b.bars) return <Bars d={b.bars} />;
+  if (b.table) return <Table d={b.table} />;
+  return null;
 };
 
 export default function MasterReport({ data, meta, ideaName, onBack }) {
@@ -39,38 +104,38 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
-      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 sticky top-0 h-screen overflow-y-auto">
-        <div className="px-5 py-6 border-b border-neutral-800">
-          <p className="text-[10px] tracking-[0.25em] uppercase text-neutral-500">Startup Oracle · Master Report</p>
-          <h1 className="mt-1 text-lg font-semibold tracking-tight truncate" title={ideaName}>{ideaName || "Master Report"}</h1>
+    <div className="flex min-h-screen bg-white text-neutral-900" style={F}>
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-neutral-200 bg-white md:flex">
+        <div className="border-b border-neutral-200 px-5 py-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Startup Oracle · Report</p>
+          <h1 className="mt-1.5 truncate text-lg font-extrabold tracking-tight" title={ideaName}>{ideaName || "Master Report"}</h1>
           {meta && (
             <div className="mt-3 flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-950 text-xs font-bold">{meta.overallScore}/100</span>
-              <span className="text-xs text-neutral-400">{meta.badge}</span>
+              <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-xs font-bold text-white">{meta.overallScore}/100</span>
+              <span className="text-xs font-medium text-neutral-500">{meta.badge}</span>
             </div>
           )}
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 space-y-1 px-3 py-4">
           {REPORT.map((s) => (
             <div key={s.id}>
               <button
                 onClick={() => pick(s.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-                  active === s.id ? "bg-neutral-100 text-neutral-950 font-semibold" : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-900"
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                  active === s.id ? "bg-neutral-900 font-semibold text-white" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900"
                 }`}
               >
                 <span className="text-xs">{s.icon}</span>
                 {s.label}
               </button>
               {active === s.id && (
-                <div className="mt-1 mb-2 ml-4 border-l border-neutral-800 pl-3 space-y-0.5">
+                <div className="mt-1 mb-2 ml-4 space-y-0.5 border-l border-neutral-200 pl-3">
                   {s.subs.map((t) => (
                     <button
                       key={t}
                       onClick={() => setSub(t)}
-                      className={`w-full text-left px-2 py-1.5 rounded-md text-[13px] transition ${
-                        sub === t ? "text-neutral-100 bg-neutral-900 font-medium" : "text-neutral-500 hover:text-neutral-200"
+                      className={`w-full rounded-md px-2 py-1.5 text-left text-[13px] transition ${
+                        sub === t ? "bg-neutral-100 font-semibold text-neutral-900" : "text-neutral-500 hover:text-neutral-900"
                       }`}
                     >
                       {t}
@@ -82,47 +147,47 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
           ))}
         </nav>
         {onBack && (
-          <button onClick={onBack} className="m-3 px-3 py-2 rounded-lg text-sm text-neutral-400 hover:text-neutral-100 hover:bg-neutral-900 text-left transition">
+          <button onClick={onBack} className="m-3 rounded-lg px-3 py-2 text-left text-sm text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-900">
             ← Validate another idea
           </button>
         )}
       </aside>
 
-      <div className="flex-1 min-w-0">
-        <header className="md:hidden sticky top-0 z-20 bg-neutral-950/95 backdrop-blur border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
           <div>
-            <p className="text-[10px] tracking-[0.25em] uppercase text-neutral-500">Master Report</p>
-            <p className="text-sm font-semibold">{section.label}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Master Report</p>
+            <p className="text-sm font-bold">{section.label}</p>
           </div>
-          <button onClick={() => setMobileNav(!mobileNav)} className="px-3 py-1.5 rounded-lg border border-neutral-700 text-sm text-neutral-300">
+          <button onClick={() => setMobileNav(!mobileNav)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700">
             {mobileNav ? "Close" : "Sections"}
           </button>
         </header>
         {mobileNav && (
-          <div className="md:hidden border-b border-neutral-800 bg-neutral-950 px-4 py-3 grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 border-b border-neutral-200 bg-white px-4 py-3 md:hidden">
             {REPORT.map((s) => (
               <button
                 key={s.id}
                 onClick={() => pick(s.id)}
-                className={`px-3 py-2 rounded-lg text-sm text-left ${active === s.id ? "bg-neutral-100 text-neutral-950 font-semibold" : "bg-neutral-900 text-neutral-400"}`}
+                className={`rounded-lg px-3 py-2 text-left text-sm ${active === s.id ? "bg-neutral-900 font-semibold text-white" : "bg-neutral-100 text-neutral-600"}`}
               >
                 {s.label}
               </button>
             ))}
             {onBack && (
-              <button onClick={onBack} className="col-span-2 px-3 py-2 rounded-lg text-sm text-neutral-400 bg-neutral-900 text-left">
+              <button onClick={onBack} className="col-span-2 rounded-lg bg-neutral-100 px-3 py-2 text-left text-sm text-neutral-500">
                 ← Validate another idea
               </button>
             )}
           </div>
         )}
-        <div className="md:hidden sticky top-[57px] z-10 bg-neutral-950/95 backdrop-blur border-b border-neutral-800 px-4 py-2 flex gap-2 overflow-x-auto">
+        <div className="sticky top-[57px] z-10 flex gap-2 overflow-x-auto border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur md:hidden">
           {section.subs.map((t) => (
             <button
               key={t}
               onClick={() => setSub(t)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs transition ${
-                sub === t ? "bg-neutral-100 text-neutral-950 font-semibold" : "bg-neutral-900 text-neutral-400"
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs transition ${
+                sub === t ? "bg-neutral-900 font-semibold text-white" : "bg-neutral-100 text-neutral-500"
               }`}
             >
               {t}
@@ -130,43 +195,24 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
           ))}
         </div>
 
-        <main className="max-w-4xl mx-auto px-4 md:px-10 py-8 md:py-12">
+        <main className="mx-auto max-w-3xl px-4 py-8 md:px-10 md:py-12">
           <div className="hidden md:block">
-            <p className="text-[11px] tracking-[0.25em] uppercase text-neutral-500">
-              {section.label} <span className="mx-2 text-neutral-700">/</span> {sub}
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">
+              {section.label} <span className="mx-2 text-neutral-300">/</span> {sub}
             </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight">{sub}</h2>
-            <div className="mt-4 h-px bg-neutral-800" />
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight">{sub}</h2>
+            <div className="mt-5 h-px bg-neutral-200" />
           </div>
 
           {content ? (
-            <div className="mt-6 prose prose-invert prose-neutral max-w-none whitespace-pre-wrap text-[15px] leading-7 text-neutral-300">{content}</div>
+            <div className="mt-2 md:mt-6">
+              {Array.isArray(content)
+                ? content.map((b, i) => <Block key={i} b={b} />)
+                : <p className="whitespace-pre-wrap text-[15px] leading-7 text-neutral-600">{String(content)}</p>}
+            </div>
           ) : (
-            <div className="mt-6 space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {PLACEHOLDER.stats.map((s) => (
-                  <div key={s.k} className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-                    <p className="text-[11px] uppercase tracking-wider text-neutral-500">{s.k}</p>
-                    <p className="mt-1.5 text-xl font-semibold">{s.v}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-6">
-                <p className="text-sm font-medium text-neutral-200">
-                  {section.label} — {sub}
-                </p>
-                <ul className="mt-4 space-y-3">
-                  {PLACEHOLDER.bullets.map((b) => (
-                    <li key={b} className="flex gap-3 text-sm text-neutral-400">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-neutral-600 shrink-0" />
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="rounded-xl border border-dashed border-neutral-800 p-6 text-center">
-                <p className="text-sm text-neutral-500">Full {sub.toLowerCase()} analysis renders here once the validation engine returns this section.</p>
-              </div>
+            <div className="mt-6 rounded-xl border border-dashed border-neutral-300 p-10 text-center">
+              <p className="text-sm text-neutral-400">This part of the report didn't generate. Re-run the validation to fill it in.</p>
             </div>
           )}
         </main>

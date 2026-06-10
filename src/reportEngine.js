@@ -2,13 +2,21 @@
 // section (6 total) and assembles { sections, meta } for <MasterReport/>.
 
 const MODEL = "llama-3.3-70b-versatile";
-const FORMAT_RULES = `FORMAT RULES for every string value:
-- Plain text only (no markdown symbols like ** or ##).
-- Use ALL-CAPS mini-headers on their own line to break up content.
-- Use "•" for bullet points, "→" for sequences, real line breaks between blocks.
-- 150-250 words per value. Dense, specific, decision-ready analysis.
-- Include concrete numbers (market sizes, prices, percentages, timelines) with stated assumptions.
-- Zero generic startup advice — every paragraph must be specific to this exact idea.`;
+const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
+{"h":"Short heading"}
+{"p":"40-90 word paragraph"}
+{"list":["crisp point","crisp point"]}
+{"stats":[{"label":"TAM","value":"$4.2B","sub":"2026, bottom-up"}]}
+{"bars":{"title":"Competitor pricing ($/mo)","items":[{"label":"Rival A","value":29},{"label":"Rival B","value":49}]}}
+{"table":{"cols":["Competitor","Price","Key weakness"],"rows":[["Rival A","$29/mo","No mobile app"]]}}
+
+RULES:
+- Each key: 4-7 blocks. Start with one {"h"} then {"p"}; alternate headings with content.
+- Include at least one stats, bars, or table block per key wherever numbers fit (sizing, pricing, scoring, timelines, budgets).
+- "bars" values must be plain numbers on one comparable scale; put the unit in the title.
+- Use concrete numbers (market sizes, prices, %, timelines) with assumptions stated; mark estimates "(est.)".
+- Name real competitors, tools, channels, and communities. Numbers must be internally consistent across blocks.
+- Zero generic startup advice — every block must be specific to this exact idea.`;
 
 const ctx = (f) => `STARTUP UNDER ANALYSIS
 Name: "${f.name}"
@@ -117,7 +125,7 @@ async function groqJSON(prompt, key) {
         body: JSON.stringify({
           model: MODEL,
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.55,
+          temperature: 0.45,
           max_tokens: maxTokens,
           response_format: { type: "json_object" },
         }),
@@ -149,13 +157,13 @@ async function groqJSON(prompt, key) {
 
 function buildPrompt(section, form) {
   const keyLines = Object.entries(section.keys)
-    .map(([k, v]) => `  "${k}": "<${v}>"`)
+    .map(([k, v]) => `  "${k}": [<content blocks covering: ${v}>]`)
     .join(",\n");
-  return `You are ${section.role}. Produce the deepest, most specific analysis you are capable of. Return ONLY valid JSON.
+  return `You are ${section.role}. Produce the deepest, most accurate, most specific analysis you are capable of. Sanity-check every number for real-world plausibility before writing it — wrong numbers destroy founder trust. Return ONLY valid JSON.
 
 ${ctx(form)}
 
-Return this exact JSON structure — every key below, all string values:
+Return this exact JSON structure — every key below, each value an ARRAY of content blocks:
 {
 ${section.meta ? "  " + section.meta + "\n" : ""}${keyLines}
 }
