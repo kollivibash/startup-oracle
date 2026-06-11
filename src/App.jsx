@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import StartupOracle from './StartupOracle'
-import OracleDashboard from './OracleDashboard'
+import Home from './Home'
 import SubmitIdea from './SubmitIdea'
 import Community from './Community'
 import Auth from './Auth'
@@ -47,7 +46,9 @@ export default function App() {
 
   // Never show the auth screen to someone who is already logged in
   useEffect(() => {
-    if (view === 'auth' && user) setView(afterAuth || 'submit')
+    if (view !== 'auth' || !user) return
+    const t = setTimeout(() => setView(afterAuth || 'submit'), 0)
+    return () => clearTimeout(t)
   }, [view, user, afterAuth])
 
   // Check the session directly so navigation never relies on stale state
@@ -100,17 +101,12 @@ export default function App() {
   )
 
   return (
-    <>
-      {view === 'oracle'
-        ? <StartupOracle
-            onSubmitIdea={() => goAuth('submit')}
-            onCommunity={() => goAuth('community')}
-            user={user}
-            onLogout={handleLogout}
-            onSignIn={goSignIn}
-            onAccount={goAccount}
-          />
-        : <OracleDashboard />}
-    </>
+    <Home
+      user={user}
+      onCommunity={() => setView('community')}
+      onAnalyse={() => goAuth('submit')}
+      onSignIn={goSignIn}
+      onAccount={goAccount}
+    />
   )
 }

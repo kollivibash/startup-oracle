@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 export async function fetchPosts() {
   const { data, error } = await supabase
     .from('community_posts')
-    .select('id, title, body, tags, created_at, user_id, author:profiles(id, name, avatar_url), ratings:community_ratings(user_id, value), sug:community_suggestions(count)')
+    .select('id, title, body, tags, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)')
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) { console.error('fetchPosts failed', error); return []; }
@@ -35,7 +35,7 @@ export async function ratePost(userId, postId, value) {
 export async function fetchSuggestions(postId) {
   const { data, error } = await supabase
     .from('community_suggestions')
-    .select('id, text, created_at, user_id, author:profiles(name, avatar_url)')
+    .select('id, text, created_at, user_id, author:profiles!community_suggestions_user_id_fkey(name, avatar_url)')
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
   if (error) { console.error('fetchSuggestions failed', error); return []; }
@@ -103,7 +103,7 @@ export async function fetchRatingsReceived(userId) {
 // ── Direct messages ──────────────────────────────────────────────────────────
 
 export async function fetchProfile(id) {
-  const { data } = await supabase.from('profiles').select('id, name, avatar_url').eq('id', id).single();
+  const { data } = await supabase.from('profiles').select('id, name, avatar_url, bio').eq('id', id).single();
   return data;
 }
 

@@ -1,259 +1,251 @@
-import { useState, useEffect, useMemo, useCallback, useId, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchPosts, createPost, deletePost, ratePost, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
 
-const F = "'Plus Jakarta Sans',system-ui,sans-serif";
-const C = { bg:'#F7F7F7', surf:'#fff', bdr:'#E8E8E8', bdrLt:'#F2F2F2', ink:'#0C0C0C', ink2:'#5C5C5C', ink3:'#ADADAD', star:'#B45309', grn:'#22C55E' };
-const AV_COLORS = ['#2563EB','#7C3AED','#C2410C','#B45309','#0D9488','#DB2777','#4F46E5','#15803D'];
-
+const F = "'DM Sans',system-ui,sans-serif";
+const BG = '#f3f2ef';
+const AV_COLORS = ['#2563EB','#7c3aed','#C2410C','#d97706','#0891b2','#DB2777','#4F46E5','#059669','#dc2626'];
 const avColor = id => AV_COLORS[(String(id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % AV_COLORS.length];
+const coverOf = id => `linear-gradient(160deg,#1e1b4b 0%,${avColor(id)} 100%)`;
 const initials = name => (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const timeAgo = d => {
   const s = Math.floor((Date.now() - new Date(d).getTime())/1000);
   if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s/60)}m ago`;
-  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
-  if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m`;
+  if (s < 86400) return `${Math.floor(s/3600)}h`;
+  if (s < 604800) return `${Math.floor(s/86400)}d`;
   return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 };
+const nameOf = u => u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'You';
+const headlineOf = p => p?.bio || 'Founder · Startup Oracle';
+// DB stores 0.5–5.0 (half-star schema); UI shows a 1–10 scale
+const to10 = v => Math.round(Number(v) * 2);
+const avg10 = ratings => ratings?.length ? (ratings.reduce((a,r)=>a+Number(r.value),0)/ratings.length)*2 : 0;
 
-const Av = ({ name, uid, url, sz=32 }) => url
-  ? <img src={url} alt="" style={{ width:sz, height:sz, borderRadius:'50%', flexShrink:0, objectFit:'cover' }}/>
-  : <div style={{ width:sz, height:sz, borderRadius:'50%', background:avColor(uid), color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:650, fontSize:sz<=28?9.5:sz<=36?11.5:sz<=44?13.5:17, flexShrink:0, letterSpacing:'-0.4px' }}>{initials(name)}</div>;
+const card = { background:'#fff', borderRadius:8, border:'1px solid rgba(0,0,0,.08)', boxShadow:'0 0 0 1px rgba(0,0,0,.04)' };
 
-// ── Stars (half-star precision) ──────────────────────────────────────────────
-const StarShape = ({ fill, sz, clipId }) => {
-  const d = "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z";
+const Av = ({ name, uid, url, sz=40, onClick, border=false }) => {
+  const base = { width:sz, height:sz, borderRadius:'50%', flexShrink:0, cursor:onClick?'pointer':'default', border:border?'2px solid #fff':'none' };
+  if (url) return <img src={url} alt="" onClick={onClick} style={{ ...base, objectFit:'cover' }}/>;
   return (
-    <svg width={sz} height={sz} viewBox="0 0 24 24" style={{ display:'block', flexShrink:0 }}>
-      {fill>0 && fill<1 && <defs><clipPath id={clipId}><rect x="0" y="0" width={24*fill} height="24"/></clipPath></defs>}
-      <path d={d} fill="#EBEBEB" stroke="#EBEBEB" strokeWidth=".5"/>
-      {fill>0 && <path d={d} fill={C.star} stroke={C.star} strokeWidth=".5" clipPath={fill<1?`url(#${clipId})`:undefined}/>}
-    </svg>
-  );
-};
-
-const Stars = ({ rating=0, onRate, sz=15, readOnly=false, showVal=false }) => {
-  const uid = useId().replace(/:/g,'_');
-  const [hov, setHov] = useState(null);
-  const disp = hov !== null ? hov : rating;
-  const getFill = i => disp >= i ? 1 : disp >= i-.5 ? .5 : 0;
-  const onMov = (e,i) => {
-    if (readOnly) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    setHov(e.clientX - r.left < r.width/2 ? i-.5 : i);
-  };
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-      <div style={{ display:'flex', gap:2 }} onMouseLeave={()=>!readOnly&&setHov(null)}>
-        {[1,2,3,4,5].map(i=>(
-          <div key={i} style={{ cursor:readOnly?'default':'pointer', display:'flex' }}
-            onMouseMove={e=>onMov(e,i)}
-            onClick={()=>!readOnly&&onRate&&onRate(hov!==null?hov:i)}>
-            <StarShape fill={getFill(i)} sz={sz} clipId={`sc_${uid}_${i}`}/>
-          </div>
-        ))}
-      </div>
-      {showVal && disp>0 && <span style={{ fontSize:11, color:C.ink2, fontWeight:600 }}>{Number(disp).toFixed(1)}</span>}
+    <div onClick={onClick} style={{ ...base, background:avColor(uid), color:'#fff', fontSize:Math.max(10,Math.round(sz*.34)), fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none' }}>
+      {initials(name)}
     </div>
   );
 };
 
-const FollowBtn = ({ following, onClick }) => {
-  const [hov, setHov] = useState(false);
+const Tag = ({ t }) => <span style={{ display:'inline-flex', padding:'2px 8px', borderRadius:99, fontSize:12, fontWeight:500, background:'rgba(0,0,0,.06)', color:'rgba(0,0,0,.7)' }}>{t}</span>;
+
+// ── Rating scale (1–10) ──────────────────────────────────────────────────────
+const RatingScale = ({ current, onRate, avg, rc }) => {
+  const [hov, setHov] = useState(null);
+  const fill = hov !== null ? hov : (current || 0);
   return (
-    <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ padding:'4px 13px', borderRadius:20, fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F, whiteSpace:'nowrap', transition:'all .13s',
-        background: following ? (hov?'#FEF2F2':'transparent') : C.ink,
-        color: following ? (hov?'#DC2626':C.ink2) : '#fff',
-        border: `1px solid ${following ? (hov?'#F87171':C.bdr) : C.ink}` }}>
-      {following ? (hov?'Unfollow':'Following') : 'Follow'}
-    </button>
+    <div className="slide-down" style={{ padding:'12px 16px 4px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+        <span style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.6)' }}>Rate this idea</span>
+        <span style={{ fontSize:12, color:'rgba(0,0,0,.45)' }}>{rc ? `avg ${avg.toFixed(1)}/10 · ${rc} rating${rc!==1?'s':''}` : 'no ratings yet'}</span>
+      </div>
+      <div style={{ display:'flex', gap:4, marginBottom:12 }}>
+        {[1,2,3,4,5,6,7,8,9,10].map(n=>{
+          const on = fill >= n;
+          return <button key={n} onMouseEnter={()=>setHov(n)} onMouseLeave={()=>setHov(null)} onClick={()=>onRate(n)}
+            style={{ flex:1, height:32, borderRadius:4, border:'1px solid', fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .1s', fontFamily:F,
+              background:on?'rgba(0,0,0,.9)':'rgba(0,0,0,.04)', color:on?'#fff':'rgba(0,0,0,.45)', borderColor:on?'rgba(0,0,0,.9)':'rgba(0,0,0,.12)',
+              transform:on?'scale(1.05)':'scale(1)' }}>{n}</button>;
+        })}
+      </div>
+      {current && <p style={{ fontSize:12, color:'rgba(0,0,0,.6)', margin:'0 0 12px' }}>{current>=8?'🔥':'👍'} You rated this {current}/10</p>}
+    </div>
   );
 };
 
-// ── Idea card ────────────────────────────────────────────────────────────────
-function IdeaCard({ post, me, followingIds, onFollow, onRate, requireAuth, onDelete, onDM, showAuthor=true }) {
-  const [open, setOpen]   = useState(false);
-  const [sugs, setSugs]   = useState(null);
-  const [draft, setDraft] = useState('');
-  const [posting, setPosting] = useState(false);
-
-  const isMine   = me && post.user_id === me.id;
-  const ratings  = post.ratings || [];
-  const myRating = me ? ratings.find(r=>r.user_id===me.id)?.value : null;
-  const avg      = ratings.length ? ratings.reduce((a,r)=>a+Number(r.value),0)/ratings.length : 0;
-  const author   = post.author || {};
-  const sugCount = (post.sugCount ?? 0) + (sugs ? Math.max(0, sugs.length - (post.sugCount ?? 0)) : 0);
-
-  const toggleThread = async () => {
-    const next = !open;
-    setOpen(next);
-    if (next && sugs === null) setSugs(await fetchSuggestions(post.id));
-  };
-
-  const postSug = async () => {
-    if (!draft.trim() || !me) return;
-    setPosting(true);
+// ── Suggestions panel ────────────────────────────────────────────────────────
+const Suggestions = ({ postId, me, requireAuth, onCount }) => {
+  const [items, setItems] = useState(null);
+  const [txt, setTxt] = useState('');
+  useEffect(() => { let on = true; fetchSuggestions(postId).then(s => on && setItems(s)); return () => { on = false; }; }, [postId]);
+  const submit = async () => {
+    if (!txt.trim() || !me) return;
     try {
-      const row = await addSuggestion(me.id, post.id, draft.trim());
-      setSugs(p => [...(p||[]), { ...row, author: { name: me.user_metadata?.full_name || me.email?.split('@')[0], avatar_url: me.user_metadata?.avatar_url } }]);
-      setDraft('');
+      const row = await addSuggestion(me.id, postId, txt.trim());
+      setItems(p => [...(p||[]), { ...row, author:{ name:nameOf(me), avatar_url:me.user_metadata?.avatar_url } }]);
+      onCount?.();
+      setTxt('');
     } catch { /* surfaced in console */ }
-    setPosting(false);
+  };
+  return (
+    <div className="slide-down" style={{ padding:'12px 16px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', flexDirection:'column', gap:12 }}>
+      {items === null && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>Loading…</div>}
+      {items?.length === 0 && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>No suggestions yet. Be the first.</div>}
+      {items?.map(c=>(
+        <div key={c.id} style={{ display:'flex', gap:8 }}>
+          <Av name={c.author?.name} uid={c.user_id} url={c.author?.avatar_url} sz={32}/>
+          <div style={{ flex:1 }}>
+            <div style={{ background:'rgba(0,0,0,.04)', borderRadius:8, padding:'8px 12px' }}>
+              <span style={{ fontSize:13, fontWeight:700 }}>{c.author?.name || 'Founder'}</span>
+              <span style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginLeft:6 }}>{timeAgo(c.created_at)}</span>
+              <p style={{ margin:'4px 0 0', fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.8)' }}>{c.text}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        {me && <Av name={nameOf(me)} uid={me.id} url={me.user_metadata?.avatar_url} sz={32}/>}
+        <div style={{ flex:1, display:'flex', gap:8 }}>
+          <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()} disabled={!me}
+            placeholder={me?'Add a suggestion…':'Sign in to add a suggestion'}
+            style={{ flex:1, height:36, borderRadius:99, padding:'0 14px', fontSize:13, border:'1px solid rgba(0,0,0,.2)', background:'#fff', outline:'none', fontFamily:F }}/>
+          <button onClick={me?submit:requireAuth(()=>{})} style={{ height:36, padding:'0 14px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>
+            {me?'Post':'Sign in'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Post card ────────────────────────────────────────────────────────────────
+function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [extraSug, setExtraSug] = useState(0);
+  const author = post.author || {};
+  const isSelf = me && post.user_id === me.id;
+  const ratings = post.ratings || [];
+  const myR = me ? ratings.find(r=>r.user_id===me.id) : null;
+  const uRating = myR ? to10(myR.value) : null;
+  const isF = followingIds.has(post.user_id);
+  const body = post.body || '';
+  const isLong = body.length > 220;
+  const shown = expanded || !isLong ? body : body.slice(0,220)+'…';
+  const sugCount = (post.sugCount ?? 0) + extraSug;
+
+  const share = () => {
+    try { navigator.clipboard.writeText(`"${post.title}" — idea on Startup Oracle: ${window.location.origin}`); setCopied(true); setTimeout(()=>setCopied(false), 1600); } catch { /* clipboard unavailable */ }
   };
 
   return (
-    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'18px 22px', transition:'border-color .15s' }}>
-      {showAuthor && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:13 }}>
-          <Av name={author.name} uid={post.user_id} url={author.avatar_url} sz={34}/>
-          <div style={{ flex:1, minWidth:0 }}>
-            <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{author.name || 'Founder'}</span>
-            <span style={{ fontSize:11.5, color:C.ink3, marginLeft:8 }}>{timeAgo(post.created_at)}</span>
+    <div style={{ ...card, overflow:'hidden' }}>
+      <div style={{ padding:'12px 16px 0', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <div style={{ display:'flex', gap:8 }}>
+          <Av name={author.name} uid={post.user_id} url={author.avatar_url} sz={48} onClick={()=>onProfile(post.user_id)}/>
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              <button onClick={()=>onProfile(post.user_id)} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', fontFamily:F }}>{author.name || 'Founder'}</button>
+              {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:600, color:'#0f172a', background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':'· + Follow'}</button>}
+            </div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1 }}>{timeAgo(post.created_at)} · 🌐</div>
           </div>
-          {!isMine && <FollowBtn following={followingIds.has(post.user_id)} onClick={requireAuth(()=>onFollow(post.user_id))}/>}
-          {!isMine && onDM && (
-            <button onClick={requireAuth(()=>onDM({ id: post.user_id, name: author.name, avatar_url: author.avatar_url }))}
-              style={{ marginLeft:4, padding:'4px 11px', borderRadius:6, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2 }}>
-              DM
-            </button>
-          )}
         </div>
-      )}
-
-      <div style={{ fontSize:14.5, fontWeight:650, letterSpacing:'-.25px', lineHeight:1.35, color:C.ink }}>{post.title}</div>
-      {post.body && <div style={{ fontSize:13, color:C.ink2, lineHeight:1.6, margin:'6px 0 12px' }}>{post.body}</div>}
-      {post.tags?.length > 0 && (
-        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:14 }}>
-          {post.tags.map(t=><span key={t} style={{ padding:'2px 8px', background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, fontSize:10.5, fontWeight:500, color:C.ink2 }}>{t}</span>)}
-        </div>
-      )}
-
-      <div style={{ display:'flex', alignItems:'center', gap:12, paddingTop:12, borderTop:`1px solid ${C.bdrLt}` }}>
-        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-          <Stars rating={myRating ?? avg} sz={14} readOnly={!!isMine}
-            onRate={isMine ? null : requireAuth(v=>onRate(post.id, v))} showVal/>
-          <span style={{ fontSize:11.5, color:C.ink3 }}>
-            {myRating ? 'your rating' : `${ratings.length} rating${ratings.length!==1?'s':''}`}
-          </span>
-        </div>
-        <button onClick={toggleThread}
-          style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:5, fontSize:12, color:C.ink3, cursor:'pointer', padding:'4px 8px', borderRadius:5, border:'none', background:'none', fontFamily:F }}>
-          💬 {sugCount} suggestion{sugCount!==1?'s':''}
-        </button>
-        {isMine && onDelete && (
-          <button onClick={()=>onDelete(post)} style={{ fontSize:11.5, color:'#DC2626', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:F }}>Delete</button>
+        {isSelf && onDelete && (
+          <button onClick={()=>onDelete(post)} title="Delete idea" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
         )}
       </div>
 
-      {open && (
-        <div style={{ marginTop:14, paddingTop:4, borderTop:`1px solid ${C.bdrLt}` }}>
-          {sugs === null && <div style={{ fontSize:12.5, color:C.ink3, padding:'10px 0' }}>Loading…</div>}
-          {sugs?.length === 0 && <div style={{ fontSize:12.5, color:C.ink3, padding:'10px 0' }}>No suggestions yet. Be the first.</div>}
-          {sugs?.map(s=>(
-            <div key={s.id} style={{ display:'flex', gap:9, padding:'9px 0', borderBottom:`1px solid ${C.bdrLt}` }}>
-              <Av name={s.author?.name} uid={s.user_id} url={s.author?.avatar_url} sz={27}/>
-              <div style={{ flex:1 }}>
-                <div style={{ display:'flex', gap:7, alignItems:'baseline', marginBottom:3 }}>
-                  <span style={{ fontSize:12, fontWeight:600, color:C.ink }}>{s.author?.name || 'Founder'}</span>
-                  <span style={{ fontSize:10.5, color:C.ink3 }}>{timeAgo(s.created_at)}</span>
-                </div>
-                <div style={{ fontSize:12.5, color:C.ink, lineHeight:1.55 }}>{s.text}</div>
-              </div>
-            </div>
-          ))}
-          <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'flex-end' }}>
-            <textarea placeholder={me ? 'Leave a suggestion…' : 'Sign in to leave a suggestion'} value={draft} rows={1} disabled={!me}
-              onChange={e=>setDraft(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&(e.preventDefault(),postSug())}
-              style={{ flex:1, border:`1px solid ${C.bdr}`, borderRadius:8, padding:'8px 12px', fontSize:12.5, fontFamily:F, color:C.ink, background:C.bg, resize:'none', outline:'none', lineHeight:1.5 }}/>
-            <button onClick={me ? postSug : requireAuth(()=>{})} disabled={posting || (me && !draft.trim())}
-              style={{ background:C.ink, color:'#fff', border:'none', borderRadius:7, padding:'8px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F, opacity: posting?0.5:1 }}>
-              {me ? 'Post' : 'Sign in'}
-            </button>
-          </div>
-        </div>
-      )}
+      <div style={{ padding:'10px 16px 0' }}>
+        <div style={{ fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', marginBottom:4, lineHeight:1.4 }}>{post.title}</div>
+        {body && <p style={{ margin:0, fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
+        {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+        {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'10px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
+      </div>
+
+      <div style={{ padding:'4px 16px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(0,0,0,.08)' }}>
+        <span style={{ fontSize:12, color:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', gap:4 }}>
+          <span style={{ background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:'50%', width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9 }}>★</span>
+          {ratings.length ? <>avg <b style={{ color:'rgba(0,0,0,.7)' }}>{avg10(ratings).toFixed(1)}</b>/10 · {ratings.length} rating{ratings.length!==1?'s':''}</> : 'no ratings yet'}
+        </span>
+        <span style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>{sugCount} suggestion{sugCount!==1?'s':''}</span>
+      </div>
+
+      <div style={{ display:'flex', padding:'4px 4px' }}>
+        <button className={'act-btn'+(rOpen?' on':uRating?' rated':'')} onClick={isSelf?undefined:requireAuth(onTR)} style={isSelf?{opacity:.35,cursor:'default'}:undefined} title={isSelf?"You can't rate your own idea":''}>
+          ★ {uRating?`Rated ${uRating}`:'Rate'}
+        </button>
+        <button className={'act-btn'+(cOpen?' on':'')} onClick={onTC}>💬 Suggest</button>
+        {!isSelf && <button className={'act-btn'+(isF?' on':'')} onClick={requireAuth(()=>onFollow(post.user_id))}>👤 {isF?'Following':'Follow'}</button>}
+        {!isSelf && onDM && <button className="act-btn" onClick={requireAuth(()=>onDM({ id:post.user_id, name:author.name, avatar_url:author.avatar_url }))}>✉ DM</button>}
+        <button className="act-btn" onClick={share}>{copied?'✓ Copied':'↗ Share'}</button>
+      </div>
+
+      {rOpen && !isSelf && <RatingScale current={uRating} avg={avg10(ratings)} rc={ratings.length} onRate={n=>onRate(post.id, n)}/>}
+      {cOpen && <Suggestions postId={post.id} me={me} requireAuth={requireAuth} onCount={()=>setExtraSug(n=>n+1)}/>}
     </div>
   );
 }
 
 // ── Composer ─────────────────────────────────────────────────────────────────
-function Composer({ me, onPosted, requireAuth }) {
-  const [openC, setOpenC] = useState(false);
-  const [title, setTitle] = useState('');
-  const [body, setBody]   = useState('');
-  const [tags, setTags]   = useState('');
-  const [busy, setBusy]   = useState(false);
-
+function Composer({ me, requireAuth, onPosted }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState('');
+  const [tags, setTags] = useState('');
+  const [busy, setBusy] = useState(false);
   const submit = async () => {
-    if (!title.trim() || !me) return;
+    if (!body.trim() || !me) return;
     setBusy(true);
     try {
+      const lines = body.trim();
+      const title = lines.split('\n')[0].trim().slice(0,80) || 'New Idea';
+      const rest = lines.split('\n').slice(1).join('\n').trim();
       const tagArr = tags.split(',').map(t=>t.trim()).filter(Boolean).slice(0,5);
-      const row = await createPost(me.id, { title:title.trim(), body:body.trim(), tags:tagArr });
-      onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title:title.trim(), body:body.trim(), tags:tagArr,
-        author:{ id:me.id, name: me.user_metadata?.full_name || me.email?.split('@')[0], avatar_url: me.user_metadata?.avatar_url },
-        ratings:[], sugCount:0 });
-      setTitle(''); setBody(''); setTags(''); setOpenC(false);
+      const row = await createPost(me.id, { title, body:rest, tags:tagArr });
+      onPosted({ id:row.id, created_at:row.created_at, user_id:me.id, title, body:rest, tags:tagArr,
+        author:{ id:me.id, name:nameOf(me), avatar_url:me.user_metadata?.avatar_url }, ratings:[], sugCount:0 });
+      setBody(''); setTags(''); setOpen(false);
     } catch { /* surfaced in console */ }
     setBusy(false);
   };
-
-  if (!openC) return (
-    <div onClick={me ? ()=>setOpenC(true) : requireAuth(()=>{})}
-      style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'14px 18px', display:'flex', alignItems:'center', gap:11, cursor:'pointer' }}>
-      <Av name={me?.user_metadata?.full_name || me?.email || 'You'} uid={me?.id || 'me'} url={me?.user_metadata?.avatar_url} sz={32}/>
-      <span style={{ fontSize:13, color:C.ink3 }}>{me ? 'Share your startup idea with the community…' : 'Sign in to share your startup idea…'}</span>
-    </div>
-  );
-
   return (
-    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'18px 20px' }}>
-      <input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="Idea title — what are you building?"
-        style={{ width:'100%', border:'none', outline:'none', fontSize:15, fontWeight:650, color:C.ink, fontFamily:F, marginBottom:10, background:'transparent' }}/>
-      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={3} placeholder="Describe the problem and your solution…"
-        style={{ width:'100%', border:`1px solid ${C.bdr}`, borderRadius:8, padding:'10px 12px', fontSize:13, fontFamily:F, color:C.ink, background:C.bg, resize:'none', outline:'none', lineHeight:1.6, marginBottom:10, boxSizing:'border-box' }}/>
-      <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Tags, comma separated (AI, SaaS, FinTech)"
-        style={{ width:'100%', border:`1px solid ${C.bdr}`, borderRadius:8, padding:'8px 12px', fontSize:12, fontFamily:F, color:C.ink2, background:C.bg, outline:'none', marginBottom:12, boxSizing:'border-box' }}/>
-      <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-        <button onClick={()=>setOpenC(false)} style={{ background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2, borderRadius:7, padding:'7px 16px', fontSize:12.5, fontWeight:500, cursor:'pointer', fontFamily:F }}>Cancel</button>
-        <button onClick={submit} disabled={busy || !title.trim()}
-          style={{ background:C.ink, color:'#fff', border:'none', borderRadius:7, padding:'7px 18px', fontSize:12.5, fontWeight:600, cursor:'pointer', fontFamily:F, opacity: busy||!title.trim()?0.5:1 }}>
-          {busy ? 'Posting…' : 'Post idea'}
-        </button>
+    <div style={{ ...card, padding:'12px 16px' }}>
+      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:open?12:0 }}>
+        <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={48}/>
+        {!open && (
+          <button onClick={me?()=>setOpen(true):requireAuth(()=>{})}
+            style={{ flex:1, height:44, textAlign:'left', paddingLeft:16, borderRadius:99, border:'1px solid rgba(0,0,0,.3)', background:'transparent', color:'rgba(0,0,0,.5)', fontSize:14, cursor:'pointer', fontWeight:500, fontFamily:F }}>
+            {me ? 'What are you building?' : 'Sign in to share what you are building…'}
+          </button>
+        )}
       </div>
+      {open && (
+        <>
+          <textarea autoFocus value={body} onChange={e=>setBody(e.target.value)} rows={4}
+            placeholder={"Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
+            style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, marginBottom:8, fontFamily:F }}/>
+          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…"
+            style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', marginBottom:10, fontFamily:F, boxSizing:'border-box' }}/>
+          <div style={{ display:'flex', alignItems:'center', gap:8, paddingTop:10, borderTop:'1px solid rgba(0,0,0,.08)' }}>
+            <div style={{ flex:1 }}/>
+            <button onClick={()=>{setOpen(false);setBody('');}} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
+            <button onClick={submit} disabled={busy||!body.trim()} style={{ padding:'7px 20px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:body.trim()&&!busy?1:.5, fontFamily:F }}>
+              {busy?'Posting…':'Post'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-// ── Chat area (shared by Messages view + DM panel) ───────────────────────────
+// ── Chat (Messages view + DM panel) ──────────────────────────────────────────
 function ChatArea({ peer, msgs, me, onSend }) {
   const [input, setInput] = useState('');
   const boxRef = useRef(null);
   useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [msgs]);
-
-  const send = () => {
-    if (!input.trim()) return;
-    onSend(input.trim());
-    setInput('');
-  };
-
+  const send = () => { if (!input.trim()) return; onSend(input.trim()); setInput(''); };
   return (
     <>
       <div ref={boxRef} style={{ flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:12 }}>
-        {msgs.length === 0 && <div style={{ textAlign:'center', color:C.ink3, fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
+        {msgs.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
         {msgs.map(m => {
           const mine = m.sender_id === me.id;
           return (
-            <div key={m.id} style={{ display:'flex', gap:8, maxWidth:'75%', alignSelf: mine?'flex-end':'flex-start', flexDirection: mine?'row-reverse':'row' }}>
+            <div key={m.id} style={{ display:'flex', gap:8, maxWidth:'75%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row' }}>
               {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
               <div>
                 <div style={{ padding:'8px 13px', fontSize:13, lineHeight:1.5,
-                  background: mine?C.ink:C.bg, color: mine?'#fff':C.ink,
-                  border: mine?'none':`1px solid ${C.bdr}`,
-                  borderRadius: mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>{m.text}</div>
-                <div style={{ fontSize:10, color:C.ink3, marginTop:3, textAlign:'right' }}>
+                  background:mine?'rgba(0,0,0,.9)':'rgba(0,0,0,.05)', color:mine?'#fff':'rgba(0,0,0,.85)',
+                  borderRadius:mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>{m.text}</div>
+                <div style={{ fontSize:10, color:'rgba(0,0,0,.4)', marginTop:3, textAlign:'right' }}>
                   {new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
                 </div>
               </div>
@@ -261,18 +253,17 @@ function ChatArea({ peer, msgs, me, onSend }) {
           );
         })}
       </div>
-      <div style={{ padding:'13px 22px', borderTop:`1px solid ${C.bdr}`, display:'flex', gap:9, alignItems:'center', flexShrink:0 }}>
+      <div style={{ padding:'13px 22px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:9, alignItems:'center', flexShrink:0 }}>
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`}
           onKeyDown={e=>e.key==='Enter'&&send()}
-          style={{ flex:1, border:`1px solid ${C.bdr}`, borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, color:C.ink, background:C.bg, outline:'none' }}/>
+          style={{ flex:1, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none' }}/>
         <button onClick={send} disabled={!input.trim()}
-          style={{ width:34, height:34, background:C.ink, border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity: input.trim()?1:.3, fontSize:13 }}>➤</button>
+          style={{ width:34, height:34, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:input.trim()?1:.3, fontSize:13 }}>➤</button>
       </div>
     </>
   );
 }
 
-// ── Messages view ────────────────────────────────────────────────────────────
 function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
   const list = Object.values(convs).sort((a,b) => {
     const la = a.messages[a.messages.length-1]?.created_at || 0;
@@ -280,51 +271,49 @@ function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
     return new Date(lb) - new Date(la);
   });
   const act = activePeer ? convs[activePeer] : null;
-
   return (
-    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, display:'flex', height:'calc(100vh - 150px)', overflow:'hidden' }}>
-      <div style={{ width:240, minWidth:240, borderRight:`1px solid ${C.bdr}`, overflowY:'auto', padding:'12px 0' }}>
-        {list.length === 0 && <div style={{ textAlign:'center', color:C.ink3, fontSize:12.5, padding:'30px 16px', lineHeight:1.6 }}>No conversations yet. Hit "DM" on any idea to start one.</div>}
-        {list.map(c => {
+    <div className="fade-up" style={{ ...card, display:'flex', height:'calc(100vh - 130px)', overflow:'hidden' }}>
+      <div style={{ width:240, minWidth:240, borderRight:'1px solid rgba(0,0,0,.08)', overflowY:'auto', padding:'12px 0' }}>
+        {list.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:12.5, padding:'30px 16px', lineHeight:1.6 }}>No conversations yet. Hit "DM" on any idea to start one.</div>}
+        {list.map(c=>{
           const last = c.messages[c.messages.length-1];
           return (
             <div key={c.peer.id} onClick={()=>onOpenConv(c.peer.id)}
-              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer', background: activePeer===c.peer.id?C.bg:'transparent' }}>
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer', background:activePeer===c.peer.id?'rgba(0,0,0,.05)':'transparent' }}>
               <Av name={c.peer.name} uid={c.peer.id} url={c.peer.avatar_url} sz={38}/>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.peer.name || 'Founder'}</div>
-                <div style={{ fontSize:11.5, color:C.ink3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last?.text || ''}</div>
+                <div style={{ fontSize:13, fontWeight:600 }}>{c.peer.name || 'Founder'}</div>
+                <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last?.text || ''}</div>
               </div>
-              {c.unread > 0 && <div style={{ width:17, height:17, background:C.ink, color:'#fff', borderRadius:10, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.unread}</div>}
+              {c.unread > 0 && <div style={{ width:17, height:17, background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:10, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.unread}</div>}
             </div>
           );
         })}
       </div>
       {act ? (
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          <div style={{ padding:'13px 22px', borderBottom:`1px solid ${C.bdr}`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+          <div style={{ padding:'13px 22px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
             <Av name={act.peer.name} uid={act.peer.id} url={act.peer.avatar_url} sz={34}/>
-            <div style={{ fontSize:14, fontWeight:650, color:C.ink }}>{act.peer.name || 'Founder'}</div>
+            <div style={{ fontSize:14, fontWeight:700 }}>{act.peer.name || 'Founder'}</div>
           </div>
           <ChatArea peer={act.peer} msgs={act.messages} me={me} onSend={text=>onSend(act.peer.id, text)}/>
         </div>
       ) : (
-        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:C.ink3, fontSize:13 }}>Select a conversation</div>
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(0,0,0,.4)', fontSize:13 }}>Select a conversation</div>
       )}
     </div>
   );
 }
 
-// ── DM slide-over panel ──────────────────────────────────────────────────────
 function DMPanel({ peer, me, msgs, onSend, onClose }) {
   return (
     <>
       <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.2)', zIndex:300, backdropFilter:'blur(2px)' }}/>
-      <div style={{ position:'fixed', right:0, top:0, bottom:0, width:368, maxWidth:'92vw', background:'#fff', borderLeft:`1px solid ${C.bdr}`, display:'flex', flexDirection:'column', zIndex:301, boxShadow:'-12px 0 48px rgba(0,0,0,.07)', animation:'dmSlide .22s ease both' }}>
-        <div style={{ padding:'13px 18px', borderBottom:`1px solid ${C.bdr}`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+      <div style={{ position:'fixed', right:0, top:0, bottom:0, width:368, maxWidth:'92vw', background:'#fff', borderLeft:'1px solid rgba(0,0,0,.08)', display:'flex', flexDirection:'column', zIndex:301, boxShadow:'-12px 0 48px rgba(0,0,0,.07)', animation:'dmSlide .22s ease both' }}>
+        <div style={{ padding:'13px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
           <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={34}/>
-          <div style={{ flex:1, fontSize:14, fontWeight:650, color:C.ink }}>{peer.name || 'Founder'}</div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.ink2, fontSize:16, padding:4 }}>✕</button>
+          <div style={{ flex:1, fontSize:14, fontWeight:700 }}>{peer.name || 'Founder'}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:16, padding:4 }}>✕</button>
         </div>
         <ChatArea peer={peer} msgs={msgs} me={me} onSend={text=>onSend(peer.id, text)}/>
       </div>
@@ -332,114 +321,257 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
   );
 }
 
-// ── Profile view ─────────────────────────────────────────────────────────────
-function ProfileView({ me, posts, followingIds, onFollow, onRate, requireAuth, onDelete, onDM }) {
-  const [tab, setTab] = useState('ideas');
+// ── Left sidebar ─────────────────────────────────────────────────────────────
+function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, requireAuth }) {
+  const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
+  const myRatings = myPosts.flatMap(p=>p.ratings||[]);
+  const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
+  const tagCounts = useMemo(() => {
+    const c = {};
+    posts.forEach(p=>(p.tags||[]).forEach(t=>{ c[t]=(c[t]||0)+1; }));
+    return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  }, [posts]);
+
+  return (
+    <div style={{ width:225, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ ...card, overflow:'hidden' }}>
+        <div style={{ height:56, background:coverOf(me?.id||'me'), cursor:'pointer' }} onClick={me?()=>goProfile(me.id):requireAuth(()=>{})}/>
+        <div style={{ padding:'0 12px 12px', position:'relative' }}>
+          <div style={{ position:'absolute', top:-24 }}>
+            <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={56} border onClick={me?()=>goProfile(me.id):undefined}/>
+          </div>
+          <div style={{ paddingTop:36 }}>
+            <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:15, fontWeight:700, color:'rgba(0,0,0,.9)', display:'block', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
+            <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{me?'Founder · Startup Oracle':'Join the founder community'}</p>
+          </div>
+        </div>
+        {me && (
+          <div style={{ borderTop:'1px solid rgba(0,0,0,.08)', padding:'10px 12px', display:'flex', flexDirection:'column', gap:6 }}>
+            {[['Followers', followerCount],['Ideas posted', myPosts.length],['Avg rating', myAvg==='—'?'—':`${myAvg}/10`]].map(([l,v])=>(
+              <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:12, color:'rgba(0,0,0,.6)' }}>{l}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:'rgba(0,0,0,.9)' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ ...card, padding:'8px 0' }}>
+        {[
+          ['feed','Browse Ideas','▦', goFeed],
+          ['profile','My Profile','◉', me?()=>goProfile(me.id):requireAuth(()=>{})],
+          ['messages','Messages','✉', goMessages],
+        ].map(([id,label,icon,fn])=>{
+          const act = view===id || (id==='profile' && view==='profile-self');
+          return (
+            <button key={id} onClick={fn} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 16px', border:'none', background:act?'rgba(0,0,0,.06)':'transparent', color:act?'rgba(0,0,0,.9)':'rgba(0,0,0,.6)', fontSize:13, fontWeight:act?700:500, cursor:'pointer', borderLeft:act?'3px solid rgba(0,0,0,.9)':'3px solid transparent', fontFamily:F, transition:'all .15s' }}>
+              <span>{icon}</span>{label}
+              {id==='messages' && unread>0 && <span style={{ marginLeft:'auto', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:9.5, fontWeight:700, minWidth:17, height:17, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{unread}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ ...card, padding:'12px 16px' }}>
+        <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:'rgba(0,0,0,.9)' }}>Trending topics</div>
+        {tagCounts.length === 0 && <div style={{ fontSize:12, color:'rgba(0,0,0,.4)' }}>No topics yet.</div>}
+        {tagCounts.map(([t,n])=>(
+          <div key={t} style={{ fontSize:12, color:'rgba(0,0,0,.6)', marginBottom:6, lineHeight:1.4 }}>
+            <span style={{ fontWeight:600, color:'rgba(0,0,0,.8)' }}>#{t.replace(/\s+/g,'')}</span> <span style={{ color:'rgba(0,0,0,.45)' }}>·</span> {n} idea{n!==1?'s':''}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Right sidebar ────────────────────────────────────────────────────────────
+const NEWS = [
+  { h:'YC W25 cohort: 12% are AI infra companies', t:'2h ago' },
+  { h:'$500M fund launched for climate founders', t:'4h ago' },
+  { h:'B2B SaaS valuations rebounding in Q2', t:'6h ago' },
+  { h:'Open source GTM: the new distribution playbook', t:'1d ago' },
+  { h:'Founder mental health: new data from 500 CEOs', t:'2d ago' },
+];
+
+function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth }) {
+  const founders = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const p of posts) {
+      if (p.user_id === me?.id || seen.has(p.user_id)) continue;
+      seen.add(p.user_id);
+      out.push({ id:p.user_id, ...p.author });
+      if (out.length >= 4) break;
+    }
+    return out;
+  }, [posts, me]);
+
+  return (
+    <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ ...card, padding:'12px 16px' }}>
+        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>📰 Startup Oracle News</div>
+        {NEWS.map((n,i)=>(
+          <div key={i} style={{ marginBottom:10, cursor:'pointer', paddingBottom:10, borderBottom:i<NEWS.length-1?'1px solid rgba(0,0,0,.06)':'none' }}>
+            <div style={{ fontSize:13, fontWeight:600, lineHeight:1.4, color:'rgba(0,0,0,.9)' }}>{n.h}</div>
+            <div style={{ fontSize:11, color:'rgba(0,0,0,.45)', marginTop:2 }}>{n.t}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card, padding:'12px 16px' }}>
+        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>Founders to follow</div>
+        {founders.length === 0 && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>}
+        {founders.map(f=>(
+          <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'flex-start' }}>
+            <Av name={f.name} uid={f.id} url={f.avatar_url} sz={40} onClick={()=>onProfile(f.id)}/>
+            <div style={{ flex:1, minWidth:0 }}>
+              <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
+              <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4, marginBottom:6 }}>{headlineOf(f)}</div>
+              <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'4px 16px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .15s', background:followingIds.has(f.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(f.id)?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>
+                {followingIds.has(f.id)?'Following':'Follow'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Profile view (any founder) ───────────────────────────────────────────────
+function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete }) {
+  const isSelf = me && uid === me.id;
+  const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
+  const [tab, setTab] = useState('ideas');
   const [received, setReceived] = useState(null);
   const [people, setPeople] = useState(null);
 
-  const myPosts = posts.filter(p => p.user_id === me?.id);
-  const myName  = me?.user_metadata?.full_name || me?.email?.split('@')[0] || 'You';
-
-  useEffect(() => { if (me) fetchFollowCounts(me.id).then(setCounts); }, [me]);
   useEffect(() => {
-    if (!me) return;
     let on = true;
-    if (tab === 'ratings') fetchRatingsReceived(me.id).then(r => on && setReceived(r));
-    if (tab === 'followers' || tab === 'following') fetchFollowList(me.id, tab).then(p => on && setPeople(p));
+    fetchProfile(uid).then(p => on && setProf(p));
+    fetchFollowCounts(uid).then(c => on && setCounts(c));
     return () => { on = false; };
-  }, [tab, me]);
+  }, [uid]);
+  useEffect(() => {
+    if (!isSelf) return;
+    let on = true;
+    if (tab === 'ratings') fetchRatingsReceived(uid).then(r => on && setReceived(r));
+    if (tab === 'followers' || tab === 'following') fetchFollowList(uid, tab).then(p => on && setPeople(p));
+    return () => { on = false; };
+  }, [tab, uid, isSelf]);
 
-  if (!me) return <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'60px 0' }}>Sign in to see your profile.</div>;
-
-  const avgR = received?.length ? (received.reduce((a,r)=>a+Number(r.value),0)/received.length).toFixed(1) : null;
+  const fps = posts.filter(p=>p.user_id===uid);
+  const name = isSelf ? nameOf(me) : (prof?.name || fps[0]?.author?.name || 'Founder');
+  const avatar = isSelf ? me.user_metadata?.avatar_url : prof?.avatar_url;
+  const isF = followingIds.has(uid);
 
   return (
-    <div>
-      <div style={{ display:'flex', alignItems:'flex-start', gap:16, marginBottom:18 }}>
-        <Av name={myName} uid={me.id} url={me.user_metadata?.avatar_url} sz={52}/>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:21, fontWeight:700, letterSpacing:'-.5px', lineHeight:1.1, color:C.ink }}>{myName}</div>
-          <div style={{ fontSize:12, color:C.ink3, margin:'3px 0 7px' }}>{me.email}</div>
+    <div key={uid} className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ ...card, overflow:'hidden' }}>
+        <div style={{ height:140, background:coverOf(uid), position:'relative' }}>
+          <button onClick={onBack} style={{ position:'absolute', top:12, left:12, padding:'6px 14px', borderRadius:99, background:'rgba(0,0,0,.35)', backdropFilter:'blur(10px)', color:'#fff', border:'none', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>← Back</button>
         </div>
+        <div style={{ padding:'0 24px 20px', position:'relative' }}>
+          <div style={{ position:'absolute', top:-40 }}>
+            <Av name={name} uid={uid} url={avatar} sz={80} border/>
+          </div>
+          <div style={{ paddingTop:50, display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
+            <div>
+              <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{name}</div>
+              <div style={{ fontSize:14, color:'rgba(0,0,0,.6)', marginTop:2 }}>{headlineOf(prof)}</div>
+            </div>
+            {!isSelf && (
+              <div style={{ display:'flex', gap:8, marginTop:8 }}>
+                <button onClick={requireAuth(()=>onFollow(uid))} style={{ padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:14, fontWeight:700, cursor:'pointer', background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>{isF?'Following':'Follow'}</button>
+                <button onClick={requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar }))} style={{ padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.25)', fontSize:14, fontWeight:600, cursor:'pointer', background:'transparent', color:'rgba(0,0,0,.7)', fontFamily:F }}>Message</button>
+              </div>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:24, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(0,0,0,.08)' }}>
+            {[['Followers', counts.followers],['Following', counts.following],['Ideas', fps.length]].map(([l,v])=>(
+              <div key={l}>
+                <div style={{ fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{v}</div>
+                <div style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {isSelf && (
+          <div style={{ display:'flex', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+            {[['ideas','My Ideas'],['ratings','Ratings Received'],['followers','Followers'],['following','Following']].map(([k,l])=>(
+              <button key={k} onClick={()=>{ setTab(k); setReceived(null); setPeople(null); }}
+                style={{ flex:1, padding:'11px 4px', border:'none', borderBottom:tab===k?'2px solid rgba(0,0,0,.9)':'2px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===k?700:500, cursor:'pointer', color:tab===k?'rgba(0,0,0,.9)':'rgba(0,0,0,.55)', fontFamily:F }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div style={{ display:'flex', gap:28, marginBottom:6 }}>
-        {[['Ideas', myPosts.length], ['Followers', counts.followers], ['Following', counts.following]].map(([l,v])=>(
-          <div key={l}>
-            <div style={{ fontSize:18, fontWeight:700, letterSpacing:'-.5px', color:C.ink }}>{v}</div>
-            <div style={{ fontSize:11.5, color:C.ink3, marginTop:1 }}>{l}</div>
+      {(!isSelf || tab === 'ideas') && (
+        fps.length === 0
+          ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} openDM={openDM}/>)
+      )}
+
+      {isSelf && tab === 'ratings' && (
+        received === null ? <div style={{ ...card, padding:24, textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>
+        : received.length === 0 ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ratings received yet.</div>
+        : (
+          <div style={{ ...card, padding:'4px 20px' }}>
+            {received.map((r,i)=>(
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom:i===received.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                <Av name={r.rater?.name} uid={r.rater?.name||i} url={r.rater?.avatar_url} sz={35}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{r.rater?.name || 'Founder'}</div>
+                  <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.post?.title}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:14, fontWeight:800 }}>{to10(r.value)}/10</div>
+                  <div style={{ fontSize:10.5, color:'rgba(0,0,0,.45)' }}>{timeAgo(r.created_at)}</div>
+                </div>
+              </div>
+            ))}
           </div>
         ))}
-      </div>
 
-      <div style={{ display:'flex', borderBottom:`1px solid ${C.bdr}`, marginTop:16, marginBottom:16 }}>
-        {[['ideas','My Ideas'],['ratings','Ratings Received'],['followers','Followers'],['following','Following']].map(([k,l])=>(
-          <div key={k} onClick={()=>{ setTab(k); setPeople(null); setReceived(null); }}
-            style={{ padding:'9px 14px', fontSize:12.5, fontWeight:500, cursor:'pointer', color: tab===k?C.ink:C.ink3, borderBottom:`2px solid ${tab===k?C.ink:'transparent'}`, marginBottom:-1 }}>
-            {l}
+      {isSelf && (tab === 'followers' || tab === 'following') && (
+        people === null ? <div style={{ ...card, padding:24, textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>
+        : people.length === 0 ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>{tab==='followers'?'No followers yet — share great ideas!':"You aren't following anyone yet."}</div>
+        : (
+          <div style={{ ...card, padding:'4px 20px' }}>
+            {people.map((u,i)=>(
+              <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom:i===people.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                <Av name={u.name} uid={u.id} url={u.avatar_url} sz={36} onClick={()=>onProfile(u.id)}/>
+                <button onClick={()=>onProfile(u.id)} style={{ flex:1, background:'none', border:'none', padding:0, cursor:'pointer', fontSize:13, fontWeight:600, textAlign:'left', fontFamily:F }}>{u.name || 'Founder'}</button>
+                {u.id !== me.id && (
+                  <button onClick={requireAuth(()=>onFollow(u.id))} style={{ padding:'4px 14px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:12, fontWeight:700, cursor:'pointer', background:followingIds.has(u.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(u.id)?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>
+                    {followingIds.has(u.id)?'Following':'Follow'}
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         ))}
-      </div>
-
-      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        {tab==='ideas' && (myPosts.length === 0
-          ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>You haven't shared any ideas yet.</div>
-          : myPosts.map(p=><IdeaCard key={p.id} post={p} me={me} followingIds={followingIds} onFollow={onFollow} onRate={onRate} requireAuth={requireAuth} onDelete={onDelete} showAuthor={false}/>))}
-
-        {tab==='ratings' && (
-          received === null ? <div style={{ color:C.ink3, fontSize:13, padding:'20px 0', textAlign:'center' }}>Loading…</div>
-          : received.length === 0 ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>No ratings received yet.</div>
-          : (
-            <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'4px 20px' }}>
-              {avgR && <div style={{ padding:'12px 0', borderBottom:`1px solid ${C.bdrLt}`, fontSize:12.5, color:C.ink2 }}>Average rating across your ideas: <strong style={{ color:C.ink }}>{avgR} ★</strong></div>}
-              {received.map((r,i)=>(
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom: i===received.length-1?'none':`1px solid ${C.bdrLt}` }}>
-                  <Av name={r.rater?.name} uid={r.rater?.name || i} url={r.rater?.avatar_url} sz={35}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.rater?.name || 'Founder'}</div>
-                    <div style={{ fontSize:11.5, color:C.ink3, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.post?.title}</div>
-                  </div>
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
-                    <Stars rating={Number(r.value)} readOnly sz={13}/>
-                    <span style={{ fontSize:10.5, color:C.ink3 }}>{timeAgo(r.created_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-
-        {(tab==='followers'||tab==='following') && (
-          people === null ? <div style={{ color:C.ink3, fontSize:13, padding:'20px 0', textAlign:'center' }}>Loading…</div>
-          : people.length === 0 ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>{tab==='followers' ? 'No followers yet — share great ideas!' : "You aren't following anyone yet."}</div>
-          : (
-            <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'4px 20px' }}>
-              {people.map((u,i)=>(
-                <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom: i===people.length-1?'none':`1px solid ${C.bdrLt}` }}>
-                  <Av name={u.name} uid={u.id} url={u.avatar_url} sz={36}/>
-                  <div style={{ flex:1, fontSize:13, fontWeight:600, color:C.ink }}>{u.name || 'Founder'}</div>
-                  {u.id !== me.id && <FollowBtn following={followingIds.has(u.id)} onClick={requireAuth(()=>onFollow(u.id))}/>}
-                  {u.id !== me.id && onDM && (
-                    <button onClick={()=>onDM(u)} style={{ marginLeft:7, padding:'4px 11px', borderRadius:6, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2 }}>DM</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
-      </div>
     </div>
   );
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────
 export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount }) {
-  const [view, setView]   = useState('feed');
+  const [view, setView] = useState('feed');         // feed | profile | messages
+  const [pid, setPid] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('All');
+  const [tab, setTab] = useState('all');
+  const [search, setSearch] = useState('');
   const [followingIds, setFollowingIds] = useState(new Set());
+  const [followerCount, setFollowerCount] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [rOpen, setROpen] = useState(null);
+  const [cOpen, setCOpen] = useState(null);
   const [convs, setConvs] = useState({});
   const [activePeer, setActivePeer] = useState(null);
   const [dmUser, setDmUser] = useState(null);
@@ -448,16 +580,14 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
   useEffect(() => { dmUserRef.current = dmUser?.id ?? null; }, [dmUser]);
 
-  useEffect(() => {
-    fetchPosts().then(p => { setPosts(p); setLoading(false); });
-  }, []);
+  useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
   useEffect(() => {
     let on = true;
     fetchFollowingIds(user?.id ?? null).then(s => { if (on) setFollowingIds(s); });
+    if (user) fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
     return () => { on = false; };
   }, [user]);
 
-  // Load conversations + subscribe to incoming messages in realtime
   useEffect(() => {
     let on = true;
     if (!user) {
@@ -472,11 +602,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       setConvs(prev => {
         if (!prev[peerId]) { isNewConv = true; return prev; }
         if (prev[peerId].messages.some(m => m.id === row.id)) return prev;
-        return { ...prev, [peerId]: { ...prev[peerId], messages: [...prev[peerId].messages, row], unread: isOpen ? 0 : prev[peerId].unread + 1 } };
+        return { ...prev, [peerId]: { ...prev[peerId], messages:[...prev[peerId].messages, row], unread:isOpen?0:prev[peerId].unread+1 } };
       });
       if (isNewConv) {
         const peer = await fetchProfile(peerId);
-        if (peer) setConvs(prev => prev[peerId] ? prev : { ...prev, [peerId]: { peer, messages: [row], unread: isOpen ? 0 : 1 } });
+        if (peer) setConvs(prev => prev[peerId] ? prev : { ...prev, [peerId]: { peer, messages:[row], unread:isOpen?0:1 } });
       }
       if (isOpen) markConversationRead(user.id, peerId);
     });
@@ -485,35 +615,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   const requireAuth = useCallback(fn => user ? fn : () => onSignIn?.(), [user, onSignIn]);
 
-  const openDM = useCallback(peer => {
-    if (!user) return onSignIn?.();
-    if (peer.id === user.id) return;
-    setConvs(prev => {
-      const ex = prev[peer.id];
-      return { ...prev, [peer.id]: ex ? { ...ex, unread: 0 } : { peer, messages: [], unread: 0 } };
-    });
-    markConversationRead(user.id, peer.id);
-    setDmUser(peer);
-  }, [user, onSignIn]);
-
-  const handleSend = useCallback(async (peerId, text) => {
-    if (!user) return;
-    const temp = { id: `t_${Date.now()}`, sender_id: user.id, recipient_id: peerId, text, created_at: new Date().toISOString() };
-    setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages: [...(prev[peerId]?.messages || []), temp] } }));
-    try {
-      const row = await sendMessage(user.id, peerId, text);
-      setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages: prev[peerId].messages.map(m => m.id === temp.id ? row : m) } }));
-    } catch { /* surfaced in console */ }
-  }, [user]);
-
-  const openConv = useCallback(peerId => {
-    setActivePeer(peerId);
-    setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], unread: 0 } } : prev);
-    if (user) markConversationRead(user.id, peerId);
-  }, [user]);
-
-  const unreadTotal = useMemo(() => Object.values(convs).reduce((s,c) => s + (c.unread||0), 0), [convs]);
-
   const handleFollow = useCallback(async uid => {
     if (!user) return;
     const isF = followingIds.has(uid);
@@ -521,13 +622,15 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     await setFollow(user.id, uid, !isF);
   }, [user, followingIds]);
 
-  const handleRate = useCallback(async (postId, value) => {
+  const handleRate = useCallback(async (postId, n10) => {
     if (!user) return;
+    const value = n10 / 2;
     setPosts(prev => prev.map(p => {
       if (p.id !== postId) return p;
       const others = (p.ratings||[]).filter(r => r.user_id !== user.id);
-      return { ...p, ratings: [...others, { user_id: user.id, value }] };
+      return { ...p, ratings:[...others, { user_id:user.id, value }] };
     }));
+    setTimeout(() => setROpen(null), 700);
     await ratePost(user.id, postId, value);
   }, [user]);
 
@@ -537,124 +640,150 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     await deletePost(user.id, post.id);
   }, [user]);
 
+  const openDM = useCallback(peer => {
+    if (!user) return onSignIn?.();
+    if (peer.id === user.id) return;
+    setConvs(prev => {
+      const ex = prev[peer.id];
+      return { ...prev, [peer.id]: ex ? { ...ex, unread:0 } : { peer, messages:[], unread:0 } };
+    });
+    markConversationRead(user.id, peer.id);
+    setDmUser(peer);
+  }, [user, onSignIn]);
+
+  const handleSend = useCallback(async (peerId, text) => {
+    if (!user) return;
+    const temp = { id:`t_${Date.now()}`, sender_id:user.id, recipient_id:peerId, text, created_at:new Date().toISOString() };
+    setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages:[...(prev[peerId]?.messages||[]), temp] } }));
+    try {
+      const row = await sendMessage(user.id, peerId, text);
+      setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages:prev[peerId].messages.map(m => m.id===temp.id?row:m) } }));
+    } catch { /* surfaced in console */ }
+  }, [user]);
+
+  const openConv = useCallback(peerId => {
+    setActivePeer(peerId);
+    setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], unread:0 } } : prev);
+    if (user) markConversationRead(user.id, peerId);
+  }, [user]);
+
+  const unread = useMemo(() => Object.values(convs).reduce((s,c)=>s+(c.unread||0),0), [convs]);
+  const toggleR = id => { setROpen(p=>p===id?null:id); setCOpen(null); };
+  const toggleC = id => { setCOpen(p=>p===id?null:id); setROpen(null); };
+  const goProfile = uid => { setPid(uid); setView('profile'); };
+  const goFeed = () => setView('feed');
+  const goMessages = () => { if (!user) return onSignIn?.(); setView('messages'); };
+
   const shown = useMemo(() => {
     let l = [...posts];
-    if (filter === 'Following') l = l.filter(p => followingIds.has(p.user_id));
-    if (filter === 'Top Rated') l.sort((a,b) => {
-      const av = x => x.ratings?.length ? x.ratings.reduce((s,r)=>s+Number(r.value),0)/x.ratings.length : 0;
-      return av(b) - av(a);
-    });
-    if (filter === 'Most Discussed') l.sort((a,b) => (b.sugCount||0) - (a.sugCount||0));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      l = l.filter(p => p.title?.toLowerCase().includes(q) || p.body?.toLowerCase().includes(q) || p.tags?.some(t=>t.toLowerCase().includes(q)) || p.author?.name?.toLowerCase().includes(q));
+    }
+    if (tab === 'following') l = l.filter(p => followingIds.has(p.user_id));
+    if (tab === 'top-rated') l.sort((a,b) => avg10(b.ratings) - avg10(a.ratings));
+    if (tab === 'most-discussed') l.sort((a,b) => (b.sugCount||0) - (a.sugCount||0));
     return l;
-  }, [posts, filter, followingIds]);
+  }, [posts, tab, search, followingIds]);
 
-  const navItem = (id, label, icon, badge=0) => (
-    <div key={id} onClick={()=>{ if (id !== 'feed' && !user) return onSignIn?.(); setView(id); }}
-      style={{ display:'flex', alignItems:'center', gap:9, padding:'8px 12px', borderRadius:8, cursor:'pointer', fontSize:13.5, color: view===id?C.ink:C.ink2, fontWeight: view===id?600:450, background: view===id?C.bg:'transparent', userSelect:'none' }}>
-      <span style={{ fontSize:14 }}>{icon}</span>{label}
-      {badge > 0 && <span style={{ marginLeft:'auto', background:C.ink, color:'#fff', fontSize:9.5, fontWeight:700, minWidth:17, height:17, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{badge}</span>}
-    </div>
-  );
+  const cardProps = { me:user, followingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM };
 
   return (
-    <div style={{ minHeight:'100vh', background:C.bg, fontFamily:F }}>
-      <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#DCDCDC;border-radius:2px} @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
+    <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
+      <style>{`
+        *{box-sizing:border-box}
+        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#c0bfbc;border-radius:3px}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .fade-up{animation:fadeUp .18s ease both}
+        @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:600px}}
+        .slide-down{animation:slideDown .2s ease both;overflow:hidden}
+        @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+        .act-btn{display:flex;flex:1;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:4px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
+        .act-btn:hover{background:rgba(0,0,0,.08);color:rgba(0,0,0,.9)}
+        .act-btn.on{color:#0f172a;background:rgba(0,0,0,.06)}
+        .act-btn.rated{color:#92400e}
+        @media (max-width:1100px){ .comm-right{display:none!important} }
+        @media (max-width:840px){ .comm-left{display:none!important} }
+      `}</style>
 
-      {/* Site nav */}
-      <div style={{ position:'sticky', top:0, zIndex:100, background:C.surf, borderBottom:`1px solid ${C.bdr}`, height:64, padding:'0 32px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span onClick={onHome} style={{ fontWeight:800, fontSize:19, letterSpacing:'-0.5px', color:C.ink, cursor:'pointer' }}>startup oracle</span>
-        <div style={{ display:'flex', alignItems:'center', gap:20 }}>
-          {user ? (
-            <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-              <Av name={user.user_metadata?.full_name || user.email} uid={user.id} url={user.user_metadata?.avatar_url} sz={26}/>
-              <span style={{ fontSize:13.5, color:C.ink, fontWeight:600, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
-            </div>
-          ) : (
-            <span onClick={()=>onSignIn?.()} style={{ fontSize:13.5, color:C.ink2, cursor:'pointer', fontWeight:500 }}>Sign in</span>
-          )}
-          <button onClick={onSubmitIdea} style={{ background:C.ink, color:'#fff', border:'none', borderRadius:8, padding:'9px 18px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>Validate My Idea →</button>
+      {/* Top nav */}
+      <header style={{ height:52, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 16px', gap:12, position:'sticky', top:0, zIndex:100 }}>
+        <span onClick={onHome} style={{ fontSize:18, fontWeight:800, letterSpacing:'-0.5px', color:'rgba(0,0,0,.9)', whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.06)', borderRadius:4, padding:'0 10px', height:34, flex:'0 1 220px' }}>
+          🔍<input value={search} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas"
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:13, fontFamily:F, minWidth:0 }}/>
         </div>
-      </div>
-
-      {/* Layout */}
-      <div style={{ maxWidth:1040, margin:'0 auto', display:'flex', gap:0, alignItems:'flex-start' }}>
-        {/* Sidebar */}
-        <div style={{ width:216, flexShrink:0, position:'sticky', top:64, padding:'20px 10px', display:'flex', flexDirection:'column', gap:2 }}>
-          {navItem('feed','Browse Ideas','▤')}
-          {navItem('profile','My Profile','◉')}
-          {navItem('messages','Messages','✉', unreadTotal)}
-          <div style={{ marginTop:14, padding:'12px 12px', fontSize:11.5, color:C.ink3, lineHeight:1.6, borderTop:`1px solid ${C.bdr}` }}>
-            Rate ideas, leave suggestions, and follow founders you believe in.
+        <div style={{ flex:1 }}/>
+        {user ? (
+          <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+            <Av name={nameOf(user)} uid={user.id} url={user.user_metadata?.avatar_url} sz={30}/>
+            <span style={{ fontSize:13, fontWeight:600, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nameOf(user)}</span>
           </div>
+        ) : (
+          <span onClick={()=>onSignIn?.()} style={{ fontSize:13, color:'rgba(0,0,0,.6)', cursor:'pointer', fontWeight:500 }}>Sign in</span>
+        )}
+        <button onClick={onSubmitIdea} style={{ padding:'7px 16px', background:'rgba(0,0,0,.9)', color:'#fff', border:'none', borderRadius:99, fontSize:13, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', fontFamily:F }}>Validate My Idea →</button>
+      </header>
+
+      {/* 3-column layout */}
+      <div style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
+        <div className="comm-left" style={{ display:'block' }}>
+          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} requireAuth={requireAuth}/>
         </div>
 
-        {/* Main */}
-        <div style={{ flex:1, minWidth:0, padding:'18px 28px 60px', maxWidth:760 }}>
+        <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':555 }}>
           {view === 'feed' && (
-            <>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-                <span style={{ fontSize:15, fontWeight:650, letterSpacing:'-.3px', color:C.ink }}>Browse Ideas</span>
-                <div style={{ display:'flex', gap:4, marginLeft:6 }}>
-                  {['All','Top Rated','Most Discussed','Following'].map(f=>(
-                    <button key={f} onClick={()=>setFilter(f)}
-                      style={{ padding:'4px 11px', borderRadius:20, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, transition:'all .12s',
-                        border:`1px solid ${filter===f?C.ink:C.bdr}`, background: filter===f?C.ink:C.surf, color: filter===f?'#fff':C.ink2 }}>
-                      {f}
-                    </button>
-                  ))}
-                </div>
-                <span style={{ marginLeft:'auto', fontSize:11.5, color:C.ink3 }}>{shown.length} ideas</span>
-              </div>
-
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                <Composer me={user} requireAuth={requireAuth} onPosted={p=>setPosts(prev=>[p,...prev])}/>
-                {loading && <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>Loading ideas…</div>}
-                {!loading && shown.length===0 && (
-                  <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>
-                    {filter==='Following' ? 'Follow founders to see their ideas here.' : 'No ideas yet — be the first to share one.'}
-                  </div>
-                )}
-                {shown.map(p=>(
-                  <IdeaCard key={p.id} post={p} me={user} followingIds={followingIds}
-                    onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
-                    onDelete={p2=>setConfirmDel(p2)} onDM={openDM}/>
+            <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ ...card, display:'flex' }}>
+                {[['all','All'],['top-rated','Top Rated'],['most-discussed','Most Discussed'],['following','Following']].map(([id,label])=>(
+                  <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'12px 4px', border:'none', borderBottom:tab===id?'2px solid rgba(0,0,0,.9)':'2px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?'rgba(0,0,0,.9)':'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
+                    {label}
+                  </button>
                 ))}
               </div>
-            </>
+              <Composer me={user} requireAuth={requireAuth} onPosted={p=>setPosts(prev=>[p,...prev])}/>
+              {loading && <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Loading ideas…</div>}
+              {!loading && shown.length === 0 && (
+                <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>
+                  {search ? `No ideas matching "${search}".` : tab==='following' ? 'Follow some founders to see their ideas here.' : 'No ideas yet — be the first to share one.'}
+                </div>
+              )}
+              {shown.map(p=>(
+                <PostCard key={p.id} post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id}/>
+              ))}
+            </div>
           )}
 
-          {view === 'profile' && (
-            <ProfileView me={user} posts={posts} followingIds={followingIds}
-              onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
-              onDelete={p=>setConfirmDel(p)} onDM={openDM}/>
+          {view === 'profile' && pid && (
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)}/>
           )}
 
           {view === 'messages' && (
             user
               ? <MessagesView me={user} convs={convs} activePeer={activePeer} onOpenConv={openConv} onSend={handleSend}/>
-              : <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'60px 0' }}>Sign in to see your messages.</div>
+              : <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to see your messages.</div>
           )}
         </div>
+
+        {view !== 'messages' && (
+          <RightBar me={user} posts={posts} followingIds={followingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
+        )}
       </div>
 
       {/* DM slide-over */}
       {dmUser && user && (
-        <DMPanel peer={dmUser} me={user} msgs={convs[dmUser.id]?.messages || []}
-          onSend={handleSend} onClose={()=>setDmUser(null)}/>
+        <DMPanel peer={dmUser} me={user} msgs={convs[dmUser.id]?.messages || []} onSend={handleSend} onClose={()=>setDmUser(null)}/>
       )}
 
       {/* Delete confirm */}
       {confirmDel && (
-        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}
-          onClick={()=>setConfirmDel(null)}>
-          <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e=>e.stopPropagation()}>
-            <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:700, color:C.ink }}>Delete this idea?</p>
-            <p style={{ margin:'0 0 20px', fontSize:13, color:C.ink2, lineHeight:1.6 }}>"{confirmDel.title}" and all its ratings and suggestions will be permanently deleted.</p>
+        <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }} onClick={()=>setConfirmDel(null)}>
+          <div style={{ background:'#fff', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e=>e.stopPropagation()}>
+            <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:700 }}>Delete this idea?</p>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:'rgba(0,0,0,.55)', lineHeight:1.6 }}>"{confirmDel.title}" and all its ratings and suggestions will be permanently deleted.</p>
             <div style={{ display:'flex', gap:10 }}>
-              <button onClick={()=>handleDelete(confirmDel)}
-                style={{ flex:1, fontSize:13, fontWeight:600, background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Delete</button>
-              <button onClick={()=>setConfirmDel(null)}
-                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:C.ink2, border:`1px solid ${C.bdr}`, borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Cancel</button>
+              <button onClick={()=>handleDelete(confirmDel)} style={{ flex:1, fontSize:13, fontWeight:600, background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Delete</button>
+              <button onClick={()=>setConfirmDel(null)} style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'rgba(0,0,0,.6)', border:'1px solid rgba(0,0,0,.15)', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Cancel</button>
             </div>
           </div>
         </div>
