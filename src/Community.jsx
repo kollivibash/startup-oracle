@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, createPost, deletePost, ratePost, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
+import { fetchPosts, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f3f2ef';
@@ -105,6 +105,39 @@ const Suggestions = ({ postId, me, requireAuth, onCount }) => {
 };
 
 // ── Post card ────────────────────────────────────────────────────────────────
+const formatSize = b => !b ? '' : b > 1048576 ? `${(b/1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b/1024))} KB`;
+
+// Renders attached photos (grid) + documents (download chips) on a post.
+const MediaGrid = ({ media }) => {
+  const images = media.filter(m => m.type === 'image');
+  const files = media.filter(m => m.type !== 'image');
+  return (
+    <div style={{ margin:'6px 0 8px' }}>
+      {images.length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns: images.length === 1 ? '1fr' : '1fr 1fr', gap:4, borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)' }}>
+          {images.map((m,i)=>(
+            <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
+              <img src={m.url} alt={m.name||''} loading="lazy"
+                style={{ width:'100%', height: images.length === 1 ? 'auto' : 168, maxHeight:420, objectFit:'cover', display:'block' }}/>
+            </a>
+          ))}
+        </div>
+      )}
+      {files.map((m,i)=>(
+        <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" download={m.name}
+          style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginTop:6, border:'1px solid rgba(0,0,0,.12)', borderRadius:8, textDecoration:'none', color:'rgba(0,0,0,.85)', background:'rgba(0,0,0,.02)' }}>
+          <span style={{ fontSize:20 }}>📄</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name || 'Document'}</div>
+            <div style={{ fontSize:11, color:'rgba(0,0,0,.45)' }}>{m.size ? formatSize(m.size) : 'Open document'}</div>
+          </div>
+          <span style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>↓</span>
+        </a>
+      ))}
+    </div>
+  );
+};
+
 function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -147,6 +180,7 @@ function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, 
         <div style={{ fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', marginBottom:4, lineHeight:1.4 }}>{post.title}</div>
         {body && <p style={{ margin:0, fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
         {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+        {post.media?.length > 0 && <MediaGrid media={post.media}/>}
         {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'10px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
       </div>
 
@@ -174,54 +208,117 @@ function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, 
   );
 }
 
-// ── Composer ─────────────────────────────────────────────────────────────────
-function Composer({ me, requireAuth, onPosted }) {
-  const [open, setOpen] = useState(false);
+// ── Composer modal (text + photo + document upload) ──────────────────────────
+const DOC_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.md';
+const MAX_FILE = 25 * 1024 * 1024; // 25 MB
+
+function ComposerModal({ me, onClose, onPosted }) {
   const [body, setBody] = useState('');
   const [tags, setTags] = useState('');
+  const [files, setFiles] = useState([]); // { file, type, name, size, preview }
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const imgInput = useRef(null);
+  const docInput = useRef(null);
+
+  useEffect(() => () => files.forEach(f => f.preview && URL.revokeObjectURL(f.preview)), [files]);
+
+  const addFiles = (list, type) => {
+    setErr('');
+    const picked = Array.from(list);
+    const tooBig = picked.find(f => f.size > MAX_FILE);
+    if (tooBig) { setErr(`"${tooBig.name}" is over 25 MB.`); return; }
+    const mapped = picked.map(file => ({ file, type, name: file.name, size: file.size, preview: type === 'image' ? URL.createObjectURL(file) : null }));
+    setFiles(p => [...p, ...mapped].slice(0, 8));
+  };
+
+  const removeFile = i => setFiles(p => p.filter((_, n) => n !== i));
+
   const submit = async () => {
-    if (!body.trim() || !me) return;
-    setBusy(true);
+    if ((!body.trim() && files.length === 0) || !me) return;
+    setBusy(true); setErr('');
     try {
+      const media = [];
+      for (const f of files) {
+        const url = await uploadPostFile(me.id, f.file);
+        media.push({ url, type: f.type, name: f.name, size: f.size });
+      }
       const lines = body.trim();
-      const title = lines.split('\n')[0].trim().slice(0,80) || 'New Idea';
+      const title = (lines.split('\n')[0].trim().slice(0, 80)) || 'New Idea';
       const rest = lines.split('\n').slice(1).join('\n').trim();
-      const tagArr = tags.split(',').map(t=>t.trim()).filter(Boolean).slice(0,5);
-      const row = await createPost(me.id, { title, body:rest, tags:tagArr });
-      onPosted({ id:row.id, created_at:row.created_at, user_id:me.id, title, body:rest, tags:tagArr,
-        author:{ id:me.id, name:nameOf(me), avatar_url:me.user_metadata?.avatar_url }, ratings:[], sugCount:0 });
-      setBody(''); setTags(''); setOpen(false);
-    } catch { /* surfaced in console */ }
+      const tagArr = tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
+      const row = await createPost(me.id, { title, body: rest, tags: tagArr, media });
+      onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: rest, tags: tagArr, media,
+        author: { id: me.id, name: nameOf(me), avatar_url: me.user_metadata?.avatar_url }, ratings: [], sugCount: 0 });
+      onClose();
+    } catch (e) {
+      setErr(e?.message || 'Could not post. Please try again.');
+    }
     setBusy(false);
   };
+
+  const toolBtn = { display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:6, border:'none', background:'transparent', color:'rgba(0,0,0,.65)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F };
+
   return (
-    <div style={{ ...card, padding:'12px 16px' }}>
-      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:open?12:0 }}>
-        <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={48}/>
-        {!open && (
-          <button onClick={me?()=>setOpen(true):requireAuth(()=>{})}
-            style={{ flex:1, height:44, textAlign:'left', paddingLeft:16, borderRadius:99, border:'1px solid rgba(0,0,0,.3)', background:'transparent', color:'rgba(0,0,0,.5)', fontSize:14, cursor:'pointer', fontWeight:500, fontFamily:F }}>
-            {me ? 'What are you building?' : 'Sign in to share what you are building…'}
-          </button>
-        )}
-      </div>
-      {open && (
-        <>
-          <textarea autoFocus value={body} onChange={e=>setBody(e.target.value)} rows={4}
-            placeholder={"Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
-            style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, marginBottom:8, fontFamily:F }}/>
-          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…"
-            style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', marginBottom:10, fontFamily:F, boxSizing:'border-box' }}/>
-          <div style={{ display:'flex', alignItems:'center', gap:8, paddingTop:10, borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            <div style={{ flex:1 }}/>
-            <button onClick={()=>{setOpen(false);setBody('');}} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
-            <button onClick={submit} disabled={busy||!body.trim()} style={{ padding:'7px 20px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:body.trim()&&!busy?1:.5, fontFamily:F }}>
-              {busy?'Posting…':'Post'}
-            </button>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:350, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:560, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Share an idea</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
+        </div>
+
+        <div style={{ padding:'14px 18px', display:'flex', gap:10, alignItems:'center' }}>
+          <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={44}/>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700 }}>{nameOf(me)}</div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>Posting to the community feed</div>
           </div>
-        </>
-      )}
+        </div>
+
+        <div style={{ padding:'0 18px' }}>
+          <textarea autoFocus value={body} onChange={e=>setBody(e.target.value)} rows={5}
+            placeholder={"Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
+            style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, fontFamily:F, resize:'none', boxSizing:'border-box' }}/>
+
+          {files.length > 0 && (
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, margin:'10px 0' }}>
+              {files.map((f,i)=>(
+                <div key={i} style={{ position:'relative', width: f.type==='image'?80:'100%', border:'1px solid rgba(0,0,0,.12)', borderRadius:8, overflow:'hidden', background:'rgba(0,0,0,.02)' }}>
+                  {f.type === 'image'
+                    ? <img src={f.preview} alt={f.name} style={{ width:80, height:80, objectFit:'cover', display:'block' }}/>
+                    : <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px' }}>
+                        <span style={{ fontSize:18 }}>📄</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12.5, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name}</div>
+                          <div style={{ fontSize:11, color:'rgba(0,0,0,.45)' }}>{formatSize(f.size)}</div>
+                        </div>
+                      </div>}
+                  <button onClick={()=>removeFile(i)} title="Remove"
+                    style={{ position:'absolute', top:3, right:3, width:20, height:20, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:11, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…"
+            style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', margin:'10px 0', fontFamily:F, boxSizing:'border-box' }}/>
+          {err && <div style={{ fontSize:12.5, color:'#DC2626', marginBottom:8 }}>{err}</div>}
+        </div>
+
+        <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={e=>{ addFiles(e.target.files,'image'); e.target.value=''; }}/>
+        <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addFiles(e.target.files,'file'); e.target.value=''; }}/>
+
+        <div style={{ display:'flex', alignItems:'center', gap:4, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+          <button onClick={()=>imgInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>🖼 Photo</button>
+          <button onClick={()=>docInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>📎 Document</button>
+          <div style={{ flex:1 }}/>
+          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F, marginRight:4 }}>Cancel</button>
+          <button onClick={submit} disabled={busy || (!body.trim() && files.length===0)}
+            style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:(body.trim()||files.length)&&!busy?1:.5, fontFamily:F }}>
+            {busy ? 'Posting…' : 'Post'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -322,7 +419,7 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, requireAuth }) {
+function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, onPost, requireAuth }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const myRatings = myPosts.flatMap(p=>p.ratings||[]);
   const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
@@ -358,6 +455,12 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
       </div>
 
       <div style={{ ...card, padding:'8px 0' }}>
+        <div style={{ padding:'4px 12px 8px' }}>
+          <button onClick={me ? onPost : requireAuth(()=>{})}
+            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'10px', background:'rgba(0,0,0,.9)', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>
+            ✎ Post an Idea
+          </button>
+        </div>
         {[
           ['feed','Browse Ideas','▦', goFeed],
           ['profile','My Profile','◉', me?()=>goProfile(me.id):requireAuth(()=>{})],
@@ -387,15 +490,33 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
 }
 
 // ── Right sidebar ────────────────────────────────────────────────────────────
-const NEWS = [
-  { h:'YC W25 cohort: 12% are AI infra companies', t:'2h ago' },
-  { h:'$500M fund launched for climate founders', t:'4h ago' },
-  { h:'B2B SaaS valuations rebounding in Q2', t:'6h ago' },
-  { h:'Open source GTM: the new distribution playbook', t:'1d ago' },
-  { h:'Founder mental health: new data from 500 CEOs', t:'2d ago' },
+// Live startup news via TechCrunch's RSS feed (through a CORS-friendly proxy),
+// with a static fallback if the feed can't be reached.
+const NEWS_FALLBACK = [
+  { h:'Visit TechCrunch for the latest startup news', t:'Live feed', link:'https://techcrunch.com/category/startups/' },
+  { h:'YC, a16z, and Sequoia portfolio updates', t:'Markets', link:'https://news.crunchbase.com/' },
+  { h:'Funding rounds, launches & acquisitions', t:'Daily', link:'https://techcrunch.com/category/venture/' },
 ];
+const NEWS_FEED = 'https://techcrunch.com/category/startups/feed/';
+
+function useStartupNews() {
+  const [news, setNews] = useState(NEWS_FALLBACK);
+  useEffect(() => {
+    let on = true;
+    fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(NEWS_FEED)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!on || d.status !== 'ok' || !d.items?.length) return;
+        setNews(d.items.slice(0, 6).map(i => ({ h: i.title, t: timeAgo(i.pubDate.replace(' ', 'T') + 'Z'), link: i.link })));
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { on = false; };
+  }, []);
+  return news;
+}
 
 function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth }) {
+  const news = useStartupNews();
   const founders = useMemo(() => {
     const seen = new Set();
     const out = [];
@@ -411,12 +532,14 @@ function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth })
   return (
     <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
       <div style={{ ...card, padding:'12px 16px' }}>
-        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>📰 Startup Oracle News</div>
-        {NEWS.map((n,i)=>(
-          <div key={i} style={{ marginBottom:10, cursor:'pointer', paddingBottom:10, borderBottom:i<NEWS.length-1?'1px solid rgba(0,0,0,.06)':'none' }}>
-            <div style={{ fontSize:13, fontWeight:600, lineHeight:1.4, color:'rgba(0,0,0,.9)' }}>{n.h}</div>
+        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>📰 Startup News</div>
+        {news.map((n,i)=>(
+          <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
+            style={{ display:'block', marginBottom:10, paddingBottom:10, textDecoration:'none', borderBottom:i<news.length-1?'1px solid rgba(0,0,0,.06)':'none' }}>
+            <div style={{ fontSize:13, fontWeight:600, lineHeight:1.4, color:'rgba(0,0,0,.9)' }}
+              onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'} onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>{n.h}</div>
             <div style={{ fontSize:11, color:'rgba(0,0,0,.45)', marginTop:2 }}>{n.t}</div>
-          </div>
+          </a>
         ))}
       </div>
       <div style={{ ...card, padding:'12px 16px' }}>
@@ -575,6 +698,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [convs, setConvs] = useState({});
   const [activePeer, setActivePeer] = useState(null);
   const [dmUser, setDmUser] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const activePeerRef = useRef(null);
   const dmUserRef = useRef(null);
   useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
@@ -728,7 +852,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} requireAuth={requireAuth}/>
+          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':555 }}>
@@ -741,7 +865,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   </button>
                 ))}
               </div>
-              <Composer me={user} requireAuth={requireAuth} onPosted={p=>setPosts(prev=>[p,...prev])}/>
               {loading && <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Loading ideas…</div>}
               {!loading && shown.length === 0 && (
                 <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>
@@ -769,6 +892,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           <RightBar me={user} posts={posts} followingIds={followingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
         )}
       </div>
+
+      {/* Composer modal */}
+      {composerOpen && user && (
+        <ComposerModal me={user} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
+      )}
 
       {/* DM slide-over */}
       {dmUser && user && (

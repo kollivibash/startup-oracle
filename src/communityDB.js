@@ -1,23 +1,36 @@
 import { supabase } from './supabaseClient';
 
 export async function fetchPosts() {
-  const { data, error } = await supabase
-    .from('community_posts')
-    .select('id, title, body, tags, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)')
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) { console.error('fetchPosts failed', error); return []; }
-  return (data || []).map(p => ({ ...p, sugCount: p.sug?.[0]?.count ?? 0 }));
+  const cols = 'id, title, body, tags, media, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
+  let { data, error } = await supabase
+    .from('community_posts').select(cols).order('created_at', { ascending: false }).limit(100);
+  // Fall back gracefully if the media column hasn't been migrated yet
+  if (error && /media/i.test(error.message || '')) {
+    ({ data, error } = await supabase
+      .from('community_posts').select(cols.replace(', media', '')).order('created_at', { ascending: false }).limit(100));
+  }
+  if (error) { console.error('fetchPosts failed', error.message || error); return []; }
+  return (data || []).map(p => ({ ...p, media: p.media || [], sugCount: p.sug?.[0]?.count ?? 0 }));
 }
 
-export async function createPost(userId, { title, body, tags }) {
+export async function createPost(userId, { title, body, tags, media = [] }) {
   const { data, error } = await supabase
     .from('community_posts')
-    .insert({ user_id: userId, title, body, tags })
+    .insert({ user_id: userId, title, body, tags, media })
     .select('id, created_at')
     .single();
   if (error) { console.error('createPost failed', error); throw error; }
   return data;
+}
+
+// Uploads one photo/document to the post-media bucket, returns its public URL.
+export async function uploadPostFile(userId, file) {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from('post-media').upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) { console.error('uploadPostFile failed', error); throw error; }
+  const { data } = supabase.storage.from('post-media').getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function deletePost(userId, postId) {
