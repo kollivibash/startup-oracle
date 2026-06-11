@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import MasterReport from "./MasterReport";
 import { generateMasterReport } from "./reportEngine";
+import { saveIdea } from "./ideasDB";
 
 const C = { black:'#0a0a0a', white:'#ffffff', surface:'#f5f5f5', border:'#e0e0e0', body:'#555555', muted:'#999999', light:'#f9f9f9' };
 const F = "'Plus Jakarta Sans', system-ui, sans-serif";
@@ -233,13 +234,8 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
 
       {step==='loading' && <Loading form={form} onDone={data=>{
         setResults(data); go('results');
-        if (!data?.sections) return; // failed run — don't record it in history
-        // Keep a local history so the Account page can show "My Ideas"
-        try {
-          const prev = JSON.parse(localStorage.getItem('myIdeas') || '[]')
-          prev.unshift({ title: form.name, category: form.category, date: new Date().toISOString(), score: data?.meta?.overallScore ?? null })
-          localStorage.setItem('myIdeas', JSON.stringify(prev.slice(0, 20)))
-        } catch (e) { console.error('failed to save idea history', e) }
+        if (!data?.sections) return;
+        saveIdea(user?.id ?? null, { form, meta: data.meta, sections: data.sections });
       }}/>}
 
       {step==='results' && (

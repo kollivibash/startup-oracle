@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { loadIdeas, deleteIdea } from './ideasDB'
 
 const F = "'Plus Jakarta Sans', system-ui, sans-serif"
 
@@ -14,10 +15,6 @@ const joinedDate = u => u?.created_at
 const providersOf = u => {
   const p = u?.app_metadata?.providers || (u?.app_metadata?.provider ? [u.app_metadata.provider] : [])
   return p.map(x => x.toLowerCase())
-}
-
-const loadIdeas = () => {
-  try { return JSON.parse(localStorage.getItem('myIdeas') || '[]') } catch { return [] }
 }
 
 const scoreStatus = score => {
@@ -256,15 +253,37 @@ function SecuritySection({ user }) {
 
 // ── Ideas Section ────────────────────────────────────────────────────────────
 
-function IdeasSection({ onSubmitIdea }) {
-  const ideas = loadIdeas()
+function IdeasSection({ user, onSubmitIdea, onViewReport }) {
+  const [ideas, setIdeas]         = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [deleting, setDeleting]   = useState(null)
+  const [confirmId, setConfirmId] = useState(null)
+
+  useEffect(() => {
+    loadIdeas(user?.id ?? null).then(rows => { setIdeas(rows); setLoading(false); })
+  }, [user?.id])
+
+  const handleDelete = async (idea) => {
+    setDeleting(idea.id)
+    await deleteIdea(user?.id ?? null, idea.id)
+    setIdeas(prev => prev.filter(i => i.id !== idea.id))
+    setDeleting(null)
+    setConfirmId(null)
+  }
 
   return (
     <div>
-      <SectionHeader title="My Ideas" subtitle={ideas.length ? `Your ${ideas.length} most recent validation${ideas.length > 1 ? 's' : ''}.` : 'Ideas you validate will appear here.'}
-        action={<PrimaryBtn onClick={onSubmitIdea}>+ New Idea</PrimaryBtn>}/>
+      <SectionHeader
+        title="My Ideas"
+        subtitle={loading ? 'Loading…' : ideas.length ? `${ideas.length} validation${ideas.length > 1 ? 's' : ''} — click any to open the full report.` : 'Ideas you validate will appear here.'}
+        action={<PrimaryBtn onClick={onSubmitIdea}>+ New Idea</PrimaryBtn>}
+      />
 
-      {ideas.length === 0 ? (
+      {loading ? (
+        <div style={{ ...cardStyle, padding:'40px 24px', textAlign:'center' }}>
+          <p style={{ margin:0, fontSize:13, color:'#9CA3AF' }}>Loading your ideas…</p>
+        </div>
+      ) : ideas.length === 0 ? (
         <div style={{ ...cardStyle, padding:'40px 24px', textAlign:'center' }}>
           <div style={{ fontSize:26, marginBottom:10 }}>💡</div>
           <p style={{ margin:'0 0 4px', fontSize:14, fontWeight:600, color:'#111827' }}>No ideas yet</p>
@@ -273,10 +292,15 @@ function IdeasSection({ onSubmitIdea }) {
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {ideas.map((idea, i) => {
+          {ideas.map(idea => {
             const cfg = scoreStatus(idea.score)
+            const hasReport = !!(idea.sections)
             return (
-              <div key={i} style={{ ...cardStyle, display:'flex', alignItems:'center', gap:14, padding:'14px 20px' }}>
+              <div key={idea.id} style={{ ...cardStyle, display:'flex', alignItems:'center', gap:14, padding:'14px 20px', cursor: hasReport ? 'pointer' : 'default', transition:'box-shadow .15s' }}
+                onClick={() => hasReport && onViewReport?.(idea)}
+                onMouseEnter={e => { if (hasReport) e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.08)' }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,.04)' }}
+              >
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>{idea.title}</span>
@@ -285,14 +309,42 @@ function IdeasSection({ onSubmitIdea }) {
                       {cfg.label}
                     </span>
                     {idea.score != null && <span style={{ fontSize:12, color:'#9CA3AF' }}>Score {idea.score}</span>}
+                    {hasReport && <span style={{ fontSize:11, color:'#9CA3AF', fontStyle:'italic' }}>View report →</span>}
                   </div>
                   <p style={{ margin:'4px 0 0', fontSize:12, color:'#9CA3AF' }}>
                     {idea.date ? new Date(idea.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : ''}{idea.category ? ` · ${idea.category}` : ''}
                   </p>
                 </div>
+                <button
+                  disabled={deleting === idea.id}
+                  onClick={e => { e.stopPropagation(); setConfirmId(idea.id); }}
+                  style={{ flexShrink:0, fontSize:12, fontWeight:500, color:'#DC2626', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontFamily:F, opacity: deleting === idea.id ? 0.5 : 1 }}
+                >
+                  {deleting === idea.id ? 'Deleting…' : 'Delete'}
+                </button>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {confirmId && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}
+          onClick={() => setConfirmId(null)}>
+          <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e => e.stopPropagation()}>
+            <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:700, color:'#111827' }}>Delete this idea?</p>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:'#6B7280', lineHeight:1.6 }}>This permanently deletes the idea and its full report from the database. This cannot be undone.</p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => handleDelete(ideas.find(i => i.id === confirmId))}
+                style={{ flex:1, fontSize:13, fontWeight:600, background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>
+                Yes, delete permanently
+              </button>
+              <button onClick={() => setConfirmId(null)}
+                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'#374151', border:'1px solid #E5E7EB', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -362,7 +414,6 @@ function DangerSection({ user, onLogout }) {
     const blob = new Blob([JSON.stringify({
       profile: { name: displayName(user), email: user?.email, ...user?.user_metadata },
       joined: user?.created_at,
-      ideas: loadIdeas(),
     }, null, 2)], { type:'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -520,17 +571,20 @@ function MobileNav({ user, active, setActive, onLogout }) {
 
 // ── Page root ────────────────────────────────────────────────────────────────
 
-export default function Account({ user, onHome, onLogout, onSubmitIdea }) {
+export default function Account({ user, onHome, onLogout, onSubmitIdea, onViewReport }) {
   const [active, setActive] = useState('profile')
-  // Local copy so profile/preference saves reflect immediately without a reload
   const [freshUser, setFreshUser] = useState(user)
+  const [ideaCount, setIdeaCount] = useState(0)
   const u = freshUser || user
-  const ideaCount = loadIdeas().length
+
+  useEffect(() => {
+    loadIdeas(u?.id ?? null).then(rows => setIdeaCount(rows.length))
+  }, [u?.id])
 
   const sectionMap = {
     profile:     <ProfileSection user={u} onUserUpdated={setFreshUser}/>,
     security:    <SecuritySection user={u}/>,
-    ideas:       <IdeasSection onSubmitIdea={onSubmitIdea}/>,
+    ideas:       <IdeasSection user={u} onSubmitIdea={onSubmitIdea} onViewReport={onViewReport}/>,
     preferences: <PreferencesSection user={u} onUserUpdated={setFreshUser}/>,
     danger:      <DangerSection user={u} onLogout={onLogout}/>,
   }

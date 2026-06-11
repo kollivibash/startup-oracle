@@ -5,6 +5,7 @@ import SubmitIdea from './SubmitIdea'
 import Community from './Community'
 import Auth from './Auth'
 import Account from './Account'
+import MasterReport from './MasterReport'
 import { supabase } from './supabaseClient'
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
   const [afterAuth, setAfterAuth] = useState('submit')
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
+  const [activeIdea, setActiveIdea] = useState(null)
 
   useEffect(() => {
     const navTo = () => {
@@ -69,8 +71,22 @@ export default function App() {
   // flashes "Sign in" for a logged-in user
   if (!authReady) return null
 
+  if (view === 'report' && activeIdea) return (
+    <MasterReport
+      data={activeIdea.sections}
+      meta={activeIdea.meta}
+      ideaName={activeIdea.title}
+      onBack={() => { setView('account'); setActiveIdea(null); }}
+    />
+  )
   if (view === 'account')   return user
-    ? <Account user={user} onHome={() => setView('oracle')} onLogout={handleLogout} onSubmitIdea={() => setView('submit')} />
+    ? <Account
+        user={user}
+        onHome={() => setView('oracle')}
+        onLogout={handleLogout}
+        onSubmitIdea={() => setView('submit')}
+        onViewReport={idea => { setActiveIdea(idea); setView('report'); }}
+      />
     : null
   if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} />
   if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} />
