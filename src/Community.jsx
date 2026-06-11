@@ -1,313 +1,474 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useId } from "react";
+import { fetchPosts, createPost, deletePost, ratePost, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived } from "./communityDB";
 
-const F="'Plus Jakarta Sans',system-ui,sans-serif";
-const BR=4;
-const C={black:'#0a0a0a',white:'#ffffff',surface:'#f6f6f6',card:'#ffffff',border:'#e0e0e0',body:'#555555',muted:'#999999',light:'#f2f2f2'};
+const F = "'Plus Jakarta Sans',system-ui,sans-serif";
+const C = { bg:'#F7F7F7', surf:'#fff', bdr:'#E8E8E8', bdrLt:'#F2F2F2', ink:'#0C0C0C', ink2:'#5C5C5C', ink3:'#ADADAD', star:'#B45309', grn:'#22C55E' };
+const AV_COLORS = ['#2563EB','#7C3AED','#C2410C','#B45309','#0D9488','#DB2777','#4F46E5','#15803D'];
 
-const SEED=[
-  {id:1,title:"AI invoice & tax assistant for freelancers",oneliner:"One dashboard that handles invoices, expense tracking, and quarterly taxes for independent workers.",problem:"Freelancers waste 6+ hours monthly managing finances across multiple tools.",solution:"Connect Stripe/PayPal, auto-generate invoices, categorise expenses, estimate quarterly taxes.",category:"FinTech",author:"Alex M.",location:"Berlin",timeAgo:"2h ago",aiScore:82,upvotes:234,rating:4.3,ratingCount:41,stage:"Just an idea",comments:[{id:1,author:"Sarah K.",time:"1h ago",text:"Exactly what I need as a freelance designer. QuickBooks is overkill."},{id:2,author:"Dev R.",time:"45m ago",text:"Have you considered Indian GST integration? Huge market there."}]},
-  {id:2,title:"Carbon footprint tracker for e-commerce checkouts",oneliner:"Shows shoppers their order's CO₂ impact at checkout with one-click offset options.",problem:"Consumers want to shop sustainably but have no visibility into the environmental cost of purchases.",solution:"A checkout widget that calculates shipping carbon, shows an impact label, and lets users offset with one click.",category:"ClimaTech",author:"Priya V.",location:"London",timeAgo:"5h ago",aiScore:74,upvotes:189,rating:4.1,ratingCount:29,stage:"Building it",comments:[{id:1,author:"Tom A.",time:"3h ago",text:"Major brands like ASOS would pay for this integration instantly."}]},
-  {id:3,title:"On-demand mental health coaching for startup founders",oneliner:"Vetted coaches with founder experience, bookable same-day for 30-minute video sessions.",problem:"Founders face extreme burnout but standard therapy is slow, expensive, and not startup-specific.",solution:"Coaches who have built companies, bookable same-day at fixed low rates, focused on founder challenges.",category:"Health",author:"Mei L.",location:"Singapore",timeAgo:"8h ago",aiScore:78,upvotes:312,rating:4.6,ratingCount:53,stage:"Just an idea",comments:[{id:1,author:"James B.",time:"6h ago",text:"The founder-specific angle is crucial. Regular therapists just don't get it."},{id:2,author:"Nina P.",time:"4h ago",text:"Would you include async text-based sessions?"},{id:3,author:"Carl M.",time:"2h ago",text:"Pricing is the key challenge. How do you make it accessible?"}]},
-  {id:4,title:"Hyper-local delivery network using idle gig drivers",oneliner:"On-demand local delivery under 45 minutes using Uber/Bolt drivers during their idle time.",problem:"Small local businesses can't afford same-day delivery; existing platforms prioritise large merchants.",solution:"Route delivery jobs to nearby gig workers already active on other apps but currently idle.",category:"Logistics",author:"Kwame A.",location:"Lagos",timeAgo:"12h ago",aiScore:65,upvotes:98,rating:3.7,ratingCount:18,stage:"Just an idea",comments:[]},
-  {id:5,title:"AI writing assistant for academic research papers",oneliner:"Helps PhD students structure, cite, and polish academic papers 3× faster.",problem:"Researchers spend 40% of time on writing mechanics instead of research.",solution:"AI that understands academic conventions, auto-formats citations, checks argument flow.",category:"EdTech",author:"Yuki T.",location:"Tokyo",timeAgo:"1d ago",aiScore:71,upvotes:156,rating:4.0,ratingCount:36,stage:"Building it",comments:[{id:1,author:"Prof. Chen",time:"20h ago",text:"Citation formatting alone would save my students hours per paper."},{id:2,author:"Rosa M.",time:"14h ago",text:"Key differentiator from ChatGPT: academic tone and proper citations."}]},
-  {id:6,title:"Automated onboarding workflows for remote-first teams",oneliner:"Replaces manual onboarding checklists with a self-running workflow across all your HR tools.",problem:"Remote onboarding is chaotic — new hires get lost, managers repeat themselves, HR tools don't connect.",solution:"A workflow engine connecting Slack, Notion, and HRIS to auto-trigger tasks and track completion.",category:"HR Tech",author:"Lena W.",location:"Amsterdam",timeAgo:"1d ago",aiScore:80,upvotes:201,rating:4.2,ratingCount:47,stage:"Already live",comments:[{id:1,author:"Mateo G.",time:"22h ago",text:"The integrations are the hard part — nailing that would be the real moat."}]},
-  {id:7,title:"Burn-rate dashboard for early-stage startups",oneliner:"Real-time view of runway, burn rate, and expense categories — no CFO required.",problem:"Early founders make financial decisions blind. Spreadsheets are manual, accountants are expensive.",solution:"Connect bank accounts and cards, auto-categorise transactions, model runway scenarios.",category:"SaaS",author:"Chris O.",location:"San Francisco",timeAgo:"2d ago",aiScore:76,upvotes:178,rating:4.1,ratingCount:34,stage:"Just an idea",comments:[{id:1,author:"Investor A.",time:"1d ago",text:"Every portfolio company I have needs this. Big opportunity."}]},
-  {id:8,title:"Micro-lending for informal street vendors via mobile payments",oneliner:"Working capital loans under $500 for street vendors, scored using mobile payment transaction history.",problem:"300M+ street vendors globally are excluded from formal credit with no collateral or credit history.",solution:"Use M-Pesa/UPI transaction data to build credit profiles and offer small loans with daily mobile repayment.",category:"FinTech",author:"Aditi P.",location:"Mumbai",timeAgo:"2d ago",aiScore:69,upvotes:143,rating:4.4,ratingCount:28,stage:"Building it",comments:[{id:1,author:"Impact VC",time:"1d ago",text:"The mobile payment data approach is the right key insight here."},{id:2,author:"Raj B.",time:"18h ago",text:"India's UPI data access policies may complicate the credit scoring model."}]},
-  {id:9,title:"AR cooking instructor using your phone camera",oneliner:"Points at your ingredients and teaches you exactly how to cook them with real-time AR overlays.",problem:"Cooking tutorials don't adapt to what you actually have at home.",solution:"Identify ingredients via camera, suggest matching recipes, overlay step-by-step AR instructions.",category:"Consumer",author:"Sofia B.",location:"Barcelona",timeAgo:"3d ago",aiScore:73,upvotes:267,rating:4.5,ratingCount:62,stage:"Just an idea",comments:[{id:1,author:"Tech Fan",time:"2d ago",text:"Vision Pro could be perfect hardware for this."},{id:2,author:"Chef Marc",time:"1d ago",text:"Ingredient detection accuracy is critical."},{id:3,author:"Maria L.",time:"12h ago",text:"This would genuinely help people eat healthier at home."}]},
-];
+const avColor = id => AV_COLORS[(String(id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % AV_COLORS.length];
+const initials = name => (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+const timeAgo = d => {
+  const s = Math.floor((Date.now() - new Date(d).getTime())/1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+  return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+};
 
-const CATS=["All","FinTech","SaaS","ClimaTech","Health","EdTech","Logistics","HR Tech","Consumer"];
-const SORTS=[{id:"popular",label:"Most Popular"},{id:"newest",label:"Newest"},{id:"rated",label:"Highest Rated"},{id:"discussed",label:"Most Discussed"}];
+const Av = ({ name, uid, url, sz=32 }) => url
+  ? <img src={url} alt="" style={{ width:sz, height:sz, borderRadius:'50%', flexShrink:0, objectFit:'cover' }}/>
+  : <div style={{ width:sz, height:sz, borderRadius:'50%', background:avColor(uid), color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:650, fontSize:sz<=28?9.5:sz<=36?11.5:sz<=44?13.5:17, flexShrink:0, letterSpacing:'-0.4px' }}>{initials(name)}</div>;
 
-const Stars=({value,interactive=false,onChange,size=15})=>{
-  const [hover,setHover]=useState(0);
-  const d=interactive?(hover||value):value;
-  return(
-    <div style={{display:"flex",gap:1,alignItems:"center"}}>
-      {[1,2,3,4,5].map(s=>(
-        <span key={s} style={{fontSize:size,color:s<=Math.round(d)?C.black:C.border,cursor:interactive?"pointer":"default",lineHeight:1,transition:"color 0.1s"}}
-          onMouseEnter={interactive?()=>setHover(s):null} onMouseLeave={interactive?()=>setHover(0):null}
-          onClick={interactive&&onChange?()=>onChange(s):null}>★</span>
-      ))}
-    </div>
+// ── Stars (half-star precision) ──────────────────────────────────────────────
+const StarShape = ({ fill, sz, clipId }) => {
+  const d = "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z";
+  return (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" style={{ display:'block', flexShrink:0 }}>
+      {fill>0 && fill<1 && <defs><clipPath id={clipId}><rect x="0" y="0" width={24*fill} height="24"/></clipPath></defs>}
+      <path d={d} fill="#EBEBEB" stroke="#EBEBEB" strokeWidth=".5"/>
+      {fill>0 && <path d={d} fill={C.star} stroke={C.star} strokeWidth=".5" clipPath={fill<1?`url(#${clipId})`:undefined}/>}
+    </svg>
   );
 };
 
-const IdeaCard=({idea,onOpen,hasUpvoted,onUpvote})=>{
-  const [hov,setHov]=useState(false);
-  return(
-    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} onClick={()=>onOpen(idea)}
-      style={{background:C.card,borderRadius:BR+4,border:`1px solid ${hov?"#c0c0c0":C.border}`,padding:28,cursor:"pointer",transition:"border-color 0.15s,box-shadow 0.15s",boxShadow:hov?"0 4px 20px rgba(0,0,0,0.07)":"0 1px 4px rgba(0,0,0,0.03)",display:"flex",flexDirection:"column"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-        <span style={{fontSize:11,fontWeight:600,color:C.body,background:C.light,borderRadius:100,padding:"4px 12px"}}>{idea.category}</span>
-        <div style={{textAlign:"right"}}>
-          <div style={{fontSize:22,fontWeight:800,color:C.black,letterSpacing:"-1px",lineHeight:1}}>{idea.aiScore}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>AI score</div>
-        </div>
-      </div>
-      <h3 style={{fontSize:16,fontWeight:700,color:C.black,lineHeight:1.4,marginBottom:10,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{idea.title}</h3>
-      <p style={{fontSize:13,color:C.body,lineHeight:1.55,marginBottom:18,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{idea.oneliner}</p>
-      <div style={{fontSize:12,color:C.muted,marginBottom:16,fontWeight:500}}><span style={{fontWeight:600,color:C.body}}>{idea.stage}</span> · {idea.author}, {idea.location}</div>
-      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:"auto"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <Stars value={idea.rating} size={13}/>
-          <span style={{fontSize:12,color:C.muted,fontWeight:600}}>{idea.rating.toFixed(1)} ({idea.ratingCount})</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <button onClick={e=>{e.stopPropagation();onUpvote(idea.id);}}
-            style={{display:"flex",alignItems:"center",gap:5,border:"none",cursor:"pointer",padding:"4px 8px",borderRadius:BR,background:hasUpvoted?C.black:C.light,transition:"all 0.15s"}}>
-            <span style={{fontSize:13,color:hasUpvoted?C.white:C.body}}>▲</span>
-            <span style={{fontSize:12,fontWeight:700,color:hasUpvoted?C.white:C.body}}>{idea.upvotes+(hasUpvoted?1:0)}</span>
-          </button>
-          <div style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:C.muted}}>
-            <span>💬</span><span style={{fontWeight:600}}>{idea.comments.length}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const Modal=({idea,onClose,userRating,onRate,hasUpvoted,onUpvote,onAddComment})=>{
-  const [text,setText]=useState('');
-  const [name,setName]=useState('');
-  const [submitted,setSubmitted]=useState(false);
-  useEffect(()=>{
-    const h=e=>{if(e.key==='Escape')onClose();};
-    window.addEventListener('keydown',h);
-    document.body.style.overflow='hidden';
-    return()=>{window.removeEventListener('keydown',h);document.body.style.overflow='';};
-  },[]);
-  const submit=()=>{
-    if(!text.trim())return;
-    onAddComment(idea.id,{id:Date.now(),author:name||"Anonymous",time:"just now",text:text.trim()});
-    setText('');setName('');setSubmitted(true);
-    setTimeout(()=>setSubmitted(false),3000);
+const Stars = ({ rating=0, onRate, sz=15, readOnly=false, showVal=false }) => {
+  const uid = useId().replace(/:/g,'_');
+  const [hov, setHov] = useState(null);
+  const disp = hov !== null ? hov : rating;
+  const getFill = i => disp >= i ? 1 : disp >= i-.5 ? .5 : 0;
+  const onMov = (e,i) => {
+    if (readOnly) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setHov(e.clientX - r.left < r.width/2 ? i-.5 : i);
   };
-  return(
-    <div onClick={e=>{if(e.target===e.currentTarget)onClose();}}
-      style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"32px 24px",overflowY:"auto"}}>
-      <div style={{background:C.white,borderRadius:BR+6,width:"100%",maxWidth:700,animation:"slideIn 0.2s ease",position:"relative",marginBottom:32}}>
-        <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:32,height:32,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:16,color:C.muted,display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}}>✕</button>
-        <div style={{padding:"32px 36px 24px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-            <span style={{fontSize:11,fontWeight:600,color:C.body,background:C.light,borderRadius:100,padding:"4px 12px"}}>{idea.category}</span>
-            <span style={{fontSize:11,fontWeight:600,color:C.muted}}>· {idea.stage}</span>
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+      <div style={{ display:'flex', gap:2 }} onMouseLeave={()=>!readOnly&&setHov(null)}>
+        {[1,2,3,4,5].map(i=>(
+          <div key={i} style={{ cursor:readOnly?'default':'pointer', display:'flex' }}
+            onMouseMove={e=>onMov(e,i)}
+            onClick={()=>!readOnly&&onRate&&onRate(hov!==null?hov:i)}>
+            <StarShape fill={getFill(i)} sz={sz} clipId={`sc_${uid}_${i}`}/>
           </div>
-          <h2 style={{fontSize:26,fontWeight:800,color:C.black,letterSpacing:"-0.8px",lineHeight:1.2,marginBottom:8,paddingRight:40}}>{idea.title}</h2>
-          <p style={{fontSize:14,color:C.muted}}>By {idea.author}, {idea.location} · {idea.timeAgo}</p>
-        </div>
-        <div style={{padding:"18px 36px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:32}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>AI Score</div>
-            <div style={{fontSize:28,fontWeight:800,color:C.black,letterSpacing:"-1px",lineHeight:1}}>{idea.aiScore}<span style={{fontSize:14,fontWeight:400,color:C.muted}}>/100</span></div>
-          </div>
-          <div style={{width:1,height:40,background:C.border}}/>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>Community Rating</div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <Stars value={userRating||idea.rating} size={18}/>
-              <span style={{fontSize:16,fontWeight:700,color:C.black}}>{(userRating||idea.rating).toFixed(1)}</span>
-              <span style={{fontSize:13,color:C.muted}}>({idea.ratingCount+(userRating?1:0)} ratings)</span>
-            </div>
-          </div>
-          <div style={{width:1,height:40,background:C.border}}/>
-          <button onClick={()=>onUpvote(idea.id)}
-            style={{display:"flex",alignItems:"center",gap:7,background:hasUpvoted?C.black:C.light,border:"none",borderRadius:BR,padding:"10px 16px",cursor:"pointer",transition:"all 0.15s"}}>
-            <span style={{fontSize:14,color:hasUpvoted?C.white:C.body}}>▲</span>
-            <span style={{fontSize:14,fontWeight:700,color:hasUpvoted?C.white:C.body}}>{idea.upvotes+(hasUpvoted?1:0)}</span>
-            <span style={{fontSize:13,color:hasUpvoted?'rgba(255,255,255,0.7)':C.muted}}>upvotes</span>
-          </button>
-        </div>
-        <div style={{padding:"28px 36px"}}>
-          <div style={{marginBottom:28}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:10}}>The Idea</div>
-            <p style={{fontSize:15,color:C.black,lineHeight:1.75}}>{idea.oneliner}</p>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:28}}>
-            <div style={{background:C.light,borderRadius:BR+2,padding:"18px 20px"}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:8}}>Problem</div>
-              <p style={{fontSize:14,color:C.body,lineHeight:1.65}}>{idea.problem}</p>
-            </div>
-            <div style={{background:C.light,borderRadius:BR+2,padding:"18px 20px"}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:8}}>Solution</div>
-              <p style={{fontSize:14,color:C.body,lineHeight:1.65}}>{idea.solution}</p>
-            </div>
-          </div>
-          <div style={{background:C.light,borderRadius:BR+4,padding:"22px 24px",marginBottom:28,border:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontSize:15,fontWeight:700,color:C.black,marginBottom:4}}>{userRating?"You rated this idea":"Rate this idea"}</div>
-                <div style={{fontSize:13,color:C.muted}}>{userRating?`You gave it ${userRating} star${userRating>1?'s':''}`:"Click a star to share your verdict"}</div>
-              </div>
-              <Stars value={userRating} interactive={!userRating} onChange={v=>onRate(idea.id,v)} size={28}/>
-            </div>
-          </div>
-          <div style={{marginBottom:24}}>
-            <div style={{fontSize:14,fontWeight:700,color:C.black,marginBottom:18}}>
-              Suggestions & Feedback <span style={{fontWeight:500,color:C.muted,fontSize:13}}>({idea.comments.length})</span>
-            </div>
-            {idea.comments.length===0
-              ?<div style={{textAlign:"center",padding:"32px 0",color:C.muted,fontSize:14}}>No suggestions yet — be the first to share feedback.</div>
-              :<div style={{display:"flex",flexDirection:"column",gap:14}}>
-                {idea.comments.map(c=>(
-                  <div key={c.id} style={{display:"flex",gap:12}}>
-                    <div style={{width:32,height:32,borderRadius:"50%",background:C.border,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:C.body}}>{c.author[0]}</div>
-                    <div style={{flex:1,background:C.light,borderRadius:BR+2,padding:"12px 16px"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                        <span style={{fontSize:13,fontWeight:700,color:C.black}}>{c.author}</span>
-                        <span style={{fontSize:12,color:C.muted}}>· {c.time}</span>
-                      </div>
-                      <p style={{fontSize:14,color:C.body,lineHeight:1.6}}>{c.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            }
-          </div>
-          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:24}}>
-            <div style={{fontSize:14,fontWeight:700,color:C.black,marginBottom:14}}>Add a suggestion</div>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name (optional)"
-              style={{display:"block",width:"100%",border:`1.5px solid ${C.border}`,borderRadius:BR,padding:"10px 14px",fontSize:14,marginBottom:10,color:C.black,fontFamily:F,outline:"none",boxSizing:"border-box"}}/>
-            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Share feedback, suggest improvements, ask a question…" rows={3}
-              style={{display:"block",width:"100%",border:`1.5px solid ${C.border}`,borderRadius:BR,padding:"12px 14px",fontSize:14,lineHeight:1.6,marginBottom:12,color:C.black,resize:"none",fontFamily:F,outline:"none",boxSizing:"border-box"}}/>
-            {submitted
-              ?<div style={{fontSize:14,fontWeight:600,color:C.black,padding:"12px 0"}}>✓ Suggestion submitted — thanks!</div>
-              :<button onClick={submit} disabled={!text.trim()} style={{background:text.trim()?C.black:C.border,color:text.trim()?C.white:C.muted,border:"none",borderRadius:BR,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:text.trim()?"pointer":"not-allowed",fontFamily:F,transition:"all 0.15s"}}>
-                Post Suggestion
-              </button>
-            }
-          </div>
-        </div>
+        ))}
       </div>
+      {showVal && disp>0 && <span style={{ fontSize:11, color:C.ink2, fontWeight:600 }}>{Number(disp).toFixed(1)}</span>}
     </div>
   );
 };
 
-export default function Community({ onSubmitIdea, onHome, user, onLogout, onSignIn, onAccount }) {
-  const [ideas,setIdeas]       = useState(SEED);
-  const [cat,setCat]           = useState("All");
-  const [sort,setSort]         = useState("popular");
-  const [search,setSearch]     = useState("");
-  const [selected,setSelected] = useState(null);
-  const [ratings,setRatings]   = useState({});
-  const [upvotes,setUpvotes]   = useState(new Set());
+const FollowBtn = ({ following, onClick }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{ padding:'4px 13px', borderRadius:20, fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F, whiteSpace:'nowrap', transition:'all .13s',
+        background: following ? (hov?'#FEF2F2':'transparent') : C.ink,
+        color: following ? (hov?'#DC2626':C.ink2) : '#fff',
+        border: `1px solid ${following ? (hov?'#F87171':C.bdr) : C.ink}` }}>
+      {following ? (hov?'Unfollow':'Following') : 'Follow'}
+    </button>
+  );
+};
 
-  const filtered = useMemo(()=>{
-    let l=[...ideas];
-    if(cat!=="All") l=l.filter(i=>i.category===cat);
-    if(search.trim()){const q=search.toLowerCase();l=l.filter(i=>i.title.toLowerCase().includes(q)||i.oneliner.toLowerCase().includes(q)||i.category.toLowerCase().includes(q));}
-    if(sort==="popular")   l.sort((a,b)=>b.upvotes-a.upvotes);
-    if(sort==="newest")    l.sort((a,b)=>b.id-a.id);
-    if(sort==="rated")     l.sort((a,b)=>b.rating-a.rating);
-    if(sort==="discussed") l.sort((a,b)=>b.comments.length-a.comments.length);
-    return l;
-  },[ideas,cat,sort,search]);
+// ── Idea card ────────────────────────────────────────────────────────────────
+function IdeaCard({ post, me, followingIds, onFollow, onRate, requireAuth, onDelete, showAuthor=true }) {
+  const [open, setOpen]   = useState(false);
+  const [sugs, setSugs]   = useState(null);
+  const [draft, setDraft] = useState('');
+  const [posting, setPosting] = useState(false);
 
-  const catCounts=useMemo(()=>{const c={All:ideas.length};ideas.forEach(i=>{c[i.category]=(c[i.category]||0)+1;});return c;},[ideas]);
-  const handleUpvote=useCallback(id=>{setUpvotes(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});},[]);
-  const handleRate=useCallback((id,v)=>setRatings(p=>({...p,[id]:v})),[]);
-  const handleAddComment=useCallback((id,c)=>{
-    setIdeas(p=>p.map(i=>i.id===id?{...i,comments:[...i.comments,c]}:i));
-    setSelected(p=>p?.id===id?{...p,comments:[...p.comments,c]}:p);
-  },[]);
+  const isMine   = me && post.user_id === me.id;
+  const ratings  = post.ratings || [];
+  const myRating = me ? ratings.find(r=>r.user_id===me.id)?.value : null;
+  const avg      = ratings.length ? ratings.reduce((a,r)=>a+Number(r.value),0)/ratings.length : 0;
+  const author   = post.author || {};
+  const sugCount = (post.sugCount ?? 0) + (sugs ? Math.max(0, sugs.length - (post.sugCount ?? 0)) : 0);
 
-  return(
-    <div style={{minHeight:"100vh",background:C.surface,fontFamily:F}}>
-      <style>{`@keyframes slideIn{from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}}@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}*{box-sizing:border-box}`}</style>
+  const toggleThread = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && sugs === null) setSugs(await fetchSuggestions(post.id));
+  };
 
-      {/* Nav */}
-      <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,height:68,padding:"0 48px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span onClick={onHome} style={{fontWeight:800,fontSize:20,letterSpacing:"-0.5px",color:C.black,cursor:"pointer"}}>startup oracle</span>
-        <div style={{display:"flex",alignItems:"center",gap:32}}>
-          {["How it works","Pricing"].map(l=><span key={l} style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>{l}</span>)}
-          <span style={{fontSize:14,color:C.black,fontWeight:700,borderBottom:`2px solid ${C.black}`,paddingBottom:2}}>Browse Ideas</span>
-          {user ? (
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div onClick={()=>onAccount?.()} title="My Account" style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-                {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%"}}/>}
-                <span style={{fontSize:14,color:C.black,fontWeight:600,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.user_metadata?.full_name || user.email}</span>
+  const postSug = async () => {
+    if (!draft.trim() || !me) return;
+    setPosting(true);
+    try {
+      const row = await addSuggestion(me.id, post.id, draft.trim());
+      setSugs(p => [...(p||[]), { ...row, author: { name: me.user_metadata?.full_name || me.email?.split('@')[0], avatar_url: me.user_metadata?.avatar_url } }]);
+      setDraft('');
+    } catch { /* surfaced in console */ }
+    setPosting(false);
+  };
+
+  return (
+    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'18px 22px', transition:'border-color .15s' }}>
+      {showAuthor && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:13 }}>
+          <Av name={author.name} uid={post.user_id} url={author.avatar_url} sz={34}/>
+          <div style={{ flex:1, minWidth:0 }}>
+            <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{author.name || 'Founder'}</span>
+            <span style={{ fontSize:11.5, color:C.ink3, marginLeft:8 }}>{timeAgo(post.created_at)}</span>
+          </div>
+          {!isMine && <FollowBtn following={followingIds.has(post.user_id)} onClick={requireAuth(()=>onFollow(post.user_id))}/>}
+        </div>
+      )}
+
+      <div style={{ fontSize:14.5, fontWeight:650, letterSpacing:'-.25px', lineHeight:1.35, color:C.ink }}>{post.title}</div>
+      {post.body && <div style={{ fontSize:13, color:C.ink2, lineHeight:1.6, margin:'6px 0 12px' }}>{post.body}</div>}
+      {post.tags?.length > 0 && (
+        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:14 }}>
+          {post.tags.map(t=><span key={t} style={{ padding:'2px 8px', background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, fontSize:10.5, fontWeight:500, color:C.ink2 }}>{t}</span>)}
+        </div>
+      )}
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, paddingTop:12, borderTop:`1px solid ${C.bdrLt}` }}>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <Stars rating={myRating ?? avg} sz={14} readOnly={!!isMine}
+            onRate={isMine ? null : requireAuth(v=>onRate(post.id, v))} showVal/>
+          <span style={{ fontSize:11.5, color:C.ink3 }}>
+            {myRating ? 'your rating' : `${ratings.length} rating${ratings.length!==1?'s':''}`}
+          </span>
+        </div>
+        <button onClick={toggleThread}
+          style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:5, fontSize:12, color:C.ink3, cursor:'pointer', padding:'4px 8px', borderRadius:5, border:'none', background:'none', fontFamily:F }}>
+          💬 {sugCount} suggestion{sugCount!==1?'s':''}
+        </button>
+        {isMine && onDelete && (
+          <button onClick={()=>onDelete(post)} style={{ fontSize:11.5, color:'#DC2626', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:F }}>Delete</button>
+        )}
+      </div>
+
+      {open && (
+        <div style={{ marginTop:14, paddingTop:4, borderTop:`1px solid ${C.bdrLt}` }}>
+          {sugs === null && <div style={{ fontSize:12.5, color:C.ink3, padding:'10px 0' }}>Loading…</div>}
+          {sugs?.length === 0 && <div style={{ fontSize:12.5, color:C.ink3, padding:'10px 0' }}>No suggestions yet. Be the first.</div>}
+          {sugs?.map(s=>(
+            <div key={s.id} style={{ display:'flex', gap:9, padding:'9px 0', borderBottom:`1px solid ${C.bdrLt}` }}>
+              <Av name={s.author?.name} uid={s.user_id} url={s.author?.avatar_url} sz={27}/>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', gap:7, alignItems:'baseline', marginBottom:3 }}>
+                  <span style={{ fontSize:12, fontWeight:600, color:C.ink }}>{s.author?.name || 'Founder'}</span>
+                  <span style={{ fontSize:10.5, color:C.ink3 }}>{timeAgo(s.created_at)}</span>
+                </div>
+                <div style={{ fontSize:12.5, color:C.ink, lineHeight:1.55 }}>{s.text}</div>
               </div>
+            </div>
+          ))}
+          <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'flex-end' }}>
+            <textarea placeholder={me ? 'Leave a suggestion…' : 'Sign in to leave a suggestion'} value={draft} rows={1} disabled={!me}
+              onChange={e=>setDraft(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&(e.preventDefault(),postSug())}
+              style={{ flex:1, border:`1px solid ${C.bdr}`, borderRadius:8, padding:'8px 12px', fontSize:12.5, fontFamily:F, color:C.ink, background:C.bg, resize:'none', outline:'none', lineHeight:1.5 }}/>
+            <button onClick={me ? postSug : requireAuth(()=>{})} disabled={posting || (me && !draft.trim())}
+              style={{ background:C.ink, color:'#fff', border:'none', borderRadius:7, padding:'8px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F, opacity: posting?0.5:1 }}>
+              {me ? 'Post' : 'Sign in'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Composer ─────────────────────────────────────────────────────────────────
+function Composer({ me, onPosted, requireAuth }) {
+  const [openC, setOpenC] = useState(false);
+  const [title, setTitle] = useState('');
+  const [body, setBody]   = useState('');
+  const [tags, setTags]   = useState('');
+  const [busy, setBusy]   = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || !me) return;
+    setBusy(true);
+    try {
+      const tagArr = tags.split(',').map(t=>t.trim()).filter(Boolean).slice(0,5);
+      const row = await createPost(me.id, { title:title.trim(), body:body.trim(), tags:tagArr });
+      onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title:title.trim(), body:body.trim(), tags:tagArr,
+        author:{ id:me.id, name: me.user_metadata?.full_name || me.email?.split('@')[0], avatar_url: me.user_metadata?.avatar_url },
+        ratings:[], sugCount:0 });
+      setTitle(''); setBody(''); setTags(''); setOpenC(false);
+    } catch { /* surfaced in console */ }
+    setBusy(false);
+  };
+
+  if (!openC) return (
+    <div onClick={me ? ()=>setOpenC(true) : requireAuth(()=>{})}
+      style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'14px 18px', display:'flex', alignItems:'center', gap:11, cursor:'pointer' }}>
+      <Av name={me?.user_metadata?.full_name || me?.email || 'You'} uid={me?.id || 'me'} url={me?.user_metadata?.avatar_url} sz={32}/>
+      <span style={{ fontSize:13, color:C.ink3 }}>{me ? 'Share your startup idea with the community…' : 'Sign in to share your startup idea…'}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'18px 20px' }}>
+      <input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="Idea title — what are you building?"
+        style={{ width:'100%', border:'none', outline:'none', fontSize:15, fontWeight:650, color:C.ink, fontFamily:F, marginBottom:10, background:'transparent' }}/>
+      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={3} placeholder="Describe the problem and your solution…"
+        style={{ width:'100%', border:`1px solid ${C.bdr}`, borderRadius:8, padding:'10px 12px', fontSize:13, fontFamily:F, color:C.ink, background:C.bg, resize:'none', outline:'none', lineHeight:1.6, marginBottom:10, boxSizing:'border-box' }}/>
+      <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Tags, comma separated (AI, SaaS, FinTech)"
+        style={{ width:'100%', border:`1px solid ${C.bdr}`, borderRadius:8, padding:'8px 12px', fontSize:12, fontFamily:F, color:C.ink2, background:C.bg, outline:'none', marginBottom:12, boxSizing:'border-box' }}/>
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <button onClick={()=>setOpenC(false)} style={{ background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2, borderRadius:7, padding:'7px 16px', fontSize:12.5, fontWeight:500, cursor:'pointer', fontFamily:F }}>Cancel</button>
+        <button onClick={submit} disabled={busy || !title.trim()}
+          style={{ background:C.ink, color:'#fff', border:'none', borderRadius:7, padding:'7px 18px', fontSize:12.5, fontWeight:600, cursor:'pointer', fontFamily:F, opacity: busy||!title.trim()?0.5:1 }}>
+          {busy ? 'Posting…' : 'Post idea'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Profile view ─────────────────────────────────────────────────────────────
+function ProfileView({ me, posts, followingIds, onFollow, onRate, requireAuth, onDelete }) {
+  const [tab, setTab] = useState('ideas');
+  const [counts, setCounts] = useState({ followers:0, following:0 });
+  const [received, setReceived] = useState(null);
+  const [people, setPeople] = useState(null);
+
+  const myPosts = posts.filter(p => p.user_id === me?.id);
+  const myName  = me?.user_metadata?.full_name || me?.email?.split('@')[0] || 'You';
+
+  useEffect(() => { if (me) fetchFollowCounts(me.id).then(setCounts); }, [me]);
+  useEffect(() => {
+    if (!me) return;
+    let on = true;
+    if (tab === 'ratings') fetchRatingsReceived(me.id).then(r => on && setReceived(r));
+    if (tab === 'followers' || tab === 'following') fetchFollowList(me.id, tab).then(p => on && setPeople(p));
+    return () => { on = false; };
+  }, [tab, me]);
+
+  if (!me) return <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'60px 0' }}>Sign in to see your profile.</div>;
+
+  const avgR = received?.length ? (received.reduce((a,r)=>a+Number(r.value),0)/received.length).toFixed(1) : null;
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:16, marginBottom:18 }}>
+        <Av name={myName} uid={me.id} url={me.user_metadata?.avatar_url} sz={52}/>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:21, fontWeight:700, letterSpacing:'-.5px', lineHeight:1.1, color:C.ink }}>{myName}</div>
+          <div style={{ fontSize:12, color:C.ink3, margin:'3px 0 7px' }}>{me.email}</div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:28, marginBottom:6 }}>
+        {[['Ideas', myPosts.length], ['Followers', counts.followers], ['Following', counts.following]].map(([l,v])=>(
+          <div key={l}>
+            <div style={{ fontSize:18, fontWeight:700, letterSpacing:'-.5px', color:C.ink }}>{v}</div>
+            <div style={{ fontSize:11.5, color:C.ink3, marginTop:1 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', borderBottom:`1px solid ${C.bdr}`, marginTop:16, marginBottom:16 }}>
+        {[['ideas','My Ideas'],['ratings','Ratings Received'],['followers','Followers'],['following','Following']].map(([k,l])=>(
+          <div key={k} onClick={()=>{ setTab(k); setPeople(null); setReceived(null); }}
+            style={{ padding:'9px 14px', fontSize:12.5, fontWeight:500, cursor:'pointer', color: tab===k?C.ink:C.ink3, borderBottom:`2px solid ${tab===k?C.ink:'transparent'}`, marginBottom:-1 }}>
+            {l}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {tab==='ideas' && (myPosts.length === 0
+          ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>You haven't shared any ideas yet.</div>
+          : myPosts.map(p=><IdeaCard key={p.id} post={p} me={me} followingIds={followingIds} onFollow={onFollow} onRate={onRate} requireAuth={requireAuth} onDelete={onDelete} showAuthor={false}/>))}
+
+        {tab==='ratings' && (
+          received === null ? <div style={{ color:C.ink3, fontSize:13, padding:'20px 0', textAlign:'center' }}>Loading…</div>
+          : received.length === 0 ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>No ratings received yet.</div>
+          : (
+            <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'4px 20px' }}>
+              {avgR && <div style={{ padding:'12px 0', borderBottom:`1px solid ${C.bdrLt}`, fontSize:12.5, color:C.ink2 }}>Average rating across your ideas: <strong style={{ color:C.ink }}>{avgR} ★</strong></div>}
+              {received.map((r,i)=>(
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom: i===received.length-1?'none':`1px solid ${C.bdrLt}` }}>
+                  <Av name={r.rater?.name} uid={r.rater?.name || i} url={r.rater?.avatar_url} sz={35}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.rater?.name || 'Founder'}</div>
+                    <div style={{ fontSize:11.5, color:C.ink3, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.post?.title}</div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
+                    <Stars rating={Number(r.value)} readOnly sz={13}/>
+                    <span style={{ fontSize:10.5, color:C.ink3 }}>{timeAgo(r.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+
+        {(tab==='followers'||tab==='following') && (
+          people === null ? <div style={{ color:C.ink3, fontSize:13, padding:'20px 0', textAlign:'center' }}>Loading…</div>
+          : people.length === 0 ? <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>{tab==='followers' ? 'No followers yet — share great ideas!' : "You aren't following anyone yet."}</div>
+          : (
+            <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, padding:'4px 20px' }}>
+              {people.map((u,i)=>(
+                <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom: i===people.length-1?'none':`1px solid ${C.bdrLt}` }}>
+                  <Av name={u.name} uid={u.id} url={u.avatar_url} sz={36}/>
+                  <div style={{ flex:1, fontSize:13, fontWeight:600, color:C.ink }}>{u.name || 'Founder'}</div>
+                  {u.id !== me.id && <FollowBtn following={followingIds.has(u.id)} onClick={requireAuth(()=>onFollow(u.id))}/>}
+                </div>
+              ))}
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Page root ────────────────────────────────────────────────────────────────
+export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount }) {
+  const [view, setView]   = useState('feed');
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('All');
+  const [followingIds, setFollowingIds] = useState(new Set());
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  useEffect(() => {
+    fetchPosts().then(p => { setPosts(p); setLoading(false); });
+  }, []);
+  useEffect(() => {
+    let on = true;
+    fetchFollowingIds(user?.id ?? null).then(s => { if (on) setFollowingIds(s); });
+    return () => { on = false; };
+  }, [user]);
+
+  const requireAuth = useCallback(fn => user ? fn : () => onSignIn?.(), [user, onSignIn]);
+
+  const handleFollow = useCallback(async uid => {
+    if (!user) return;
+    const isF = followingIds.has(uid);
+    setFollowingIds(prev => { const n = new Set(prev); isF ? n.delete(uid) : n.add(uid); return n; });
+    await setFollow(user.id, uid, !isF);
+  }, [user, followingIds]);
+
+  const handleRate = useCallback(async (postId, value) => {
+    if (!user) return;
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      const others = (p.ratings||[]).filter(r => r.user_id !== user.id);
+      return { ...p, ratings: [...others, { user_id: user.id, value }] };
+    }));
+    await ratePost(user.id, postId, value);
+  }, [user]);
+
+  const handleDelete = useCallback(async post => {
+    setPosts(prev => prev.filter(p => p.id !== post.id));
+    setConfirmDel(null);
+    await deletePost(user.id, post.id);
+  }, [user]);
+
+  const shown = useMemo(() => {
+    let l = [...posts];
+    if (filter === 'Following') l = l.filter(p => followingIds.has(p.user_id));
+    if (filter === 'Top Rated') l.sort((a,b) => {
+      const av = x => x.ratings?.length ? x.ratings.reduce((s,r)=>s+Number(r.value),0)/x.ratings.length : 0;
+      return av(b) - av(a);
+    });
+    if (filter === 'Most Discussed') l.sort((a,b) => (b.sugCount||0) - (a.sugCount||0));
+    return l;
+  }, [posts, filter, followingIds]);
+
+  const navItem = (id, label, icon) => (
+    <div key={id} onClick={()=>setView(id)}
+      style={{ display:'flex', alignItems:'center', gap:9, padding:'8px 12px', borderRadius:8, cursor:'pointer', fontSize:13.5, color: view===id?C.ink:C.ink2, fontWeight: view===id?600:450, background: view===id?C.bg:'transparent', userSelect:'none' }}>
+      <span style={{ fontSize:14 }}>{icon}</span>{label}
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:'100vh', background:C.bg, fontFamily:F }}>
+      <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#DCDCDC;border-radius:2px}`}</style>
+
+      {/* Site nav */}
+      <div style={{ position:'sticky', top:0, zIndex:100, background:C.surf, borderBottom:`1px solid ${C.bdr}`, height:64, padding:'0 32px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span onClick={onHome} style={{ fontWeight:800, fontSize:19, letterSpacing:'-0.5px', color:C.ink, cursor:'pointer' }}>startup oracle</span>
+        <div style={{ display:'flex', alignItems:'center', gap:20 }}>
+          {user ? (
+            <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+              <Av name={user.user_metadata?.full_name || user.email} uid={user.id} url={user.user_metadata?.avatar_url} sz={26}/>
+              <span style={{ fontSize:13.5, color:C.ink, fontWeight:600, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.user_metadata?.full_name || user.email}</span>
             </div>
           ) : (
-            <span onClick={()=>onSignIn?.()} style={{fontSize:14,color:C.muted,cursor:"pointer",fontWeight:500}}>Sign in</span>
+            <span onClick={()=>onSignIn?.()} style={{ fontSize:13.5, color:C.ink2, cursor:'pointer', fontWeight:500 }}>Sign in</span>
           )}
-          <button onClick={onSubmitIdea} style={{background:C.black,color:C.white,border:"none",borderRadius:BR,padding:"10px 22px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F}}>Submit Idea →</button>
+          <button onClick={onSubmitIdea} style={{ background:C.ink, color:'#fff', border:'none', borderRadius:8, padding:'9px 18px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>Validate My Idea →</button>
         </div>
       </div>
 
-      {/* Page header */}
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"48px 64px 40px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"2px",textTransform:"uppercase",marginBottom:10}}>Community</div>
-            <h1 style={{fontSize:40,fontWeight:800,color:C.black,letterSpacing:"-1.5px",marginBottom:10}}>Ideas being validated</h1>
-            <p style={{fontSize:16,color:C.muted,maxWidth:480,lineHeight:1.6}}>Browse startup ideas from founders worldwide. Rate them, leave suggestions, and get inspired to share your own.</p>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:12}}>
-            <button onClick={onSubmitIdea} style={{background:C.black,color:C.white,borderRadius:BR,padding:"14px 28px",fontSize:15,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>+ Share Your Idea</button>
-            <div style={{display:"flex",gap:24,fontSize:13,color:C.muted}}>
-              <span><strong style={{color:C.black}}>{ideas.length}</strong> ideas</span>
-              <span><strong style={{color:C.black}}>{ideas.reduce((a,i)=>a+i.ratingCount,0)}</strong> ratings</span>
-              <span><strong style={{color:C.black}}>{ideas.reduce((a,i)=>a+i.comments.length,0)}</strong> suggestions</span>
-            </div>
+      {/* Layout */}
+      <div style={{ maxWidth:1040, margin:'0 auto', display:'flex', gap:0, alignItems:'flex-start' }}>
+        {/* Sidebar */}
+        <div style={{ width:216, flexShrink:0, position:'sticky', top:64, padding:'20px 10px', display:'flex', flexDirection:'column', gap:2 }}>
+          {navItem('feed','Browse Ideas','▤')}
+          {navItem('profile','My Profile','◉')}
+          <div style={{ marginTop:14, padding:'12px 12px', fontSize:11.5, color:C.ink3, lineHeight:1.6, borderTop:`1px solid ${C.bdr}` }}>
+            Rate ideas, leave suggestions, and follow founders you believe in.
           </div>
         </div>
-      </div>
 
-      {/* Filter bar */}
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 64px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,height:60}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,overflowX:"auto",paddingBottom:2}}>
-            {CATS.map(c=>(
-              <button key={c} onClick={()=>setCat(c)} style={{flexShrink:0,borderRadius:100,padding:"6px 16px",fontSize:13,fontWeight:600,cursor:"pointer",border:cat===c?"none":`1px solid ${C.border}`,background:cat===c?C.black:C.white,color:cat===c?C.white:C.body,transition:"all 0.15s",fontFamily:F}}>
-                {c} <span style={{fontWeight:400,opacity:0.6,fontSize:12}}>{catCounts[c]||0}</span>
-              </button>
-            ))}
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-            <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,color:C.muted}}>⌕</span>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search ideas…"
-                style={{border:`1.5px solid ${C.border}`,borderRadius:BR,padding:"8px 14px 8px 32px",fontSize:13,color:C.black,width:180,fontFamily:F,outline:"none"}}/>
-            </div>
-            <select value={sort} onChange={e=>setSort(e.target.value)}
-              style={{border:`1.5px solid ${C.border}`,borderRadius:BR,padding:"8px 14px",fontSize:13,color:C.black,background:C.white,cursor:"pointer",fontFamily:F,outline:"none"}}>
-              {SORTS.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid */}
-      <div style={{maxWidth:1200,margin:"0 auto",padding:"40px 64px 80px"}}>
-        {filtered.length===0
-          ?<div style={{textAlign:"center",padding:"80px 0"}}>
-            <div style={{fontSize:40,marginBottom:16}}>🔍</div>
-            <h3 style={{fontSize:22,fontWeight:700,color:C.black,marginBottom:8}}>No ideas found</h3>
-            <p style={{fontSize:15,color:C.muted,marginBottom:28}}>Try a different category or search term.</p>
-            <button onClick={()=>{setCat("All");setSearch("");}} style={{background:C.black,color:C.white,border:"none",borderRadius:BR,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F}}>Clear filters</button>
-          </div>
-          :<>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
-              <span style={{fontSize:14,color:C.muted,fontWeight:500}}>{filtered.length} idea{filtered.length!==1?"s":""}{cat!=="All"?` in ${cat}`:""}{search?` matching "${search}"`:""}
-              </span>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:20}}>
-              {filtered.map(idea=><IdeaCard key={idea.id} idea={idea} onOpen={setSelected} hasUpvoted={upvotes.has(idea.id)} onUpvote={handleUpvote}/>)}
-            </div>
-            <div style={{marginTop:56,background:C.white,border:`1px solid ${C.border}`,borderRadius:BR+4,padding:"40px 48px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:40}}>
-              <div>
-                <h3 style={{fontSize:22,fontWeight:800,color:C.black,letterSpacing:"-0.5px",marginBottom:8}}>Got an idea of your own?</h3>
-                <p style={{fontSize:15,color:C.muted,lineHeight:1.6,maxWidth:480}}>Every idea above started as a rough thought. Submit yours and get an AI score, community feedback, and a full validation report in minutes.</p>
+        {/* Main */}
+        <div style={{ flex:1, minWidth:0, padding:'18px 28px 60px', maxWidth:760 }}>
+          {view === 'feed' && (
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                <span style={{ fontSize:15, fontWeight:650, letterSpacing:'-.3px', color:C.ink }}>Browse Ideas</span>
+                <div style={{ display:'flex', gap:4, marginLeft:6 }}>
+                  {['All','Top Rated','Most Discussed','Following'].map(f=>(
+                    <button key={f} onClick={()=>setFilter(f)}
+                      style={{ padding:'4px 11px', borderRadius:20, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, transition:'all .12s',
+                        border:`1px solid ${filter===f?C.ink:C.bdr}`, background: filter===f?C.ink:C.surf, color: filter===f?'#fff':C.ink2 }}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ marginLeft:'auto', fontSize:11.5, color:C.ink3 }}>{shown.length} ideas</span>
               </div>
-              <button onClick={onSubmitIdea} style={{flexShrink:0,background:C.black,color:C.white,borderRadius:BR,padding:"15px 32px",fontSize:15,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>Validate My Idea →</button>
-            </div>
-          </>
-        }
+
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <Composer me={user} requireAuth={requireAuth} onPosted={p=>setPosts(prev=>[p,...prev])}/>
+                {loading && <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>Loading ideas…</div>}
+                {!loading && shown.length===0 && (
+                  <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'40px 0' }}>
+                    {filter==='Following' ? 'Follow founders to see their ideas here.' : 'No ideas yet — be the first to share one.'}
+                  </div>
+                )}
+                {shown.map(p=>(
+                  <IdeaCard key={p.id} post={p} me={user} followingIds={followingIds}
+                    onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
+                    onDelete={p2=>setConfirmDel(p2)}/>
+                ))}
+              </div>
+            </>
+          )}
+
+          {view === 'profile' && (
+            <ProfileView me={user} posts={posts} followingIds={followingIds}
+              onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
+              onDelete={p=>setConfirmDel(p)}/>
+          )}
+        </div>
       </div>
 
-      {selected&&<Modal idea={selected} onClose={()=>setSelected(null)} userRating={ratings[selected.id]||0} onRate={handleRate} hasUpvoted={upvotes.has(selected.id)} onUpvote={handleUpvote} onAddComment={handleAddComment}/>}
+      {/* Delete confirm */}
+      {confirmDel && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}
+          onClick={()=>setConfirmDel(null)}>
+          <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e=>e.stopPropagation()}>
+            <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:700, color:C.ink }}>Delete this idea?</p>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:C.ink2, lineHeight:1.6 }}>"{confirmDel.title}" and all its ratings and suggestions will be permanently deleted.</p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>handleDelete(confirmDel)}
+                style={{ flex:1, fontSize:13, fontWeight:600, background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Delete</button>
+              <button onClick={()=>setConfirmDel(null)}
+                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:C.ink2, border:`1px solid ${C.bdr}`, borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
