@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useId } from "react";
-import { fetchPosts, createPost, deletePost, ratePost, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived } from "./communityDB";
+import { useState, useEffect, useMemo, useCallback, useId, useRef } from "react";
+import { fetchPosts, createPost, deletePost, ratePost, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
 
 const F = "'Plus Jakarta Sans',system-ui,sans-serif";
 const C = { bg:'#F7F7F7', surf:'#fff', bdr:'#E8E8E8', bdrLt:'#F2F2F2', ink:'#0C0C0C', ink2:'#5C5C5C', ink3:'#ADADAD', star:'#B45309', grn:'#22C55E' };
@@ -72,7 +72,7 @@ const FollowBtn = ({ following, onClick }) => {
 };
 
 // ── Idea card ────────────────────────────────────────────────────────────────
-function IdeaCard({ post, me, followingIds, onFollow, onRate, requireAuth, onDelete, showAuthor=true }) {
+function IdeaCard({ post, me, followingIds, onFollow, onRate, requireAuth, onDelete, onDM, showAuthor=true }) {
   const [open, setOpen]   = useState(false);
   const [sugs, setSugs]   = useState(null);
   const [draft, setDraft] = useState('');
@@ -112,6 +112,12 @@ function IdeaCard({ post, me, followingIds, onFollow, onRate, requireAuth, onDel
             <span style={{ fontSize:11.5, color:C.ink3, marginLeft:8 }}>{timeAgo(post.created_at)}</span>
           </div>
           {!isMine && <FollowBtn following={followingIds.has(post.user_id)} onClick={requireAuth(()=>onFollow(post.user_id))}/>}
+          {!isMine && onDM && (
+            <button onClick={requireAuth(()=>onDM({ id: post.user_id, name: author.name, avatar_url: author.avatar_url }))}
+              style={{ marginLeft:4, padding:'4px 11px', borderRadius:6, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2 }}>
+              DM
+            </button>
+          )}
         </div>
       )}
 
@@ -221,8 +227,113 @@ function Composer({ me, onPosted, requireAuth }) {
   );
 }
 
+// ── Chat area (shared by Messages view + DM panel) ───────────────────────────
+function ChatArea({ peer, msgs, me, onSend }) {
+  const [input, setInput] = useState('');
+  const boxRef = useRef(null);
+  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [msgs]);
+
+  const send = () => {
+    if (!input.trim()) return;
+    onSend(input.trim());
+    setInput('');
+  };
+
+  return (
+    <>
+      <div ref={boxRef} style={{ flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:12 }}>
+        {msgs.length === 0 && <div style={{ textAlign:'center', color:C.ink3, fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
+        {msgs.map(m => {
+          const mine = m.sender_id === me.id;
+          return (
+            <div key={m.id} style={{ display:'flex', gap:8, maxWidth:'75%', alignSelf: mine?'flex-end':'flex-start', flexDirection: mine?'row-reverse':'row' }}>
+              {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
+              <div>
+                <div style={{ padding:'8px 13px', fontSize:13, lineHeight:1.5,
+                  background: mine?C.ink:C.bg, color: mine?'#fff':C.ink,
+                  border: mine?'none':`1px solid ${C.bdr}`,
+                  borderRadius: mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>{m.text}</div>
+                <div style={{ fontSize:10, color:C.ink3, marginTop:3, textAlign:'right' }}>
+                  {new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding:'13px 22px', borderTop:`1px solid ${C.bdr}`, display:'flex', gap:9, alignItems:'center', flexShrink:0 }}>
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`}
+          onKeyDown={e=>e.key==='Enter'&&send()}
+          style={{ flex:1, border:`1px solid ${C.bdr}`, borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, color:C.ink, background:C.bg, outline:'none' }}/>
+        <button onClick={send} disabled={!input.trim()}
+          style={{ width:34, height:34, background:C.ink, border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity: input.trim()?1:.3, fontSize:13 }}>➤</button>
+      </div>
+    </>
+  );
+}
+
+// ── Messages view ────────────────────────────────────────────────────────────
+function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
+  const list = Object.values(convs).sort((a,b) => {
+    const la = a.messages[a.messages.length-1]?.created_at || 0;
+    const lb = b.messages[b.messages.length-1]?.created_at || 0;
+    return new Date(lb) - new Date(la);
+  });
+  const act = activePeer ? convs[activePeer] : null;
+
+  return (
+    <div style={{ background:C.surf, border:`1px solid ${C.bdr}`, borderRadius:12, display:'flex', height:'calc(100vh - 150px)', overflow:'hidden' }}>
+      <div style={{ width:240, minWidth:240, borderRight:`1px solid ${C.bdr}`, overflowY:'auto', padding:'12px 0' }}>
+        {list.length === 0 && <div style={{ textAlign:'center', color:C.ink3, fontSize:12.5, padding:'30px 16px', lineHeight:1.6 }}>No conversations yet. Hit "DM" on any idea to start one.</div>}
+        {list.map(c => {
+          const last = c.messages[c.messages.length-1];
+          return (
+            <div key={c.peer.id} onClick={()=>onOpenConv(c.peer.id)}
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer', background: activePeer===c.peer.id?C.bg:'transparent' }}>
+              <Av name={c.peer.name} uid={c.peer.id} url={c.peer.avatar_url} sz={38}/>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.peer.name || 'Founder'}</div>
+                <div style={{ fontSize:11.5, color:C.ink3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last?.text || ''}</div>
+              </div>
+              {c.unread > 0 && <div style={{ width:17, height:17, background:C.ink, color:'#fff', borderRadius:10, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.unread}</div>}
+            </div>
+          );
+        })}
+      </div>
+      {act ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div style={{ padding:'13px 22px', borderBottom:`1px solid ${C.bdr}`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+            <Av name={act.peer.name} uid={act.peer.id} url={act.peer.avatar_url} sz={34}/>
+            <div style={{ fontSize:14, fontWeight:650, color:C.ink }}>{act.peer.name || 'Founder'}</div>
+          </div>
+          <ChatArea peer={act.peer} msgs={act.messages} me={me} onSend={text=>onSend(act.peer.id, text)}/>
+        </div>
+      ) : (
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:C.ink3, fontSize:13 }}>Select a conversation</div>
+      )}
+    </div>
+  );
+}
+
+// ── DM slide-over panel ──────────────────────────────────────────────────────
+function DMPanel({ peer, me, msgs, onSend, onClose }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.2)', zIndex:300, backdropFilter:'blur(2px)' }}/>
+      <div style={{ position:'fixed', right:0, top:0, bottom:0, width:368, maxWidth:'92vw', background:'#fff', borderLeft:`1px solid ${C.bdr}`, display:'flex', flexDirection:'column', zIndex:301, boxShadow:'-12px 0 48px rgba(0,0,0,.07)', animation:'dmSlide .22s ease both' }}>
+        <div style={{ padding:'13px 18px', borderBottom:`1px solid ${C.bdr}`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+          <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={34}/>
+          <div style={{ flex:1, fontSize:14, fontWeight:650, color:C.ink }}>{peer.name || 'Founder'}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.ink2, fontSize:16, padding:4 }}>✕</button>
+        </div>
+        <ChatArea peer={peer} msgs={msgs} me={me} onSend={text=>onSend(peer.id, text)}/>
+      </div>
+    </>
+  );
+}
+
 // ── Profile view ─────────────────────────────────────────────────────────────
-function ProfileView({ me, posts, followingIds, onFollow, onRate, requireAuth, onDelete }) {
+function ProfileView({ me, posts, followingIds, onFollow, onRate, requireAuth, onDelete, onDM }) {
   const [tab, setTab] = useState('ideas');
   const [counts, setCounts] = useState({ followers:0, following:0 });
   const [received, setReceived] = useState(null);
@@ -309,6 +420,9 @@ function ProfileView({ me, posts, followingIds, onFollow, onRate, requireAuth, o
                   <Av name={u.name} uid={u.id} url={u.avatar_url} sz={36}/>
                   <div style={{ flex:1, fontSize:13, fontWeight:600, color:C.ink }}>{u.name || 'Founder'}</div>
                   {u.id !== me.id && <FollowBtn following={followingIds.has(u.id)} onClick={requireAuth(()=>onFollow(u.id))}/>}
+                  {u.id !== me.id && onDM && (
+                    <button onClick={()=>onDM(u)} style={{ marginLeft:7, padding:'4px 11px', borderRadius:6, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:F, background:'transparent', border:`1px solid ${C.bdr}`, color:C.ink2 }}>DM</button>
+                  )}
                 </div>
               ))}
             </div>
@@ -326,6 +440,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [filter, setFilter] = useState('All');
   const [followingIds, setFollowingIds] = useState(new Set());
   const [confirmDel, setConfirmDel] = useState(null);
+  const [convs, setConvs] = useState({});
+  const [activePeer, setActivePeer] = useState(null);
+  const [dmUser, setDmUser] = useState(null);
+  const activePeerRef = useRef(null);
+  const dmUserRef = useRef(null);
+  useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
+  useEffect(() => { dmUserRef.current = dmUser?.id ?? null; }, [dmUser]);
 
   useEffect(() => {
     fetchPosts().then(p => { setPosts(p); setLoading(false); });
@@ -336,7 +457,62 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return () => { on = false; };
   }, [user]);
 
+  // Load conversations + subscribe to incoming messages in realtime
+  useEffect(() => {
+    let on = true;
+    if (!user) {
+      const t = setTimeout(() => { if (on) setConvs({}); }, 0);
+      return () => { on = false; clearTimeout(t); };
+    }
+    fetchConversations(user.id).then(c => { if (on) setConvs(c); });
+    const unsub = subscribeToMessages(user.id, async row => {
+      const peerId = row.sender_id;
+      const isOpen = activePeerRef.current === peerId || dmUserRef.current === peerId;
+      let isNewConv = false;
+      setConvs(prev => {
+        if (!prev[peerId]) { isNewConv = true; return prev; }
+        if (prev[peerId].messages.some(m => m.id === row.id)) return prev;
+        return { ...prev, [peerId]: { ...prev[peerId], messages: [...prev[peerId].messages, row], unread: isOpen ? 0 : prev[peerId].unread + 1 } };
+      });
+      if (isNewConv) {
+        const peer = await fetchProfile(peerId);
+        if (peer) setConvs(prev => prev[peerId] ? prev : { ...prev, [peerId]: { peer, messages: [row], unread: isOpen ? 0 : 1 } });
+      }
+      if (isOpen) markConversationRead(user.id, peerId);
+    });
+    return () => { on = false; unsub(); };
+  }, [user]);
+
   const requireAuth = useCallback(fn => user ? fn : () => onSignIn?.(), [user, onSignIn]);
+
+  const openDM = useCallback(peer => {
+    if (!user) return onSignIn?.();
+    if (peer.id === user.id) return;
+    setConvs(prev => {
+      const ex = prev[peer.id];
+      return { ...prev, [peer.id]: ex ? { ...ex, unread: 0 } : { peer, messages: [], unread: 0 } };
+    });
+    markConversationRead(user.id, peer.id);
+    setDmUser(peer);
+  }, [user, onSignIn]);
+
+  const handleSend = useCallback(async (peerId, text) => {
+    if (!user) return;
+    const temp = { id: `t_${Date.now()}`, sender_id: user.id, recipient_id: peerId, text, created_at: new Date().toISOString() };
+    setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages: [...(prev[peerId]?.messages || []), temp] } }));
+    try {
+      const row = await sendMessage(user.id, peerId, text);
+      setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages: prev[peerId].messages.map(m => m.id === temp.id ? row : m) } }));
+    } catch { /* surfaced in console */ }
+  }, [user]);
+
+  const openConv = useCallback(peerId => {
+    setActivePeer(peerId);
+    setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], unread: 0 } } : prev);
+    if (user) markConversationRead(user.id, peerId);
+  }, [user]);
+
+  const unreadTotal = useMemo(() => Object.values(convs).reduce((s,c) => s + (c.unread||0), 0), [convs]);
 
   const handleFollow = useCallback(async uid => {
     if (!user) return;
@@ -372,16 +548,17 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, filter, followingIds]);
 
-  const navItem = (id, label, icon) => (
-    <div key={id} onClick={()=>setView(id)}
+  const navItem = (id, label, icon, badge=0) => (
+    <div key={id} onClick={()=>{ if (id !== 'feed' && !user) return onSignIn?.(); setView(id); }}
       style={{ display:'flex', alignItems:'center', gap:9, padding:'8px 12px', borderRadius:8, cursor:'pointer', fontSize:13.5, color: view===id?C.ink:C.ink2, fontWeight: view===id?600:450, background: view===id?C.bg:'transparent', userSelect:'none' }}>
       <span style={{ fontSize:14 }}>{icon}</span>{label}
+      {badge > 0 && <span style={{ marginLeft:'auto', background:C.ink, color:'#fff', fontSize:9.5, fontWeight:700, minWidth:17, height:17, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{badge}</span>}
     </div>
   );
 
   return (
     <div style={{ minHeight:'100vh', background:C.bg, fontFamily:F }}>
-      <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#DCDCDC;border-radius:2px}`}</style>
+      <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#DCDCDC;border-radius:2px} @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
 
       {/* Site nav */}
       <div style={{ position:'sticky', top:0, zIndex:100, background:C.surf, borderBottom:`1px solid ${C.bdr}`, height:64, padding:'0 32px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -405,6 +582,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <div style={{ width:216, flexShrink:0, position:'sticky', top:64, padding:'20px 10px', display:'flex', flexDirection:'column', gap:2 }}>
           {navItem('feed','Browse Ideas','▤')}
           {navItem('profile','My Profile','◉')}
+          {navItem('messages','Messages','✉', unreadTotal)}
           <div style={{ marginTop:14, padding:'12px 12px', fontSize:11.5, color:C.ink3, lineHeight:1.6, borderTop:`1px solid ${C.bdr}` }}>
             Rate ideas, leave suggestions, and follow founders you believe in.
           </div>
@@ -439,7 +617,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                 {shown.map(p=>(
                   <IdeaCard key={p.id} post={p} me={user} followingIds={followingIds}
                     onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
-                    onDelete={p2=>setConfirmDel(p2)}/>
+                    onDelete={p2=>setConfirmDel(p2)} onDM={openDM}/>
                 ))}
               </div>
             </>
@@ -448,10 +626,22 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           {view === 'profile' && (
             <ProfileView me={user} posts={posts} followingIds={followingIds}
               onFollow={handleFollow} onRate={handleRate} requireAuth={requireAuth}
-              onDelete={p=>setConfirmDel(p)}/>
+              onDelete={p=>setConfirmDel(p)} onDM={openDM}/>
+          )}
+
+          {view === 'messages' && (
+            user
+              ? <MessagesView me={user} convs={convs} activePeer={activePeer} onOpenConv={openConv} onSend={handleSend}/>
+              : <div style={{ textAlign:'center', color:C.ink3, fontSize:13, padding:'60px 0' }}>Sign in to see your messages.</div>
           )}
         </div>
       </div>
+
+      {/* DM slide-over */}
+      {dmUser && user && (
+        <DMPanel peer={dmUser} me={user} msgs={convs[dmUser.id]?.messages || []}
+          onSend={handleSend} onClose={()=>setDmUser(null)}/>
+      )}
 
       {/* Delete confirm */}
       {confirmDel && (

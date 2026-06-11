@@ -99,3 +99,61 @@ export async function fetchRatingsReceived(userId) {
   if (error) { console.error('fetchRatingsReceived failed', error); return []; }
   return data || [];
 }
+
+// ── Direct messages ──────────────────────────────────────────────────────────
+
+export async function fetchProfile(id) {
+  const { data } = await supabase.from('profiles').select('id, name, avatar_url').eq('id', id).single();
+  return data;
+}
+
+// Returns { [peerId]: { peer:{id,name,avatar_url}, messages:[...], unread:n } }
+export async function fetchConversations(userId) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, sender_id, recipient_id, text, read, created_at, sender:profiles!messages_sender_id_fkey(id, name, avatar_url), recipient:profiles!messages_recipient_id_fkey(id, name, avatar_url)')
+    .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+    .order('created_at', { ascending: true })
+    .limit(500);
+  if (error) { console.error('fetchConversations failed', error); return {}; }
+  const convs = {};
+  for (const m of data || []) {
+    const mine   = m.sender_id === userId;
+    const peer   = mine ? m.recipient : m.sender;
+    if (!peer) continue;
+    if (!convs[peer.id]) convs[peer.id] = { peer, messages: [], unread: 0 };
+    convs[peer.id].messages.push(m);
+    if (!mine && !m.read) convs[peer.id].unread++;
+  }
+  return convs;
+}
+
+export async function sendMessage(senderId, recipientId, text) {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ sender_id: senderId, recipient_id: recipientId, text })
+    .select('id, sender_id, recipient_id, text, read, created_at')
+    .single();
+  if (error) { console.error('sendMessage failed', error); throw error; }
+  return data;
+}
+
+export async function markConversationRead(userId, peerId) {
+  const { error } = await supabase
+    .from('messages')
+    .update({ read: true })
+    .eq('recipient_id', userId)
+    .eq('sender_id', peerId)
+    .eq('read', false);
+  if (error) console.error('markConversationRead failed', error);
+}
+
+export function subscribeToMessages(userId, onMessage) {
+  const channel = supabase
+    .channel(`dm_${userId}`)
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `recipient_id=eq.${userId}` },
+      payload => onMessage(payload.new))
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
