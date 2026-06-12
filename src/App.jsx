@@ -103,7 +103,7 @@ export default function App() {
   return (
     <Home
       user={user}
-      onCommunity={() => setView('community')}
+      onCommunity={() => goAuth('community')}
       onAnalyse={() => goAuth('submit')}
       onSignIn={goSignIn}
       onAccount={goAccount}
