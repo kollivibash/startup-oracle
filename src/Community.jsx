@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, fetchFollowingIds, setFollow, fetchFollowList, fetchFollowCounts, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
+import { fetchPosts, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f3f2ef';
@@ -138,7 +138,7 @@ const MediaGrid = ({ media }) => {
   );
 };
 
-function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM }) {
+function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extraSug, setExtraSug] = useState(0);
@@ -148,6 +148,7 @@ function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, 
   const myR = me ? ratings.find(r=>r.user_id===me.id) : null;
   const uRating = myR ? to10(myR.value) : null;
   const isF = followingIds.has(post.user_id);
+  const isP = pendingIds?.has(post.user_id);
   const body = post.body || '';
   const isLong = body.length > 220;
   const shown = expanded || !isLong ? body : body.slice(0,220)+'…';
@@ -165,7 +166,7 @@ function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, 
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
               <button onClick={()=>onProfile(post.user_id)} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', fontFamily:F }}>{author.name || 'Founder'}</button>
-              {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:600, color:'#0f172a', background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':'· + Follow'}</button>}
+              {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:600, color:'#0f172a', background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':isP?'· Requested':'· + Follow'}</button>}
             </div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1 }}>{timeAgo(post.created_at)} · 🌐</div>
@@ -193,11 +194,11 @@ function PostCard({ post, me, followingIds, onFollow, onProfile, onRate, rOpen, 
       </div>
 
       <div style={{ display:'flex', padding:'4px 4px' }}>
-        <button className={'act-btn'+(rOpen?' on':uRating?' rated':'')} onClick={isSelf?undefined:requireAuth(onTR)} style={isSelf?{opacity:.35,cursor:'default'}:undefined} title={isSelf?"You can't rate your own idea":''}>
+        <button className={'act-btn'+(uRating?' rated':'')} onClick={isSelf?undefined:requireAuth(onTR)} style={isSelf?{opacity:.35,cursor:'default'}:undefined} title={isSelf?"You can't rate your own idea":''}>
           ★ {uRating?`Rated ${uRating}`:'Rate'}
         </button>
-        <button className={'act-btn'+(cOpen?' on':'')} onClick={onTC}>💬 Suggest</button>
-        {!isSelf && <button className={'act-btn'+(isF?' on':'')} onClick={requireAuth(()=>onFollow(post.user_id))}>👤 {isF?'Following':'Follow'}</button>}
+        <button className="act-btn" onClick={onTC}>💬 Suggest</button>
+        {!isSelf && <button className="act-btn" onClick={requireAuth(()=>onFollow(post.user_id))}>👤 {isF?'Following':isP?'Requested':'Follow'}</button>}
         {!isSelf && onDM && <button className="act-btn" onClick={requireAuth(()=>onDM({ id:post.user_id, name:author.name, avatar_url:author.avatar_url }))}>✉ DM</button>}
         <button className="act-btn" onClick={share}>{copied?'✓ Copied':'↗ Share'}</button>
       </div>
@@ -515,7 +516,7 @@ function useStartupNews() {
   return news;
 }
 
-function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth }) {
+function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth }) {
   const news = useStartupNews();
   const founders = useMemo(() => {
     const seen = new Set();
@@ -551,8 +552,8 @@ function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth })
             <div style={{ flex:1, minWidth:0 }}>
               <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
               <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4, marginBottom:6 }}>{headlineOf(f)}</div>
-              <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'4px 16px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .15s', background:followingIds.has(f.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(f.id)?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>
-                {followingIds.has(f.id)?'Following':'Follow'}
+              <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'4px 16px', borderRadius:99, border:`1.5px solid ${pendingIds?.has(f.id)?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .15s', background:followingIds.has(f.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(f.id)?'#fff':pendingIds?.has(f.id)?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F }}>
+                {followingIds.has(f.id)?'Following':pendingIds?.has(f.id)?'Requested':'Follow'}
               </button>
             </div>
           </div>
@@ -562,33 +563,90 @@ function RightBar({ me, posts, followingIds, onFollow, onProfile, requireAuth })
   );
 }
 
+// ── People list modal (Instagram-style followers / following) ────────────────
+function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProfile, requireAuth, onClose }) {
+  const [people, setPeople] = useState(null);
+  useEffect(() => {
+    let on = true;
+    fetchFollowList(uid, type).then(p => on && setPeople(p));
+    return () => { on = false; };
+  }, [uid, type]);
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:350, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,.2)', width:'100%', maxWidth:400, maxHeight:'70vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'13px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:15, fontWeight:700, textTransform:'capitalize' }}>{type}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:16, padding:4 }}>✕</button>
+        </div>
+        <div style={{ overflowY:'auto', padding:'4px 18px 10px' }}>
+          {people === null && <div style={{ padding:'24px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>}
+          {people?.length === 0 && (
+            <div style={{ padding:'30px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>
+              {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+            </div>
+          )}
+          {people?.map((u,i)=>(
+            <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:i===people.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+              <Av name={u.name} uid={u.id} url={u.avatar_url} sz={40} onClick={()=>{ onClose(); onProfile(u.id); }}/>
+              <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>{ onClose(); onProfile(u.id); }}>
+                <div style={{ fontSize:13.5, fontWeight:600 }}>{u.name || 'Founder'}</div>
+                <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(u)}</div>
+              </div>
+              {me && u.id !== me.id && (
+                <button onClick={requireAuth(()=>onFollow(u.id))}
+                  style={{ padding:'5px 14px', borderRadius:99, border:`1.5px solid ${pendingIds?.has(u.id)?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:12, fontWeight:700, cursor:'pointer', background:followingIds.has(u.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(u.id)?'#fff':pendingIds?.has(u.id)?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F, flexShrink:0 }}>
+                  {followingIds.has(u.id)?'Following':pendingIds?.has(u.id)?'Requested':'Follow'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete }) {
+function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
   const [tab, setTab] = useState('ideas');
   const [received, setReceived] = useState(null);
-  const [people, setPeople] = useState(null);
+  const [requests, setRequests] = useState(null);
+  const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following'
 
   useEffect(() => {
     let on = true;
     fetchProfile(uid).then(p => on && setProf(p));
     fetchFollowCounts(uid).then(c => on && setCounts(c));
+    if (me && uid === me.id) fetchFollowRequests(uid).then(r => on && setRequests(r));
     return () => { on = false; };
-  }, [uid]);
+  }, [uid, me]);
   useEffect(() => {
     if (!isSelf) return;
     let on = true;
     if (tab === 'ratings') fetchRatingsReceived(uid).then(r => on && setReceived(r));
-    if (tab === 'followers' || tab === 'following') fetchFollowList(uid, tab).then(p => on && setPeople(p));
     return () => { on = false; };
   }, [tab, uid, isSelf]);
+
+  const respond = async (followerId, accept) => {
+    setRequests(prev => (prev||[]).filter(p => p.id !== followerId));
+    if (accept) setCounts(c => ({ ...c, followers: c.followers + 1 }));
+    await respondFollowRequest(me.id, followerId, accept);
+  };
 
   const fps = posts.filter(p=>p.user_id===uid);
   const name = isSelf ? nameOf(me) : (prof?.name || fps[0]?.author?.name || 'Founder');
   const avatar = isSelf ? me.user_metadata?.avatar_url : prof?.avatar_url;
   const isF = followingIds.has(uid);
+  const isP = pendingIds?.has(uid);
+  const reqCount = requests?.length || 0;
+
+  const tabs = isSelf
+    ? [['ideas','My Ideas'],['ratings','Ratings Received'],['requests', reqCount ? `Requests (${reqCount})` : 'Requests']]
+    : [];
 
   return (
     <div key={uid} className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -607,14 +665,17 @@ function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate
             </div>
             {!isSelf && (
               <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                <button onClick={requireAuth(()=>onFollow(uid))} style={{ padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:14, fontWeight:700, cursor:'pointer', background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>{isF?'Following':'Follow'}</button>
+                <button onClick={requireAuth(()=>onFollow(uid))} style={{ padding:'8px 20px', borderRadius:99, border:`1.5px solid ${isP?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:14, fontWeight:700, cursor:'pointer', background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':isP?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F }}>{isF?'Following':isP?'Requested':'Follow'}</button>
                 <button onClick={requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar }))} style={{ padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.25)', fontSize:14, fontWeight:600, cursor:'pointer', background:'transparent', color:'rgba(0,0,0,.7)', fontFamily:F }}>Message</button>
               </div>
             )}
           </div>
           <div style={{ display:'flex', gap:24, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            {[['Followers', counts.followers],['Following', counts.following],['Ideas', fps.length]].map(([l,v])=>(
-              <div key={l}>
+            {[['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
+              <div key={l} onClick={modal ? ()=>setPeopleModal(modal) : undefined}
+                style={{ cursor: modal ? 'pointer' : 'default', borderRadius:6, padding:'2px 6px', margin:'-2px -6px', transition:'background .12s' }}
+                onMouseEnter={e=>{ if(modal) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
+                onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; }}>
                 <div style={{ fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{v}</div>
                 <div style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>{l}</div>
               </div>
@@ -623,8 +684,8 @@ function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate
         </div>
         {isSelf && (
           <div style={{ display:'flex', borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            {[['ideas','My Ideas'],['ratings','Ratings Received'],['followers','Followers'],['following','Following']].map(([k,l])=>(
-              <button key={k} onClick={()=>{ setTab(k); setReceived(null); setPeople(null); }}
+            {tabs.map(([k,l])=>(
+              <button key={k} onClick={()=>{ setTab(k); setReceived(null); }}
                 style={{ flex:1, padding:'11px 4px', border:'none', borderBottom:tab===k?'2px solid rgba(0,0,0,.9)':'2px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===k?700:500, cursor:'pointer', color:tab===k?'rgba(0,0,0,.9)':'rgba(0,0,0,.55)', fontFamily:F }}>
                 {l}
               </button>
@@ -636,7 +697,7 @@ function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate
       {(!isSelf || tab === 'ideas') && (
         fps.length === 0
           ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
-          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} openDM={openDM}/>)
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} openDM={openDM}/>)
       )}
 
       {isSelf && tab === 'ratings' && (
@@ -660,24 +721,31 @@ function ProfileView({ uid, me, posts, followingIds, onFollow, onProfile, onRate
           </div>
         ))}
 
-      {isSelf && (tab === 'followers' || tab === 'following') && (
-        people === null ? <div style={{ ...card, padding:24, textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>
-        : people.length === 0 ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>{tab==='followers'?'No followers yet — share great ideas!':"You aren't following anyone yet."}</div>
+      {isSelf && tab === 'requests' && (
+        requests === null ? <div style={{ ...card, padding:24, textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>
+        : requests.length === 0 ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No pending follow requests.</div>
         : (
           <div style={{ ...card, padding:'4px 20px' }}>
-            {people.map((u,i)=>(
-              <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom:i===people.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
-                <Av name={u.name} uid={u.id} url={u.avatar_url} sz={36} onClick={()=>onProfile(u.id)}/>
-                <button onClick={()=>onProfile(u.id)} style={{ flex:1, background:'none', border:'none', padding:0, cursor:'pointer', fontSize:13, fontWeight:600, textAlign:'left', fontFamily:F }}>{u.name || 'Founder'}</button>
-                {u.id !== me.id && (
-                  <button onClick={requireAuth(()=>onFollow(u.id))} style={{ padding:'4px 14px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.9)', fontSize:12, fontWeight:700, cursor:'pointer', background:followingIds.has(u.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(u.id)?'#fff':'rgba(0,0,0,.9)', fontFamily:F }}>
-                    {followingIds.has(u.id)?'Following':'Follow'}
-                  </button>
-                )}
+            {requests.map((u,i)=>(
+              <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom:i===requests.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                <Av name={u.name} uid={u.id} url={u.avatar_url} sz={40} onClick={()=>onProfile(u.id)}/>
+                <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>onProfile(u.id)}>
+                  <div style={{ fontSize:13.5, fontWeight:600 }}>{u.name || 'Founder'}</div>
+                  <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>wants to follow you · {timeAgo(u.requested_at)}</div>
+                </div>
+                <button onClick={()=>respond(u.id, true)}
+                  style={{ padding:'6px 16px', borderRadius:99, border:'none', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Accept</button>
+                <button onClick={()=>respond(u.id, false)}
+                  style={{ padding:'6px 14px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Reject</button>
               </div>
             ))}
           </div>
         ))}
+
+      {peopleModal && (
+        <PeopleModal uid={uid} type={peopleModal} me={me} followingIds={followingIds} pendingIds={pendingIds}
+          onFollow={onFollow} onProfile={onProfile} requireAuth={requireAuth} onClose={()=>setPeopleModal(null)}/>
+      )}
     </div>
   );
 }
@@ -690,7 +758,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
-  const [followingIds, setFollowingIds] = useState(new Set());
+  const [followState, setFollowState] = useState({ accepted: new Set(), pending: new Set() });
+  const followingIds = followState.accepted;
+  const pendingIds = followState.pending;
   const [followerCount, setFollowerCount] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
   const [rOpen, setROpen] = useState(null);
@@ -707,7 +777,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
   useEffect(() => {
     let on = true;
-    fetchFollowingIds(user?.id ?? null).then(s => { if (on) setFollowingIds(s); });
+    fetchFollowState(user?.id ?? null).then(s => { if (on) setFollowState(s); });
     if (user) fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
     return () => { on = false; };
   }, [user]);
@@ -741,10 +811,16 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   const handleFollow = useCallback(async uid => {
     if (!user) return;
-    const isF = followingIds.has(uid);
-    setFollowingIds(prev => { const n = new Set(prev); isF ? n.delete(uid) : n.add(uid); return n; });
-    await setFollow(user.id, uid, !isF);
-  }, [user, followingIds]);
+    // following or requested → cancel; otherwise → send a follow request
+    const had = followingIds.has(uid) || pendingIds.has(uid);
+    setFollowState(prev => {
+      const accepted = new Set(prev.accepted), pending = new Set(prev.pending);
+      if (had) { accepted.delete(uid); pending.delete(uid); }
+      else pending.add(uid);
+      return { accepted, pending };
+    });
+    await setFollow(user.id, uid, !had);
+  }, [user, followingIds, pendingIds]);
 
   const handleRate = useCallback(async (postId, n10) => {
     if (!user) return;
@@ -810,7 +886,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds]);
 
-  const cardProps = { me:user, followingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM };
+  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -878,7 +954,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)}/>
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)}/>
           )}
 
           {view === 'messages' && (
@@ -889,7 +965,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
+          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
         )}
       </div>
 

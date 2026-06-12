@@ -65,16 +65,28 @@ export async function addSuggestion(userId, postId, text) {
   return data;
 }
 
-export async function fetchFollowingIds(userId) {
-  if (!userId) return new Set();
-  const { data, error } = await supabase.from('follows').select('followee_id').eq('follower_id', userId);
-  if (error) { console.error('fetchFollowingIds failed', error); return new Set(); }
-  return new Set((data || []).map(r => r.followee_id));
+// Returns { accepted: Set<uid>, pending: Set<uid> } for people I follow / requested.
+// Falls back to treating everything as accepted if the status column isn't migrated yet.
+export async function fetchFollowState(userId) {
+  const empty = { accepted: new Set(), pending: new Set() };
+  if (!userId) return empty;
+  let { data, error } = await supabase.from('follows').select('followee_id, status').eq('follower_id', userId);
+  if (error && /status/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('follows').select('followee_id').eq('follower_id', userId));
+    data = (data || []).map(r => ({ ...r, status: 'accepted' }));
+  }
+  if (error) { console.error('fetchFollowState failed', error); return empty; }
+  const out = { accepted: new Set(), pending: new Set() };
+  for (const r of data || []) (r.status === 'pending' ? out.pending : out.accepted).add(r.followee_id);
+  return out;
 }
 
 export async function setFollow(userId, targetId, follow) {
   if (follow) {
-    const { error } = await supabase.from('follows').insert({ follower_id: userId, followee_id: targetId });
+    let { error } = await supabase.from('follows').insert({ follower_id: userId, followee_id: targetId, status: 'pending' });
+    if (error && /status/i.test(error.message || '')) {
+      ({ error } = await supabase.from('follows').insert({ follower_id: userId, followee_id: targetId }));
+    }
     if (error && error.code !== '23505') console.error('follow failed', error);
   } else {
     const { error } = await supabase.from('follows').delete().eq('follower_id', userId).eq('followee_id', targetId);
@@ -85,21 +97,49 @@ export async function setFollow(userId, targetId, follow) {
 export async function fetchFollowList(userId, type) {
   const col   = type === 'followers' ? 'followee_id' : 'follower_id';
   const join  = type === 'followers' ? 'follower_id' : 'followee_id';
-  const { data, error } = await supabase
-    .from('follows')
-    .select(`person:profiles!follows_${join}_fkey(id, name, avatar_url)`)
-    .eq(col, userId);
+  const sel   = `person:profiles!follows_${join}_fkey(id, name, avatar_url, bio)`;
+  let { data, error } = await supabase.from('follows').select(sel).eq(col, userId).eq('status', 'accepted');
+  if (error && /status/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('follows').select(sel).eq(col, userId));
+  }
   if (error) { console.error('fetchFollowList failed', error); return []; }
   return (data || []).map(r => r.person).filter(Boolean);
 }
 
 export async function fetchFollowCounts(userId) {
   if (!userId) return { followers: 0, following: 0 };
-  const [a, b] = await Promise.all([
-    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followee_id', userId),
-    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+  let [a, b] = await Promise.all([
+    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followee_id', userId).eq('status', 'accepted'),
+    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
   ]);
+  if ((a.error && /status/i.test(a.error.message || '')) || (b.error && /status/i.test(b.error.message || ''))) {
+    [a, b] = await Promise.all([
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followee_id', userId),
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+    ]);
+  }
   return { followers: a.count ?? 0, following: b.count ?? 0 };
+}
+
+// Incoming pending requests for me (people who asked to follow me).
+export async function fetchFollowRequests(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('follows')
+    .select('created_at, person:profiles!follows_follower_id_fkey(id, name, avatar_url, bio)')
+    .eq('followee_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) { if (!/status/i.test(error.message || '')) console.error('fetchFollowRequests failed', error); return []; }
+  return (data || []).map(r => ({ ...r.person, requested_at: r.created_at })).filter(p => p?.id);
+}
+
+export async function respondFollowRequest(userId, followerId, accept) {
+  const q = accept
+    ? supabase.from('follows').update({ status: 'accepted' }).eq('follower_id', followerId).eq('followee_id', userId)
+    : supabase.from('follows').delete().eq('follower_id', followerId).eq('followee_id', userId);
+  const { error } = await q;
+  if (error) console.error('respondFollowRequest failed', error);
 }
 
 export async function fetchRatingsReceived(userId) {

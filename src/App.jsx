@@ -7,12 +7,28 @@ import Account from './Account'
 import MasterReport from './MasterReport'
 import { supabase } from './supabaseClient'
 
+const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account']
+
 export default function App() {
-  const [view, setView]           = useState('oracle')
+  // Survive page reloads on the same view (e.g. stay in Community on refresh)
+  const [view, setView]           = useState(() => {
+    try { const v = sessionStorage.getItem('so_view'); return PERSISTED_VIEWS.includes(v) ? v : 'oracle' } catch { return 'oracle' }
+  })
   const [afterAuth, setAfterAuth] = useState('submit')
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [activeIdea, setActiveIdea] = useState(null)
+
+  useEffect(() => {
+    try { if (PERSISTED_VIEWS.includes(view)) sessionStorage.setItem('so_view', view) } catch { /* private mode */ }
+  }, [view])
+
+  // A persisted 'account' view is invalid once the user is signed out
+  useEffect(() => {
+    if (!authReady || view !== 'account' || user) return
+    const t = setTimeout(() => setView('oracle'), 0)
+    return () => clearTimeout(t)
+  }, [authReady, view, user])
 
   useEffect(() => {
     const navTo = () => {
