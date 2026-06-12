@@ -769,6 +769,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [activePeer, setActivePeer] = useState(null);
   const [dmUser, setDmUser] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [bellOpen, setBellOpen] = useState(false);
   const activePeerRef = useRef(null);
   const dmUserRef = useRef(null);
   useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
@@ -778,7 +780,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   useEffect(() => {
     let on = true;
     fetchFollowState(user?.id ?? null).then(s => { if (on) setFollowState(s); });
-    if (user) fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
+    if (user) {
+      fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
+      fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
+      // Keep the bell fresh — poll for new follow requests every 30s
+      const iv = setInterval(() => fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); }), 30000);
+      return () => { on = false; clearInterval(iv); };
+    }
     return () => { on = false; };
   }, [user]);
 
@@ -821,6 +829,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     });
     await setFollow(user.id, uid, !had);
   }, [user, followingIds, pendingIds]);
+
+  const respondRequest = useCallback(async (followerId, accept) => {
+    if (!user) return;
+    setRequests(prev => prev.filter(r => r.id !== followerId));
+    if (accept) setFollowerCount(c => c + 1);
+    await respondFollowRequest(user.id, followerId, accept);
+  }, [user]);
 
   const handleRate = useCallback(async (postId, n10) => {
     if (!user) return;
@@ -914,6 +929,46 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
             style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:13, fontFamily:F, minWidth:0 }}/>
         </div>
         <div style={{ flex:1 }}/>
+        {/* Notifications bell */}
+        <div style={{ position:'relative' }}>
+          <button onClick={user ? ()=>{ const next = !bellOpen; setBellOpen(next); if (next) fetchFollowRequests(user.id).then(setRequests); } : requireAuth(()=>{})}
+            title="Notifications"
+            style={{ position:'relative', width:36, height:36, borderRadius:'50%', border:'none', background:bellOpen?'rgba(0,0,0,.08)':'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}
+            onMouseEnter={e=>{ if(!bellOpen) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
+            onMouseLeave={e=>{ if(!bellOpen) e.currentTarget.style.background='transparent'; }}>
+            <svg width="19" height="19" viewBox="0 0 22 22" fill="none"><path d="M11 2a7 7 0 00-7 7v5l-2 2v1h18v-1l-2-2V9a7 7 0 00-7-7Z" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinejoin="round"/><path d="M9 18a2 2 0 004 0" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            {requests.length > 0 && (
+              <span style={{ position:'absolute', top:2, right:1, minWidth:16, height:16, background:'#DC2626', color:'#fff', borderRadius:9, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{requests.length}</span>
+            )}
+          </button>
+
+          {bellOpen && (
+            <>
+              <div onClick={()=>setBellOpen(false)} style={{ position:'fixed', inset:0, zIndex:240 }}/>
+              <div className="fade-up" style={{ position:'absolute', top:42, right:0, width:330, maxWidth:'90vw', background:'#fff', borderRadius:10, border:'1px solid rgba(0,0,0,.08)', boxShadow:'0 12px 40px rgba(0,0,0,.14)', zIndex:241, overflow:'hidden' }}>
+                <div style={{ padding:'11px 16px', borderBottom:'1px solid rgba(0,0,0,.08)', fontSize:14, fontWeight:700 }}>Notifications</div>
+                <div style={{ maxHeight:360, overflowY:'auto', padding:'4px 16px 8px' }}>
+                  {requests.length === 0 && (
+                    <div style={{ padding:'26px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>No new notifications.</div>
+                  )}
+                  {requests.map((u,i)=>(
+                    <div key={u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:i===requests.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <Av name={u.name} uid={u.id} url={u.avatar_url} sz={38} onClick={()=>{ setBellOpen(false); goProfile(u.id); }}/>
+                      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>{ setBellOpen(false); goProfile(u.id); }}>
+                        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.name || 'Founder'}</div>
+                        <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>requested to follow you · {timeAgo(u.requested_at)}</div>
+                      </div>
+                      <button onClick={()=>respondRequest(u.id, true)}
+                        style={{ padding:'5px 13px', borderRadius:99, border:'none', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Accept</button>
+                      <button onClick={()=>respondRequest(u.id, false)}
+                        style={{ padding:'5px 11px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Reject</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
         {user ? (
           <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
             <Av name={nameOf(user)} uid={user.id} url={user.user_metadata?.avatar_url} sz={30}/>
