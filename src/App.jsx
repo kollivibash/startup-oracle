@@ -63,7 +63,14 @@ export default function App() {
     setAfterAuth('oracle'); setView('auth')
   }
   const handleLogout = async () => {
-    try { await supabase.auth.signOut() } catch (e) { console.error('signOut failed', e) }
+    // Hard logout: revoke the session on the server (all devices) and clear
+    // any locally cached app state, not just the in-memory session.
+    try { await supabase.auth.signOut({ scope: 'global' }) } catch (e) { console.error('signOut failed', e) }
+    try {
+      localStorage.removeItem('myIdeas')
+      localStorage.removeItem('afterAuth')
+      Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k))
+    } catch (e) { console.error('clear storage failed', e) }
     setUser(null); setView('oracle')
   }
   const goAccount = () => { if (user) setView('account'); else { setAfterAuth('account'); setView('auth') } }

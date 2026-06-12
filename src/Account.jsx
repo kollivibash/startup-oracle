@@ -575,7 +575,12 @@ export default function Account({ user, onHome, onLogout, onSubmitIdea, onViewRe
   const [active, setActive] = useState('profile')
   const [freshUser, setFreshUser] = useState(user)
   const [ideaCount, setIdeaCount] = useState(0)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const u = freshUser || user
+
+  const requestLogout = () => setConfirmLogout(true)
+  const doLogout = async () => { setLoggingOut(true); try { await onLogout?.() } finally { setLoggingOut(false); setConfirmLogout(false) } }
 
   useEffect(() => {
     loadIdeas(u?.id ?? null).then(rows => setIdeaCount(rows.length))
@@ -610,7 +615,7 @@ export default function Account({ user, onHome, onLogout, onSubmitIdea, onViewRe
 
       {/* Mobile */}
       <div className="acct-mobile">
-        <MobileNav user={u} active={active} setActive={setActive} onLogout={onLogout}/>
+        <MobileNav user={u} active={active} setActive={setActive} onLogout={requestLogout}/>
         <div style={{ padding:'20px 16px 60px', maxWidth:600, margin:'0 auto' }}>
           {sectionMap[active]}
         </div>
@@ -618,11 +623,34 @@ export default function Account({ user, onHome, onLogout, onSubmitIdea, onViewRe
 
       {/* Desktop */}
       <div className="acct-desktop" style={{ minHeight:'calc(100vh - 60px)' }}>
-        <Sidebar user={u} active={active} setActive={setActive} onLogout={onLogout} ideaCount={ideaCount}/>
+        <Sidebar user={u} active={active} setActive={setActive} onLogout={requestLogout} ideaCount={ideaCount}/>
         <main style={{ flex:1, minWidth:0, padding:'36px 40px 80px', maxWidth:660 }}>
           {sectionMap[active]}
         </main>
       </div>
+
+      {/* Logout confirmation */}
+      {confirmLogout && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}
+          onClick={() => !loggingOut && setConfirmLogout(false)}>
+          <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:400, padding:24 }} onClick={e => e.stopPropagation()}>
+            <p style={{ margin:'0 0 6px', fontSize:17, fontWeight:700, color:'#111827' }}>Log out?</p>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:'#6B7280', lineHeight:1.6 }}>
+              You'll be signed out of Startup Oracle on this device and your session will be ended. You'll need to sign in again to access your account.
+            </p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button disabled={loggingOut} onClick={doLogout}
+                style={{ flex:1, fontSize:13, fontWeight:600, background:'#111827', color:'#fff', border:'none', borderRadius:8, padding:10, cursor: loggingOut ? 'default' : 'pointer', opacity: loggingOut ? 0.6 : 1, fontFamily:F }}>
+                {loggingOut ? 'Logging out…' : 'Yes, log out'}
+              </button>
+              <button disabled={loggingOut} onClick={() => setConfirmLogout(false)}
+                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'#374151', border:'1px solid #E5E7EB', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
