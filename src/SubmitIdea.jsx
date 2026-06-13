@@ -58,7 +58,7 @@ const FSelect = ({ value, onChange }) => {
       {open && (
         <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:100,
           background:C.white, border:`1.5px solid ${C.border}`, borderRadius:BR,
-          boxShadow:'0 8px 24px rgba(0,0,0,0.10)', overflow:'hidden' }}>
+          boxShadow:'0 8px 24px rgba(0,0,0,0.10)', overflowY:'auto', maxHeight:220 }}>
           {CATS.map(c => (
             <div key={c} onClick={() => { onChange(c); setOpen(false); }}
               style={{ padding:'11px 16px', fontSize:14, cursor:'pointer', fontFamily:F,
