@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import MasterReport from "./MasterReport";
 import { generateMasterReport } from "./reportEngine";
 import { saveIdea } from "./ideasDB";
@@ -37,17 +37,44 @@ const FTextarea = ({ value, onChange, placeholder, rows=4 }) => (
     style={{...inputBase, lineHeight:1.65, resize:'none'}}
     onFocus={e=>e.target.style.borderColor=C.black} onBlur={e=>e.target.style.borderColor=C.border}/>
 );
-const FSelect = ({ value, onChange }) => (
-  <div style={{ position:'relative' }}>
-    <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{...inputBase, appearance:'none', color:value?C.black:C.muted, paddingRight:40}}
-      onFocus={e=>e.target.style.borderColor=C.black} onBlur={e=>e.target.style.borderColor=C.border}>
-      <option value="">Select a category…</option>
-      {CATS.map(c=><option key={c} value={c}>{c}</option>)}
-    </select>
-    <div style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.muted, fontSize:12 }}>▼</div>
-  </div>
-);
+const FSelect = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      <div onClick={() => setOpen(o => !o)}
+        style={{ ...inputBase, display:'flex', alignItems:'center', justifyContent:'space-between',
+          cursor:'pointer', borderColor: open ? C.black : C.border, userSelect:'none' }}>
+        <span style={{ color: value ? C.black : C.muted }}>{value || 'Select a category…'}</span>
+        <span style={{ color: C.muted, fontSize:11, transition:'transform 0.2s', display:'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+      </div>
+      {open && (
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:100,
+          background:C.white, border:`1.5px solid ${C.border}`, borderRadius:BR,
+          boxShadow:'0 8px 24px rgba(0,0,0,0.10)', overflow:'hidden' }}>
+          {CATS.map(c => (
+            <div key={c} onClick={() => { onChange(c); setOpen(false); }}
+              style={{ padding:'11px 16px', fontSize:14, cursor:'pointer', fontFamily:F,
+                color: c === value ? C.white : C.black,
+                background: c === value ? C.black : C.white,
+                transition:'background 0.1s' }}
+              onMouseEnter={e => { if (c !== value) e.currentTarget.style.background = C.surface; }}
+              onMouseLeave={e => { if (c !== value) e.currentTarget.style.background = C.white; }}>
+              {c}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 const StageCard = ({ label, desc, selected, onSelect }) => (
   <div onClick={onSelect} style={{ flex:1, border:`1.5px solid ${selected?C.black:C.border}`, borderRadius:BR, padding:'16px 18px', cursor:'pointer', background:selected?C.black:C.white, transition:'all 0.15s', userSelect:'none' }}>
     <div style={{ fontSize:13, fontWeight:700, color:selected?C.white:C.black, marginBottom:4 }}>{label}</div>
