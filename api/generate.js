@@ -56,9 +56,12 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
+          // High enough that the largest section (Marketing Suite, 8 subsections)
+          // fully generates even after 2.5-flash spends "thinking" tokens, which
+          // also count against this budget. 8192 was too low and truncated it.
           responseMimeType: "application/json",
           temperature: 0.45,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 24576,
         },
       }),
     });
