@@ -1,7 +1,10 @@
-// Master Validation Report engine — runs one deep-analysis Groq call per main
-// section (6 total) and assembles { sections, meta } for <MasterReport/>.
+// Master Validation Report engine — intelligent model routing:
+//   Gemini 1.5 Pro  → validation, market, plan   (logic-heavy: financials, reasoning)
+//   Gemini 1.5 Flash → strategy, visuals, marketing (creative/volume: copy, brand, SEO)
 
-const MODEL = "llama-3.3-70b-versatile";
+const MODEL_PRO   = "gemini-1.5-pro";
+const MODEL_FLASH = "gemini-1.5-flash";
+
 const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
 {"h":"Short heading"}
 {"p":"40-90 word paragraph"}
@@ -29,8 +32,10 @@ Target customer: "${f.market}"
 Founder's unique insight: "${f.edge || "Not provided"}"`;
 
 const SECTIONS = [
+  // ── PRO: logic-heavy ──────────────────────────────────────────────────────
   {
     id: "validation",
+    model: MODEL_PRO,
     role: "a brutally honest startup validation analyst (ex-YC partner)",
     keys: {
       Summary: "Executive validation verdict: what this idea really is, why it will or won't work, the single biggest make-or-break factor, and your overall recommendation (pursue / pivot / pass) with reasoning.",
@@ -44,6 +49,7 @@ const SECTIONS = [
   },
   {
     id: "market",
+    model: MODEL_PRO,
     role: "a senior market research director producing an investor-grade market study",
     keys: {
       Market: "Market sizing: TAM/SAM/SOM with explicit bottom-up math, growth rate, market maturity stage, key tailwinds and headwinds, and regulatory factors.",
@@ -56,6 +62,7 @@ const SECTIONS = [
   },
   {
     id: "plan",
+    model: MODEL_PRO,
     role: "a startup CFO and strategy consultant writing a full business plan",
     keys: {
       Overview: "Business plan executive summary: mission, vision, the opportunity in one paragraph, business model, current stage, and 3-year headline targets.",
@@ -70,8 +77,11 @@ const SECTIONS = [
       Sources: "Plan appendix sources: data sources behind every financial assumption, comparable-company benchmarks to cite, and how to keep the plan updated quarterly.",
     },
   },
+
+  // ── FLASH: creative/volume ────────────────────────────────────────────────
   {
     id: "strategy",
+    model: MODEL_FLASH,
     role: "a brand strategist from a top-tier agency building a complete brand strategy",
     keys: {
       Overview: "Brand strategy foundation: brand purpose, vision, mission, values, brand promise, personality archetype with justification, and one-line brand essence.",
@@ -85,6 +95,7 @@ const SECTIONS = [
   },
   {
     id: "visuals",
+    model: MODEL_FLASH,
     role: "a senior brand designer delivering a concrete visual identity spec",
     keys: {
       Overview: "Visual identity system overview: logo concept directions (3 distinct routes described in detail), clear-space and usage rules, and how the system scales from favicon to billboard.",
@@ -98,6 +109,7 @@ const SECTIONS = [
   },
   {
     id: "marketing",
+    model: MODEL_FLASH,
     role: "a growth marketing lead building a full launch-ready marketing suite",
     keys: {
       Overview: "Marketing strategy overview: core message hierarchy, primary/secondary channels with budget split, 90-day marketing plan, and the north-star metric plus supporting KPIs.",
@@ -114,45 +126,44 @@ const SECTIONS = [
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
-async function groqJSON(prompt, key) {
+async function geminiJSON(prompt, model, key) {
   let lastErr;
-  let maxTokens = 4000; // free-tier TPM for this model is ~6k; bigger requests get a 413
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const r = await fetch(url, {
         method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: MODEL,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.45,
-          max_tokens: maxTokens,
-          response_format: { type: "json_object" },
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.45,
+            maxOutputTokens: 8192,
+          },
         }),
       });
-      if (r.status === 413) {
-        maxTokens = Math.max(1500, Math.floor(maxTokens / 2));
-        lastErr = new Error(`Groq 413: request too large, retrying with max_tokens=${maxTokens}`);
-        continue;
-      }
       if (r.status === 429 || r.status >= 500) {
-        const wait = Number(r.headers.get("retry-after")) * 1000 || 6000 * (attempt + 1);
-        lastErr = new Error(`Groq ${r.status}, waiting ${Math.round(wait / 1000)}s`);
+        const wait = 6000 * (attempt + 1);
+        lastErr = new Error(`Gemini ${r.status}, waiting ${Math.round(wait / 1000)}s`);
         await sleep(wait);
         continue;
       }
       if (!r.ok) {
         const body = await r.text().catch(() => "");
-        throw new Error(`Groq ${r.status}: ${body.slice(0, 300)}`);
+        throw new Error(`Gemini ${r.status}: ${body.slice(0, 300)}`);
       }
-      return JSON.parse((await r.json()).choices[0].message.content);
+      const data = await r.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("Gemini returned empty response");
+      return JSON.parse(text);
     } catch (e) {
       lastErr = e;
-      if (/^Groq 4\d\d/.test(e.message) && !e.message.startsWith("Groq 413") && !e.message.startsWith("Groq 429")) throw e; // auth/bad-request errors won't fix themselves
+      if (/^Gemini 4\d\d/.test(e.message) && !e.message.startsWith("Gemini 429")) throw e;
       await sleep(3000 * (attempt + 1));
     }
   }
-  throw lastErr || new Error("Groq failed");
+  throw lastErr || new Error("Gemini failed");
 }
 
 function buildPrompt(section, form) {
@@ -171,11 +182,12 @@ ${section.meta ? "  " + section.meta + "\n" : ""}${keyLines}
 ${FORMAT_RULES}`;
 }
 
-// Runs all 6 section analyses with limited concurrency.
+// Runs all 6 section analyses with limited concurrency (2 workers).
+// Pro and Flash calls run in parallel across workers naturally.
 // onProgress(done, total) fires as each section completes.
 export async function generateMasterReport(form, onProgress) {
-  const key = import.meta.env.VITE_GROQ_API_KEY;
-  if (!key) throw new Error("VITE_GROQ_API_KEY missing — add to .env.local and restart.");
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) throw new Error("VITE_GEMINI_API_KEY missing — add to .env.local and restart.");
 
   const sections = {};
   const errors = [];
@@ -187,11 +199,11 @@ export async function generateMasterReport(form, onProgress) {
     while (queue.length) {
       const s = queue.shift();
       try {
-        const out = await groqJSON(buildPrompt(s, form), key);
+        const out = await geminiJSON(buildPrompt(s, form), s.model, key);
         if (out._meta) { meta = out._meta; delete out._meta; }
         sections[s.id] = out;
       } catch (e) {
-        console.error(`section ${s.id} failed`, e);
+        console.error(`section ${s.id} failed (${s.model})`, e);
         errors.push(`${s.id}: ${e.message}`);
       }
       onProgress?.(++done, SECTIONS.length);

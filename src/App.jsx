@@ -14,7 +14,7 @@ export default function App() {
   const [view, setView]           = useState(() => {
     try { const v = sessionStorage.getItem('so_view'); return PERSISTED_VIEWS.includes(v) ? v : 'oracle' } catch { return 'oracle' }
   })
-  const [afterAuth, setAfterAuth] = useState('submit')
+  const [afterAuth, setAfterAuth] = useState('oracle')
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [activeIdea, setActiveIdea] = useState(null)
@@ -32,7 +32,7 @@ export default function App() {
 
   useEffect(() => {
     const navTo = () => {
-      const dest = localStorage.getItem('afterAuth') || 'submit'
+      const dest = localStorage.getItem('afterAuth') || 'oracle'
       localStorage.removeItem('afterAuth')
       window.history.replaceState(null, '', window.location.pathname)
       setView(dest)

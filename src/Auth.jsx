@@ -54,7 +54,7 @@ const SocialBtn = ({ icon, label, onClick }) => {
 };
 
 const signInWithOAuth = async (provider, afterAuth) => {
-  localStorage.setItem('afterAuth', afterAuth || 'submit');
+  localStorage.setItem('afterAuth', afterAuth || 'oracle');
   const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
   if (error) alert(error.message);
 };
@@ -355,6 +355,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
     // Auto-redirect after 1.2s to the destination they came from
     setTimeout(() => {
       if (afterAuth === 'community') onCommunity();
+      else if (afterAuth === 'oracle') onHome();
       else onSubmitIdea();
     }, 1200);
   };
