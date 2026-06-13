@@ -4,12 +4,12 @@
 
 import { supabase } from "./supabaseClient";
 
-// Split across two models so the 6 report calls use TWO separate rate-limit
-// buckets (3 each) instead of all competing for one — far more resilient to 429s,
-// especially on lower-tier quota. Once paid quota is fully active you can set both
-// to "gemini-2.5-flash", or set MODEL_PRO = "gemini-2.5-pro" for deeper reasoning.
-const MODEL_PRO   = "gemini-2.5-flash";  // logic-heavy: validation, market, plan
-const MODEL_FLASH = "gemini-2.0-flash";  // creative: strategy, visuals, marketing
+// All sections use 2.5-flash (strong reasoning with "thinking", consistent quality).
+// Paid quota is active, so all 6 calls comfortably fit the rate limit. To upgrade
+// logic-heavy sections to deeper reasoning later, set MODEL_PRO = "gemini-2.5-pro"
+// (already in the ALLOWED_MODELS whitelist in api/generate.js).
+const MODEL_PRO   = "gemini-2.5-flash";
+const MODEL_FLASH = "gemini-2.5-flash";
 
 const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
 {"h":"Short heading"}
