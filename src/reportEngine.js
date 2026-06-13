@@ -4,11 +4,12 @@
 
 import { supabase } from "./supabaseClient";
 
-// All sections use 2.5-flash (strong reasoning with "thinking", consistent quality).
-// To upgrade logic-heavy sections to deeper Pro reasoning later, set MODEL_PRO =
-// "gemini-2.5-pro" (must also be in the ALLOWED_MODELS whitelist in api/generate.js).
-const MODEL_PRO   = "gemini-2.5-flash";
-const MODEL_FLASH = "gemini-2.5-flash";
+// Split across two models so the 6 report calls use TWO separate rate-limit
+// buckets (3 each) instead of all competing for one — far more resilient to 429s,
+// especially on lower-tier quota. Once paid quota is fully active you can set both
+// to "gemini-2.5-flash", or set MODEL_PRO = "gemini-2.5-pro" for deeper reasoning.
+const MODEL_PRO   = "gemini-2.5-flash";  // logic-heavy: validation, market, plan
+const MODEL_FLASH = "gemini-2.0-flash";  // creative: strategy, visuals, marketing
 
 const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
 {"h":"Short heading"}
@@ -136,7 +137,7 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 // user's session token authorizes the call.
 async function geminiJSON(prompt, model, token) {
   let lastErr;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       const r = await fetch("/api/generate", {
         method: "POST",
@@ -147,7 +148,10 @@ async function geminiJSON(prompt, model, token) {
         body: JSON.stringify({ prompt, model }),
       });
       if (r.status === 429 || r.status >= 500) {
-        const wait = 6000 * (attempt + 1);
+        // Honor Google's suggested retryDelay if present, else exponential backoff.
+        const body = await r.text().catch(() => "");
+        const m = body.match(/"retryDelay"\s*:\s*"(\d+)s"/);
+        const wait = m ? Number(m[1]) * 1000 + 1000 : 6000 * (attempt + 1);
         lastErr = new Error(`Gemini ${r.status}, waiting ${Math.round(wait / 1000)}s`);
         await sleep(wait);
         continue;
