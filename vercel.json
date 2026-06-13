@@ -1,5 +1,5 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "buildCommand": "rm -rf node_modules/.vite node_modules/.cache .vercel/cache dist && npm run build",
   "outputDirectory": "dist"
 }

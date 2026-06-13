@@ -1,0 +1,75 @@
+// Vercel Serverless Function — secure proxy to the Gemini API.
+//
+// The Gemini key lives ONLY here (process.env.GEMINI_API_KEY, no VITE_ prefix),
+// so it is never bundled into the frontend and never visible to the browser.
+//
+// The endpoint is locked down so it can't be abused to burn your paid quota:
+//   1. POST only
+//   2. Caller must present a valid Supabase session token (must be signed in)
+//   3. Only whitelisted models are allowed
+//
+// The frontend (reportEngine.js) calls /api/generate instead of Google directly.
+
+import { createClient } from "@supabase/supabase-js";
+
+// anon key — safe to keep here (same as the client uses; protected by RLS)
+const SUPABASE_URL = "https://jdqizltpalpefzvckinq.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcWl6bHRwYWxwZWZ6dmNraW5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDA2MjIsImV4cCI6MjA5NjExNjYyMn0.Ti_7LoBVniWzi3kSU8i-GG0l-boANBVkKc85L0nczEM";
+
+// Only these models may ever be called — an attacker can't request an expensive one.
+const ALLOWED_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // 1. Require a valid signed-in Supabase session.
+  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { user } = {}, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Invalid or expired session" });
+
+  // 2. Validate the request body.
+  const { prompt, model } = req.body || {};
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return res.status(400).json({ error: "Missing prompt" });
+  }
+  if (!ALLOWED_MODELS.includes(model)) {
+    return res.status(400).json({ error: "Model not allowed" });
+  }
+
+  // 3. Call Gemini with the server-side key.
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    return res.status(500).json({ error: "Server misconfigured: GEMINI_API_KEY missing" });
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.45,
+          maxOutputTokens: 8192,
+        },
+      }),
+    });
+
+    // Pass the upstream status through so the client's retry/backoff logic
+    // (429/5xx) keeps working, but never leak the raw key in any error.
+    const body = await r.text();
+    res.status(r.status);
+    res.setHeader("Content-Type", "application/json");
+    return res.send(body);
+  } catch (e) {
+    return res.status(502).json({ error: "Upstream request failed" });
+  }
+}

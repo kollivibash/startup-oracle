@@ -1,13 +1,14 @@
-// Master Validation Report engine — intelligent model routing:
-//   Gemini 1.5 Pro  → validation, market, plan   (logic-heavy: financials, reasoning)
-//   Gemini 1.5 Flash → strategy, visuals, marketing (creative/volume: copy, brand, SEO)
+// Master Validation Report engine — runs one analysis call per section (6 total).
+// Calls go through /api/generate (a serverless function) so the Gemini key stays
+// server-side and is never exposed in the browser.
 
-// Free tier does NOT allow gemini-2.5-pro (quota limit 0 — needs billing).
-// Logic-heavy sections use 2.5-flash (best free reasoning, has "thinking");
-// creative sections use 2.0-flash (fast, separate quota bucket).
-// To upgrade to true Pro reasoning later, enable billing and set MODEL_PRO = "gemini-2.5-pro".
+import { supabase } from "./supabaseClient";
+
+// All sections use 2.5-flash (strong reasoning with "thinking", consistent quality).
+// To upgrade logic-heavy sections to deeper Pro reasoning later, set MODEL_PRO =
+// "gemini-2.5-pro" (must also be in the ALLOWED_MODELS whitelist in api/generate.js).
 const MODEL_PRO   = "gemini-2.5-flash";
-const MODEL_FLASH = "gemini-2.0-flash";
+const MODEL_FLASH = "gemini-2.5-flash";
 
 const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
 {"h":"Short heading"}
@@ -130,22 +131,20 @@ const SECTIONS = [
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
-async function geminiJSON(prompt, model, key) {
+// Calls our own secure serverless endpoint (/api/generate), which holds the
+// Gemini key server-side. The key is never present in the browser. The signed-in
+// user's session token authorizes the call.
+async function geminiJSON(prompt, model, token) {
   let lastErr;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      const r = await fetch(url, {
+      const r = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.45,
-            maxOutputTokens: 8192,
-          },
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ prompt, model }),
       });
       if (r.status === 429 || r.status >= 500) {
         const wait = 6000 * (attempt + 1);
@@ -190,8 +189,9 @@ ${FORMAT_RULES}`;
 // Pro and Flash calls run in parallel across workers naturally.
 // onProgress(done, total) fires as each section completes.
 export async function generateMasterReport(form, onProgress) {
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new Error("VITE_GEMINI_API_KEY missing — add to .env.local and restart.");
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error("Please sign in to generate a report.");
 
   const sections = {};
   const errors = [];
@@ -203,7 +203,7 @@ export async function generateMasterReport(form, onProgress) {
     while (queue.length) {
       const s = queue.shift();
       try {
-        const out = await geminiJSON(buildPrompt(s, form), s.model, key);
+        const out = await geminiJSON(buildPrompt(s, form), s.model, token);
         if (out._meta) { meta = out._meta; delete out._meta; }
         sections[s.id] = out;
       } catch (e) {
