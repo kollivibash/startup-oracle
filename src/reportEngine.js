@@ -2,8 +2,12 @@
 //   Gemini 1.5 Pro  → validation, market, plan   (logic-heavy: financials, reasoning)
 //   Gemini 1.5 Flash → strategy, visuals, marketing (creative/volume: copy, brand, SEO)
 
-const MODEL_PRO   = "gemini-1.5-pro";
-const MODEL_FLASH = "gemini-1.5-flash";
+// Free tier does NOT allow gemini-2.5-pro (quota limit 0 — needs billing).
+// Logic-heavy sections use 2.5-flash (best free reasoning, has "thinking");
+// creative sections use 2.0-flash (fast, separate quota bucket).
+// To upgrade to true Pro reasoning later, enable billing and set MODEL_PRO = "gemini-2.5-pro".
+const MODEL_PRO   = "gemini-2.5-flash";
+const MODEL_FLASH = "gemini-2.0-flash";
 
 const FORMAT_RULES = `OUTPUT FORMAT — every key maps to an ARRAY of content blocks, in reading order. Allowed block types (use these exact shapes):
 {"h":"Short heading"}
