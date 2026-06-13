@@ -2,7 +2,7 @@
 
 Startup validation platform where founders submit their startup ideas and receive AI-generated deep-dive analysis reports, plus a community for founders to share ideas, follow each other, rate posts, and exchange direct messages.
 
-**Live URL:** https://startup-oracle-chi.vercel.app
+**Live URL:** https://startup-oracle-seven.vercel.app
 **Hosting:** Vercel (auto-deploys from `main` branch)
 **Backend:** Supabase (auth, database, storage, realtime)
 **AI:** Groq API (llama-3.3-70b-versatile) for report generation
