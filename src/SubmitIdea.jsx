@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import MasterReport from "./MasterReport";
 import { generateMasterReport } from "./reportEngine";
 import { saveIdea } from "./ideasDB";
@@ -183,12 +183,13 @@ const Loading = ({ form, onDone }) => {
   const [pct, setPct]       = useState(0);
   const target = useRef(10); // creeps toward this; jumps as each report section lands
   useEffect(() => {
+    let cancelled = false;
     const mi = setInterval(()=>setMsgIdx(i=>(i+1)%MSGS.length), 3500);
     const pi = setInterval(()=>setPct(p=>p<target.current?p+1:p), 250);
-    generateMasterReport(form, (done,total)=>{ target.current = Math.max(target.current, Math.round((done/total)*94)); })
-      .then(data=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone(data), 400); })
-      .catch(err=>{ clearInterval(pi); setPct(100); setTimeout(()=>onDone({ error: err?.message || 'Unknown error' }), 400); });
-    return ()=>{ clearInterval(mi); clearInterval(pi); };
+    generateMasterReport(form, (done,total)=>{ if(!cancelled) target.current = Math.max(target.current, Math.round((done/total)*94)); })
+      .then(data=>{ if(cancelled) return; clearInterval(pi); setPct(100); setTimeout(()=>{ if(!cancelled) onDone(data); }, 400); })
+      .catch(err=>{ if(cancelled) return; clearInterval(pi); setPct(100); setTimeout(()=>{ if(!cancelled) onDone({ error: err?.message || 'Unknown error' }); }, 400); });
+    return ()=>{ cancelled = true; clearInterval(mi); clearInterval(pi); };
   }, []);
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'calc(100vh - 68px)', padding:'64px 48px', textAlign:'center', animation:'fadeIn 0.4s ease', fontFamily:F }}>

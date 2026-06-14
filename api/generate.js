@@ -10,6 +10,7 @@
 //
 // The frontend (reportEngine.js) calls /api/generate instead of Google directly.
 
+/* global process */
 import { createClient } from "@supabase/supabase-js";
 
 // anon key — safe to keep here (same as the client uses; protected by RLS)
@@ -29,14 +30,26 @@ export default async function handler(req, res) {
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!token) return res.status(401).json({ error: "Not authenticated" });
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data: { user } = {}, error: authErr } = await supabase.auth.getUser(token);
-  if (authErr || !user) return res.status(401).json({ error: "Invalid or expired session" });
+  let user;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const result = await supabase.auth.getUser(token);
+    user = result.data?.user;
+    if (result.error || !user) {
+      return res.status(401).json({ error: "Invalid or expired session" });
+    }
+  } catch {
+    return res.status(401).json({ error: "Auth verification failed" });
+  }
 
   // 2. Validate the request body.
   const { prompt, model } = req.body || {};
   if (typeof prompt !== "string" || !prompt.trim()) {
     return res.status(400).json({ error: "Missing prompt" });
+  }
+  // Cap prompt size so a stolen token can't run up the bill with huge inputs.
+  if (prompt.length > 20000) {
+    return res.status(400).json({ error: "Prompt too long" });
   }
   if (!ALLOWED_MODELS.includes(model)) {
     return res.status(400).json({ error: "Model not allowed" });
@@ -72,7 +85,7 @@ export default async function handler(req, res) {
     res.status(r.status);
     res.setHeader("Content-Type", "application/json");
     return res.send(body);
-  } catch (e) {
+  } catch {
     return res.status(502).json({ error: "Upstream request failed" });
   }
 }

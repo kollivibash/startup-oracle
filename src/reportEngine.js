@@ -190,7 +190,6 @@ ${FORMAT_RULES}`;
 }
 
 // Runs all 6 section analyses with limited concurrency (2 workers).
-// Pro and Flash calls run in parallel across workers naturally.
 // onProgress(done, total) fires as each section completes.
 export async function generateMasterReport(form, onProgress) {
   const { data: { session } } = await supabase.auth.getSession();

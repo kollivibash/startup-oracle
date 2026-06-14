@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "./supabaseClient";
 
 const F = "'Plus Jakarta Sans', system-ui, sans-serif";
@@ -285,64 +285,6 @@ const Success = ({ isNew, onSubmitIdea, onCommunity, afterAuth }) => (
     </div>
   </div>
 );
-
-const Side = ({ mode }) => {
-  const quotes = [
-    { text:"IdeaProof told me my idea had strong market fit before I wrote a single line of code. Saved me months.", author:"Priya V., Founder" },
-    { text:"The community feedback was brutally honest and exactly what I needed. My pitch is 10× better now.", author:"Marcus T., Entrepreneur" },
-    { text:"I came here skeptical. Left with a clearer roadmap than 3 months of solo thinking gave me.", author:"Yuki T., PhD & Founder" },
-  ];
-  const [qi, setQi] = useState(0);
-  useEffect(()=>{ const t=setInterval(()=>setQi(i=>(i+1)%quotes.length),4000); return ()=>clearInterval(t); },[]);
-  const q = quotes[qi];
-  const stats = [{ n:'12,400+',l:'Ideas validated' },{ n:'4.8 / 5',l:'Avg. rating' },{ n:'3,200+',l:'Active members' }];
-
-  return (
-    <div style={{ flex:'0 0 420px', background:C.black, display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'52px 48px', minHeight:'100vh' }}>
-      <span style={{ fontWeight:800, fontSize:22, color:C.white, letterSpacing:'-0.5px' }}>ideaproof</span>
-      <div>
-        <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.35)', letterSpacing:'2px', textTransform:'uppercase', marginBottom:20 }}>
-          {mode==='signin'?'Trusted by founders':'What you get'}
-        </div>
-        {mode==='signin'?(
-          <div key={qi} style={{ animation:'fadeIn 0.5s ease forwards' }}>
-            <p style={{ fontSize:20, color:C.white, lineHeight:1.65, fontStyle:'italic', marginBottom:20 }}>"{q.text}"</p>
-            <p style={{ fontSize:13, color:'rgba(255,255,255,0.45)', fontWeight:600 }}>— {q.author}</p>
-            <div style={{ display:'flex', gap:6, marginTop:28 }}>
-              {quotes.map((_,i)=>(
-                <div key={i} style={{ width:i===qi?24:8, height:4, borderRadius:2, background:i===qi?C.white:'rgba(255,255,255,0.2)', transition:'all 0.3s' }}/>
-              ))}
-            </div>
-          </div>
-        ):(
-          <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
-            {[
-              { icon:'◈', title:'AI Validation Score', desc:'Get scored on market size, feasibility, originality, and competitive edge.' },
-              { icon:'◎', title:'Community Feedback', desc:'Real founders and investors comment, vote, and suggest improvements.' },
-              { icon:'◉', title:'Actionable Next Steps', desc:'A prioritised list of what to do next — not just analysis, but direction.' },
-            ].map(f=>(
-              <div key={f.title} style={{ display:'flex', gap:16 }}>
-                <div style={{ fontSize:20, color:C.white, marginTop:1, flexShrink:0, width:28 }}>{f.icon}</div>
-                <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:C.white, marginBottom:5 }}>{f.title}</div>
-                  <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)', lineHeight:1.6 }}>{f.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ display:'flex', gap:0, paddingTop:36, borderTop:'1px solid rgba(255,255,255,0.1)' }}>
-        {stats.map((s,i)=>(
-          <div key={s.n} style={{ flex:1, borderLeft:i>0?'1px solid rgba(255,255,255,0.1)':'none', paddingLeft:i>0?20:0 }}>
-            <div style={{ fontSize:22, fontWeight:800, color:C.white, letterSpacing:'-0.5px' }}>{s.n}</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:4, fontWeight:500 }}>{s.l}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
   const [mode, setMode]       = useState('signin');
