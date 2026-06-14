@@ -12,12 +12,18 @@ const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account']
 export default function App() {
   // Survive page reloads on the same view (e.g. stay in Community on refresh)
   const [view, setView]           = useState(() => {
-    try { const v = sessionStorage.getItem('so_view'); return PERSISTED_VIEWS.includes(v) ? v : 'oracle' } catch { return 'oracle' }
+    try {
+      if (/^#\/idea\/([\w-]+)/.test(window.location.hash)) return 'community'
+      const v = sessionStorage.getItem('so_view'); return PERSISTED_VIEWS.includes(v) ? v : 'oracle'
+    } catch { return 'oracle' }
   })
   const [afterAuth, setAfterAuth] = useState('oracle')
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [activeIdea, setActiveIdea] = useState(null)
+  const [deepPost, setDeepPost] = useState(() => {
+    try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
+  })
 
   useEffect(() => {
     try { if (PERSISTED_VIEWS.includes(view)) sessionStorage.setItem('so_view', view) } catch { /* private mode */ }
@@ -38,6 +44,9 @@ export default function App() {
       setView(dest)
     }
     const hash = window.location.hash
+    if (/^#\/idea\/([\w-]+)/.test(hash)) {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
     if (hash.includes('access_token')) {
       const p = new URLSearchParams(hash.slice(1))
       const access_token = p.get('access_token')
@@ -113,7 +122,7 @@ export default function App() {
       />
     : null
   if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} />
-  if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} />
+  if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
   if (view === 'auth')      return (
     <Auth
       onHome={() => setView('oracle')}

@@ -1,5 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, reactToPost, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, fetchConnectionState, sendConnect, respondConnection, fetchConnectionRequests, fetchConnectionCount, fetchConnections, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
+
+const REACTIONS = [
+  { type:'like', emoji:'👍', label:'Like', color:'#2563EB' },
+  { type:'celebrate', emoji:'🎉', label:'Celebrate', color:'#059669' },
+  { type:'support', emoji:'🤝', label:'Support', color:'#7c3aed' },
+  { type:'insightful', emoji:'💡', label:'Insightful', color:'#d97706' },
+  { type:'love', emoji:'❤️', label:'Love', color:'#DB2777' },
+  { type:'funny', emoji:'😄', label:'Funny', color:'#0891b2' },
+];
+const RMAP = Object.fromEntries(REACTIONS.map(r => [r.type, r]));
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f3f2ef';
@@ -60,35 +70,79 @@ const RatingScale = ({ current, onRate, avg, rc }) => {
 };
 
 // ── Suggestions panel ────────────────────────────────────────────────────────
-const Suggestions = ({ postId, me, requireAuth, onCount }) => {
+const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount }) => {
   const [items, setItems] = useState(null);
   const [txt, setTxt] = useState('');
+  const [replyTo, setReplyTo] = useState(null);
+  const [replyTxt, setReplyTxt] = useState('');
   useEffect(() => { let on = true; fetchSuggestions(postId).then(s => on && setItems(s)); return () => { on = false; }; }, [postId]);
+
+  const addLocal = (row, parentId) => setItems(p => [...(p||[]), { ...row, parent_id:parentId, likes:[], author:{ name:nameOf(me), avatar_url:me.user_metadata?.avatar_url } }]);
+
   const submit = async () => {
     if (!txt.trim() || !me) return;
+    const text = txt.trim();
     try {
-      const row = await addSuggestion(me.id, postId, txt.trim());
-      setItems(p => [...(p||[]), { ...row, author:{ name:nameOf(me), avatar_url:me.user_metadata?.avatar_url } }]);
-      onCount?.();
-      setTxt('');
+      const row = await addSuggestion(me.id, postId, text, null);
+      addLocal(row, null); onCount?.(); setTxt('');
+      createNotification({ actorId:me.id, userId:postOwnerId, type:'suggestion', postId, data:{ title:postTitle, text:text.slice(0,120) } });
     } catch { /* surfaced in console */ }
   };
+  const submitReply = async (parent) => {
+    if (!replyTxt.trim() || !me) return;
+    const text = replyTxt.trim();
+    try {
+      const row = await addSuggestion(me.id, postId, text, parent.id);
+      addLocal(row, parent.id); onCount?.(); setReplyTxt(''); setReplyTo(null);
+      createNotification({ actorId:me.id, userId:parent.user_id, type:'reply', postId, data:{ title:postTitle, text:text.slice(0,120) } });
+    } catch { /* surfaced in console */ }
+  };
+  const toggleLike = async (c) => {
+    if (!me) return requireAuth(()=>{})();
+    const had = (c.likes||[]).some(l => l.user_id === me.id);
+    setItems(p => p.map(x => x.id===c.id ? { ...x, likes: had ? (x.likes||[]).filter(l=>l.user_id!==me.id) : [...(x.likes||[]), { user_id:me.id }] } : x));
+    await likeSuggestion(me.id, c.id, !had);
+    if (!had && c.user_id !== me.id) createNotification({ actorId:me.id, userId:c.user_id, type:'comment_like', postId, data:{ text:(c.text||'').slice(0,80) } });
+  };
+
+  const tops = (items||[]).filter(c => !c.parent_id);
+  const repliesOf = id => (items||[]).filter(c => c.parent_id === id);
+
+  const renderComment = (c, isReply) => {
+    const liked = me && (c.likes||[]).some(l => l.user_id === me.id);
+    const lc = (c.likes||[]).length;
+    return (
+      <div key={c.id} style={{ display:'flex', gap:8, marginLeft:isReply?34:0 }}>
+        <Av name={c.author?.name} uid={c.user_id} url={c.author?.avatar_url} sz={isReply?28:32}/>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ background:'rgba(0,0,0,.04)', borderRadius:8, padding:'8px 12px' }}>
+            <span style={{ fontSize:13, fontWeight:700 }}>{c.author?.name || 'Founder'}</span>
+            <span style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginLeft:6 }}>{timeAgo(c.created_at)}</span>
+            <p style={{ margin:'4px 0 0', fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.8)' }}>{c.text}</p>
+          </div>
+          <div style={{ display:'flex', gap:14, padding:'4px 12px 0' }}>
+            <button onClick={()=>toggleLike(c)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, fontWeight:600, color:liked?'#2563EB':'rgba(0,0,0,.5)', fontFamily:F, padding:0 }}>👍 Like{lc?` · ${lc}`:''}</button>
+            {!isReply && <button onClick={()=>{ setReplyTo(replyTo===c.id?null:c.id); setReplyTxt(''); }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, fontWeight:600, color:'rgba(0,0,0,.5)', fontFamily:F, padding:0 }}>Reply</button>}
+          </div>
+          {replyTo === c.id && (
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:8 }}>
+              {me && <Av name={nameOf(me)} uid={me.id} url={me.user_metadata?.avatar_url} sz={26}/>}
+              <input autoFocus value={replyTxt} onChange={e=>setReplyTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply(c)} placeholder="Write a reply…"
+                style={{ flex:1, height:32, borderRadius:99, padding:'0 14px', fontSize:13, border:'1px solid rgba(0,0,0,.2)', background:'#fff', outline:'none', fontFamily:F }}/>
+              <button onClick={()=>submitReply(c)} style={{ height:32, padding:'0 12px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F }}>Reply</button>
+            </div>
+          )}
+          {repliesOf(c.id).map(r => renderComment(r, true))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="slide-down" style={{ padding:'12px 16px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', flexDirection:'column', gap:12 }}>
       {items === null && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>Loading…</div>}
       {items?.length === 0 && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>No suggestions yet. Be the first.</div>}
-      {items?.map(c=>(
-        <div key={c.id} style={{ display:'flex', gap:8 }}>
-          <Av name={c.author?.name} uid={c.user_id} url={c.author?.avatar_url} sz={32}/>
-          <div style={{ flex:1 }}>
-            <div style={{ background:'rgba(0,0,0,.04)', borderRadius:8, padding:'8px 12px' }}>
-              <span style={{ fontSize:13, fontWeight:700 }}>{c.author?.name || 'Founder'}</span>
-              <span style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginLeft:6 }}>{timeAgo(c.created_at)}</span>
-              <p style={{ margin:'4px 0 0', fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.8)' }}>{c.text}</p>
-            </div>
-          </div>
-        </div>
-      ))}
+      {tops.map(c => renderComment(c, false))}
       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
         {me && <Av name={nameOf(me)} uid={me.id} url={me.user_metadata?.avatar_url} sz={32}/>}
         <div style={{ flex:1, display:'flex', gap:8 }}>
@@ -104,23 +158,136 @@ const Suggestions = ({ postId, me, requireAuth, onCount }) => {
   );
 };
 
+// Compact preview of the original post inside a repost.
+const EmbeddedPost = ({ post, onOpen }) => {
+  if (!post) return <div style={{ margin:'8px 0', padding:'14px 16px', border:'1px solid rgba(0,0,0,.1)', borderRadius:8, fontSize:13, color:'rgba(0,0,0,.4)' }}>Original post is no longer available.</div>;
+  const a = post.author || {};
+  return (
+    <div onClick={()=>onOpen?.(post.id)} style={{ margin:'8px 0', border:'1px solid rgba(0,0,0,.12)', borderRadius:8, overflow:'hidden', cursor:'pointer' }}>
+      <div style={{ padding:'10px 14px 0', display:'flex', gap:8, alignItems:'center' }}>
+        <Av name={a.name} uid={post.user_id} url={a.avatar_url} sz={32}/>
+        <div>
+          <div style={{ fontSize:13, fontWeight:700 }}>{a.name || 'Founder'}</div>
+          <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)' }}>{timeAgo(post.created_at)}</div>
+        </div>
+      </div>
+      <div style={{ padding:'8px 14px 14px' }}>
+        {post.meta?.validated && <div style={{ display:'inline-block', marginBottom:5, fontSize:11, fontWeight:700, color:'#1d4ed8' }}>✓ Oracle-Validated{post.meta.overallScore!=null?` · ${post.meta.overallScore}/100`:''}</div>}
+        {post.title && <div style={{ fontSize:13.5, fontWeight:700, marginBottom:3 }}>{post.title}</div>}
+        {post.body && <p style={{ margin:0, fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.7)' }}>{post.body.length>180?post.body.slice(0,180)+'…':post.body}</p>}
+        {post.media?.length > 0 && <MediaGrid media={post.media}/>}
+      </div>
+    </div>
+  );
+};
+
+// Repost composer modal.
+function RepostModal({ original, me, onClose, onDone }) {
+  const [txt, setTxt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => { setBusy(true); try { await onDone(txt.trim()); onClose(); } catch { setBusy(false); } };
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:520, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Repost</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
+        </div>
+        <div style={{ padding:'14px 18px' }}>
+          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
+            <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={40}/>
+            <div style={{ fontSize:14, fontWeight:700 }}>{nameOf(me)}</div>
+          </div>
+          <textarea autoFocus value={txt} onChange={e=>setTxt(e.target.value)} rows={3} placeholder="Add your thoughts (optional)…"
+            style={{ width:'100%', border:'none', outline:'none', fontSize:15, lineHeight:1.6, resize:'none', fontFamily:F, boxSizing:'border-box' }}/>
+          <EmbeddedPost post={original}/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:busy?.6:1, fontFamily:F }}>{busy?'Reposting…':'Repost'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Post card ────────────────────────────────────────────────────────────────
 const formatSize = b => !b ? '' : b > 1048576 ? `${(b/1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b/1024))} KB`;
 
-// Renders attached photos (grid) + documents (download chips) on a post.
+// Swipeable carousel for multi-image / document-deck posts (LinkedIn-style).
+const Carousel = ({ images }) => {
+  const [i, setI] = useState(0);
+  const go = d => setI(p => (p + d + images.length) % images.length);
+  const arrow = side => ({ position:'absolute', top:'50%', [side]:8, transform:'translateY(-50%)', width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.55)', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 });
+  return (
+    <div style={{ position:'relative', borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)', background:'#000' }}>
+      <a href={images[i].url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
+        <img src={images[i].url} alt={images[i].name||''} loading="lazy" style={{ width:'100%', height:380, objectFit:'contain', display:'block', background:'#000' }}/>
+      </a>
+      <button onClick={()=>go(-1)} style={arrow('left')}>‹</button>
+      <button onClick={()=>go(1)} style={arrow('right')}>›</button>
+      <div style={{ position:'absolute', top:8, right:10, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:99 }}>{i+1} / {images.length}</div>
+      <div style={{ position:'absolute', bottom:8, left:0, right:0, display:'flex', justifyContent:'center', gap:5 }}>
+        {images.map((_,n)=><span key={n} onClick={()=>setI(n)} style={{ width:7, height:7, borderRadius:'50%', background:n===i?'#fff':'rgba(255,255,255,.45)', cursor:'pointer' }}/>)}
+      </div>
+    </div>
+  );
+};
+
+// Rich link preview card (data fetched server-side at post time).
+const LinkPreview = ({ data }) => (
+  <a href={data.url} target="_blank" rel="noopener noreferrer" style={{ display:'block', margin:'8px 0', border:'1px solid rgba(0,0,0,.14)', borderRadius:8, overflow:'hidden', textDecoration:'none', color:'inherit' }}>
+    {data.image && <img src={data.image} alt="" loading="lazy" style={{ width:'100%', maxHeight:240, objectFit:'cover', display:'block' }}/>}
+    <div style={{ padding:'10px 14px', background:'rgba(0,0,0,.02)' }}>
+      <div style={{ fontSize:11, color:'rgba(0,0,0,.45)', textTransform:'uppercase', letterSpacing:'.5px' }}>{data.site}</div>
+      <div style={{ fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', margin:'2px 0', lineHeight:1.35 }}>{data.title}</div>
+      {data.description && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.6)', lineHeight:1.45 }}>{data.description}</div>}
+    </div>
+  </a>
+);
+
+// Poll display with vote → results bars.
+const Poll = ({ post, me, onVote, requireAuth }) => {
+  const poll = post.poll || { options: [] };
+  const votes = post.pollVotes || [];
+  const myVote = me ? votes.find(v => v.user_id === me.id)?.option_idx : undefined;
+  const voted = myVote !== undefined && myVote !== null;
+  const total = votes.length;
+  return (
+    <div style={{ margin:'4px 0 8px' }}>
+      {poll.question && <div style={{ fontSize:15, fontWeight:700, marginBottom:10 }}>{poll.question}</div>}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {poll.options.map((opt,idx)=>{
+          const c = votes.filter(v=>v.option_idx===idx).length;
+          const pctv = total ? Math.round(c/total*100) : 0;
+          if (voted) return (
+            <div key={idx} style={{ position:'relative', border:'1px solid rgba(0,0,0,.12)', borderRadius:8, overflow:'hidden', padding:'10px 12px' }}>
+              <div style={{ position:'absolute', top:0, bottom:0, left:0, width:`${pctv}%`, background: idx===myVote?'rgba(37,99,235,.16)':'rgba(0,0,0,.05)' }}/>
+              <div style={{ position:'relative', display:'flex', justifyContent:'space-between', fontSize:13.5, fontWeight: idx===myVote?700:500 }}>
+                <span>{opt}{idx===myVote?' ✓':''}</span><span>{pctv}%</span>
+              </div>
+            </div>
+          );
+          return <button key={idx} onClick={requireAuth(()=>onVote(post.id, idx))} style={{ textAlign:'left', border:'1.5px solid rgba(37,99,235,.5)', borderRadius:8, padding:'10px 12px', background:'#fff', color:'#2563EB', fontWeight:600, fontSize:13.5, cursor:'pointer', fontFamily:F }}>{opt}</button>;
+        })}
+      </div>
+      <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:8 }}>{total} vote{total!==1?'s':''}{voted?' · You voted':''}</div>
+    </div>
+  );
+};
+
+// Renders attached photos (carousel for 2+, single image otherwise) + document chips.
 const MediaGrid = ({ media }) => {
   const images = media.filter(m => m.type === 'image');
   const files = media.filter(m => m.type !== 'image');
   return (
     <div style={{ margin:'6px 0 8px' }}>
-      {images.length > 0 && (
-        <div style={{ display:'grid', gridTemplateColumns: images.length === 1 ? '1fr' : '1fr 1fr', gap:4, borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)' }}>
-          {images.map((m,i)=>(
-            <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
-              <img src={m.url} alt={m.name||''} loading="lazy"
-                style={{ width:'100%', height: images.length === 1 ? 'auto' : 168, maxHeight:420, objectFit:'cover', display:'block' }}/>
-            </a>
-          ))}
+      {images.length > 1 && <Carousel images={images}/>}
+      {images.length === 1 && (
+        <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)' }}>
+          <a href={images[0].url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
+            <img src={images[0].url} alt={images[0].name||''} loading="lazy" style={{ width:'100%', height:'auto', maxHeight:420, objectFit:'cover', display:'block' }}/>
+          </a>
         </div>
       )}
       {files.map((m,i)=>(
@@ -138,28 +305,38 @@ const MediaGrid = ({ media }) => {
   );
 };
 
-function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM }) {
+function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onReact, onSave, onRepost, saved, onOpenPost, onVote }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extraSug, setExtraSug] = useState(0);
+  const [showReact, setShowReact] = useState(false);
   const author = post.author || {};
   const isSelf = me && post.user_id === me.id;
+  const isRepost = !!post.repost_of;
+  const isPoll = post.kind === 'poll' && post.poll;
+  const isArticle = post.kind === 'article';
   const ratings = post.ratings || [];
   const myR = me ? ratings.find(r=>r.user_id===me.id) : null;
   const uRating = myR ? to10(myR.value) : null;
+  const rx = post.reactions || [];
+  const myReaction = me ? rx.find(r=>r.user_id===me.id)?.type : null;
+  const rxCounts = {}; rx.forEach(r=>{ rxCounts[r.type]=(rxCounts[r.type]||0)+1; });
+  const topRx = Object.keys(rxCounts).sort((a,b)=>rxCounts[b]-rxCounts[a]).slice(0,3);
   const isF = followingIds.has(post.user_id);
   const isP = pendingIds?.has(post.user_id);
   const body = post.body || '';
   const isLong = body.length > 220;
   const shown = expanded || !isLong ? body : body.slice(0,220)+'…';
   const sugCount = (post.sugCount ?? 0) + extraSug;
+  const shareTitle = post.title || post.original?.title || 'idea';
 
   const share = () => {
-    try { navigator.clipboard.writeText(`"${post.title}" — idea on Startup Oracle: ${window.location.origin}`); setCopied(true); setTimeout(()=>setCopied(false), 1600); } catch { /* clipboard unavailable */ }
+    try { navigator.clipboard.writeText(`"${shareTitle}" — Startup Oracle: ${window.location.origin}/#/idea/${post.id}`); setCopied(true); setTimeout(()=>setCopied(false), 1600); } catch { /* clipboard unavailable */ }
   };
 
   return (
-    <div style={{ ...card, overflow:'hidden' }}>
+    <div id={`post-${post.id}`} style={{ ...card, overflow:'visible', transition:'box-shadow .3s', boxShadow: highlight ? '0 0 0 2px #2563EB' : card.boxShadow }}>
+      {isRepost && <div style={{ padding:'8px 16px 0', fontSize:12, color:'rgba(0,0,0,.5)', fontWeight:600 }}>🔁 {isSelf?'You':author.name||'Founder'} reposted</div>}
       <div style={{ padding:'12px 16px 0', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
         <div style={{ display:'flex', gap:8 }}>
           <Av name={author.name} uid={post.user_id} url={author.avatar_url} sz={48} onClick={()=>onProfile(post.user_id)}/>
@@ -173,38 +350,84 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
           </div>
         </div>
         {isSelf && onDelete && (
-          <button onClick={()=>onDelete(post)} title="Delete idea" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
+          <button onClick={()=>onDelete(post)} title="Delete" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
         )}
       </div>
 
       <div style={{ padding:'10px 16px 0' }}>
-        <div style={{ fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', marginBottom:4, lineHeight:1.4 }}>{post.title}</div>
-        {body && <p style={{ margin:0, fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
-        {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
-        {post.media?.length > 0 && <MediaGrid media={post.media}/>}
-        {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'10px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
+        {isRepost ? (
+          <>
+            {body && <p style={{ margin:'0 0 4px', fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
+            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+            <EmbeddedPost post={post.original} onOpen={onOpenPost}/>
+          </>
+        ) : isPoll ? (
+          <>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginBottom:8, padding:'3px 10px', borderRadius:99, background:'rgba(0,0,0,.05)' }}>
+              <span style={{ fontSize:11, fontWeight:700, color:'rgba(0,0,0,.6)' }}>📊 Poll</span>
+            </div>
+            <Poll post={post} me={me} onVote={onVote} requireAuth={requireAuth}/>
+            {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'4px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
+          </>
+        ) : (
+          <>
+            {isArticle && <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginBottom:6, padding:'3px 10px', borderRadius:99, background:'rgba(0,0,0,.05)' }}><span style={{ fontSize:11, fontWeight:700, color:'rgba(0,0,0,.6)' }}>📄 Article</span></div>}
+            {post.meta?.validated && (
+              <div style={{ display:'inline-flex', alignItems:'center', gap:6, marginBottom:6, padding:'3px 10px', borderRadius:99, background:'rgba(37,99,235,.08)', border:'1px solid rgba(37,99,235,.25)' }}>
+                <span style={{ fontSize:11, fontWeight:700, color:'#1d4ed8' }}>✓ Oracle-Validated{post.meta.overallScore!=null?` · ${post.meta.overallScore}/100`:''}</span>
+                {post.meta.badge && <span style={{ fontSize:11, color:'#1d4ed8', opacity:.8 }}>{post.meta.badge}</span>}
+              </div>
+            )}
+            {isArticle && post.media?.length > 0 && <MediaGrid media={post.media}/>}
+            <div style={{ fontSize: isArticle?20:14, fontWeight: isArticle?800:700, color:'rgba(0,0,0,.9)', margin: isArticle?'6px 0 6px':'0 0 4px', lineHeight:1.3 }}>{post.title}</div>
+            {body && <p style={{ margin:0, fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
+            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+            {post.link_preview && <LinkPreview data={post.link_preview}/>}
+            {!isArticle && post.media?.length > 0 && <MediaGrid media={post.media}/>}
+            {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'10px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
+          </>
+        )}
       </div>
 
-      <div style={{ padding:'4px 16px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(0,0,0,.08)' }}>
-        <span style={{ fontSize:12, color:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', gap:4 }}>
-          <span style={{ background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:'50%', width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9 }}>★</span>
-          {ratings.length ? <>avg <b style={{ color:'rgba(0,0,0,.7)' }}>{avg10(ratings).toFixed(1)}</b>/10 · {ratings.length} rating{ratings.length!==1?'s':''}</> : 'no ratings yet'}
+      <div style={{ padding:'8px 16px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(0,0,0,.08)' }}>
+        <span style={{ fontSize:12, color:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          {rx.length > 0 && <span style={{ display:'inline-flex', alignItems:'center', gap:1 }}>{topRx.map(t=><span key={t} style={{ fontSize:13 }}>{RMAP[t].emoji}</span>)}<span style={{ marginLeft:3 }}>{rx.length}</span></span>}
+          {!isRepost && ratings.length > 0 && <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+            <span style={{ background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:'50%', width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9 }}>★</span>
+            avg <b style={{ color:'rgba(0,0,0,.7)' }}>{avg10(ratings).toFixed(1)}</b>/10
+          </span>}
+          {rx.length === 0 && (isRepost || ratings.length === 0) && <span>No reactions yet</span>}
         </span>
         <span style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>{sugCount} suggestion{sugCount!==1?'s':''}</span>
       </div>
 
       <div style={{ display:'flex', padding:'4px 4px' }}>
-        <button className={'act-btn'+(uRating?' rated':'')} onClick={isSelf?undefined:requireAuth(onTR)} style={isSelf?{opacity:.35,cursor:'default'}:undefined} title={isSelf?"You can't rate your own idea":''}>
-          ★ {uRating?`Rated ${uRating}`:'Rate'}
-        </button>
+        <div style={{ position:'relative', flex:1, display:'flex' }} onMouseEnter={()=>setShowReact(true)} onMouseLeave={()=>setShowReact(false)}>
+          <button className="act-btn" onClick={requireAuth(()=>onReact(post.id, myReaction || 'like'))} style={myReaction?{color:RMAP[myReaction].color}:undefined}>
+            {myReaction ? `${RMAP[myReaction].emoji} ${RMAP[myReaction].label}` : '👍 React'}
+          </button>
+          {showReact && (
+            <div style={{ position:'absolute', bottom:'calc(100% + 6px)', left:0, display:'flex', gap:2, background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:99, padding:'5px 8px', boxShadow:'0 8px 24px rgba(0,0,0,.18)', zIndex:60 }}>
+              {REACTIONS.map(r=>(
+                <button key={r.type} title={r.label} onClick={requireAuth(()=>{ setShowReact(false); onReact(post.id, r.type); })}
+                  style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, lineHeight:1, padding:'2px 3px', transition:'transform .1s' }}
+                  onMouseEnter={e=>e.currentTarget.style.transform='scale(1.35)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>{r.emoji}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        {!isSelf && !isRepost && !isPoll && (
+          <button className={'act-btn'+(uRating?' rated':'')} onClick={requireAuth(onTR)}>★ {uRating?`Rated ${uRating}`:'Rate'}</button>
+        )}
         <button className="act-btn" onClick={onTC}>💬 Suggest</button>
-        {!isSelf && <button className="act-btn" onClick={requireAuth(()=>onFollow(post.user_id))}>👤 {isF?'Following':isP?'Requested':'Follow'}</button>}
+        <button className="act-btn" onClick={requireAuth(()=>onRepost(post.original || post))}>🔁 Repost</button>
+        <button className={'act-btn'+(saved?' rated':'')} onClick={requireAuth(()=>onSave(post.id))}>{saved?'🔖 Saved':'🔖 Save'}</button>
         {!isSelf && onDM && <button className="act-btn" onClick={requireAuth(()=>onDM({ id:post.user_id, name:author.name, avatar_url:author.avatar_url }))}>✉ DM</button>}
         <button className="act-btn" onClick={share}>{copied?'✓ Copied':'↗ Share'}</button>
       </div>
 
-      {rOpen && !isSelf && <RatingScale current={uRating} avg={avg10(ratings)} rc={ratings.length} onRate={n=>onRate(post.id, n)}/>}
-      {cOpen && <Suggestions postId={post.id} me={me} requireAuth={requireAuth} onCount={()=>setExtraSug(n=>n+1)}/>}
+      {rOpen && !isSelf && !isRepost && !isPoll && <RatingScale current={uRating} avg={avg10(ratings)} rc={ratings.length} onRate={n=>onRate(post.id, n)}/>}
+      {cOpen && <Suggestions postId={post.id} postOwnerId={post.user_id} postTitle={shareTitle} me={me} requireAuth={requireAuth} onCount={()=>setExtraSug(n=>n+1)}/>}
     </div>
   );
 }
@@ -213,8 +436,14 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
 const DOC_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.md';
 const MAX_FILE = 25 * 1024 * 1024; // 25 MB
 
+const URL_RE = /(https?:\/\/[^\s]+)/i;
+
 function ComposerModal({ me, onClose, onPosted }) {
+  const [mode, setMode] = useState('post'); // post | poll | article
   const [body, setBody] = useState('');
+  const [artTitle, setArtTitle] = useState('');
+  const [pollQ, setPollQ] = useState('');
+  const [pollOpts, setPollOpts] = useState(['', '']);
   const [tags, setTags] = useState('');
   const [files, setFiles] = useState([]); // { file, type, name, size, preview }
   const [busy, setBusy] = useState(false);
@@ -232,25 +461,50 @@ function ComposerModal({ me, onClose, onPosted }) {
     const mapped = picked.map(file => ({ file, type, name: file.name, size: file.size, preview: type === 'image' ? URL.createObjectURL(file) : null }));
     setFiles(p => [...p, ...mapped].slice(0, 8));
   };
-
   const removeFile = i => setFiles(p => p.filter((_, n) => n !== i));
+  const setOpt = (i, v) => setPollOpts(p => p.map((o, n) => n === i ? v : o));
+
+  const canPost = mode === 'poll'
+    ? (pollQ.trim() && pollOpts.filter(o => o.trim()).length >= 2)
+    : mode === 'article'
+      ? (artTitle.trim() && body.trim())
+      : (body.trim() || files.length > 0);
 
   const submit = async () => {
-    if ((!body.trim() && files.length === 0) || !me) return;
+    if (!canPost || !me) return;
     setBusy(true); setErr('');
     try {
+      const tagArr = tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
+      const author = { id: me.id, name: nameOf(me), avatar_url: me.user_metadata?.avatar_url };
+      const baseNew = { author, ratings: [], reactions: [], pollVotes: [], sugCount: 0, tags: tagArr };
+
+      if (mode === 'poll') {
+        const options = pollOpts.map(o => o.trim()).filter(Boolean).slice(0, 4);
+        const poll = { question: pollQ.trim(), options };
+        const title = pollQ.trim().slice(0, 80);
+        const row = await createPost(me.id, { title, body: '', tags: tagArr, media: [], kind: 'poll', poll });
+        onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: '', media: [], kind: 'poll', poll, ...baseNew });
+        return onClose();
+      }
+
       const media = [];
       for (const f of files) {
         const url = await uploadPostFile(me.id, f.file);
         media.push({ url, type: f.type, name: f.name, size: f.size });
       }
-      const lines = body.trim();
-      const title = (lines.split('\n')[0].trim().slice(0, 80)) || 'New Idea';
-      const rest = lines.split('\n').slice(1).join('\n').trim();
-      const tagArr = tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
-      const row = await createPost(me.id, { title, body: rest, tags: tagArr, media });
-      onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: rest, tags: tagArr, media,
-        author: { id: me.id, name: nameOf(me), avatar_url: me.user_metadata?.avatar_url }, ratings: [], sugCount: 0 });
+
+      let title, bodyText;
+      if (mode === 'article') { title = artTitle.trim().slice(0, 120); bodyText = body.trim(); }
+      else { const lines = body.trim(); title = (lines.split('\n')[0].trim().slice(0, 80)) || 'New Idea'; bodyText = lines.split('\n').slice(1).join('\n').trim(); }
+
+      // Link preview: unfurl the first URL when there's no image attached.
+      let link_preview = null;
+      const m = body.match(URL_RE);
+      if (m && !media.some(x => x.type === 'image')) link_preview = await unfurlLink(m[1]);
+
+      const kind = mode === 'article' ? 'article' : 'post';
+      const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind, link_preview });
+      onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: bodyText, media, kind, link_preview, ...baseNew });
       onClose();
     } catch (e) {
       setErr(e?.message || 'Could not post. Please try again.');
@@ -259,29 +513,53 @@ function ComposerModal({ me, onClose, onPosted }) {
   };
 
   const toolBtn = { display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:6, border:'none', background:'transparent', color:'rgba(0,0,0,.65)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F };
+  const fin = { width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, fontFamily:F, outline:'none', boxSizing:'border-box' };
+  const modeChip = active => ({ padding:'6px 12px', borderRadius:99, border:'1px solid', borderColor: active?'rgba(0,0,0,.9)':'rgba(0,0,0,.15)', background: active?'rgba(0,0,0,.9)':'transparent', color: active?'#fff':'rgba(0,0,0,.6)', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F });
 
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:350, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
       <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:560, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
         <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span style={{ fontSize:16, fontWeight:700 }}>Share an idea</span>
+          <span style={{ fontSize:16, fontWeight:700 }}>Create</span>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
         </div>
 
-        <div style={{ padding:'14px 18px', display:'flex', gap:10, alignItems:'center' }}>
+        <div style={{ padding:'14px 18px 6px', display:'flex', gap:10, alignItems:'center' }}>
           <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={44}/>
-          <div>
+          <div style={{ flex:1 }}>
             <div style={{ fontSize:14, fontWeight:700 }}>{nameOf(me)}</div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>Posting to the community feed</div>
           </div>
         </div>
 
-        <div style={{ padding:'0 18px' }}>
-          <textarea autoFocus value={body} onChange={e=>setBody(e.target.value)} rows={5}
-            placeholder={"Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
-            style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, fontFamily:F, resize:'none', boxSizing:'border-box' }}/>
+        <div style={{ display:'flex', gap:8, padding:'4px 18px 10px' }}>
+          {[['post','✎ Post'],['poll','📊 Poll'],['article','📄 Article']].map(([k,l])=>(
+            <button key={k} onClick={()=>{ setMode(k); setErr(''); }} style={modeChip(mode===k)}>{l}</button>
+          ))}
+        </div>
 
-          {files.length > 0 && (
+        <div style={{ padding:'0 18px' }}>
+          {mode === 'poll' ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <input autoFocus value={pollQ} onChange={e=>setPollQ(e.target.value)} placeholder="Ask a question…" style={fin}/>
+              {pollOpts.map((o,i)=>(
+                <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <input value={o} onChange={e=>setOpt(i, e.target.value)} placeholder={`Option ${i+1}`} style={{ ...fin, flex:1 }}/>
+                  {pollOpts.length > 2 && <button onClick={()=>setPollOpts(p=>p.filter((_,n)=>n!==i))} style={{ background:'none', border:'none', color:'#DC2626', fontSize:14, cursor:'pointer' }}>✕</button>}
+                </div>
+              ))}
+              {pollOpts.length < 4 && <button onClick={()=>setPollOpts(p=>[...p,''])} style={{ alignSelf:'flex-start', background:'none', border:'none', color:'#2563EB', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:F }}>+ Add option</button>}
+            </div>
+          ) : (
+            <>
+              {mode === 'article' && <input autoFocus value={artTitle} onChange={e=>setArtTitle(e.target.value)} placeholder="Article title" style={{ ...fin, fontSize:18, fontWeight:700, border:'none', padding:'0 0 6px' }}/>}
+              <textarea autoFocus={mode!=='article'} value={body} onChange={e=>setBody(e.target.value)} rows={mode==='article'?7:5}
+                placeholder={mode==='article' ? "Write your article…" : "Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
+                style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, fontFamily:F, resize:'none', boxSizing:'border-box' }}/>
+            </>
+          )}
+
+          {mode !== 'poll' && files.length > 0 && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, margin:'10px 0' }}>
               {files.map((f,i)=>(
                 <div key={i} style={{ position:'relative', width: f.type==='image'?80:'100%', border:'1px solid rgba(0,0,0,.12)', borderRadius:8, overflow:'hidden', background:'rgba(0,0,0,.02)' }}>
@@ -302,22 +580,56 @@ function ComposerModal({ me, onClose, onPosted }) {
           )}
 
           <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…"
-            style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', margin:'10px 0', fontFamily:F, boxSizing:'border-box' }}/>
-          {err && <div style={{ fontSize:12.5, color:'#DC2626', marginBottom:8 }}>{err}</div>}
+            style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', margin:'12px 0 0', fontFamily:F, boxSizing:'border-box' }}/>
+          {err && <div style={{ fontSize:12.5, color:'#DC2626', marginTop:8 }}>{err}</div>}
         </div>
 
         <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={e=>{ addFiles(e.target.files,'image'); e.target.value=''; }}/>
         <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addFiles(e.target.files,'file'); e.target.value=''; }}/>
 
-        <div style={{ display:'flex', alignItems:'center', gap:4, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
-          <button onClick={()=>imgInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>🖼 Photo</button>
-          <button onClick={()=>docInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>📎 Document</button>
+        <div style={{ display:'flex', alignItems:'center', gap:4, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)', marginTop:14 }}>
+          {mode !== 'poll' && <>
+            <button onClick={()=>imgInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>🖼 {mode==='article'?'Cover':'Photo'}</button>
+            <button onClick={()=>docInput.current?.click()} style={toolBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>📎 Document</button>
+          </>}
           <div style={{ flex:1 }}/>
           <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F, marginRight:4 }}>Cancel</button>
-          <button onClick={submit} disabled={busy || (!body.trim() && files.length===0)}
-            style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:(body.trim()||files.length)&&!busy?1:.5, fontFamily:F }}>
+          <button onClick={submit} disabled={busy || !canPost}
+            style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:(canPost&&!busy)?1:.5, fontFamily:F }}>
             {busy ? 'Posting…' : 'Post'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Connect request modal (LinkedIn-style note) ──────────────────────────────
+function ConnectModal({ target, onClose, onSend }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => { setBusy(true); try { await onSend(note.trim()); onClose(); } catch { setBusy(false); } };
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'60px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:460, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Connect with {target.name || 'this founder'}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
+        </div>
+        <div style={{ padding:'16px 18px' }}>
+          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+            <Av name={target.name} uid={target.id} url={target.avatar_url} sz={44}/>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>{target.name || 'Founder'}</div>
+              <div style={{ fontSize:12.5, color:'rgba(0,0,0,.55)' }}>{headlineOf(target)}</div>
+            </div>
+          </div>
+          <textarea autoFocus value={note} onChange={e=>setNote(e.target.value)} rows={3} maxLength={300} placeholder="Add a note (optional) — say why you'd like to connect."
+            style={{ width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, lineHeight:1.6, resize:'vertical', fontFamily:F, outline:'none', boxSizing:'border-box' }}/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{ padding:'8px 24px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:busy?.6:1, fontFamily:F }}>{busy?'Sending…':'Send request'}</button>
         </div>
       </div>
     </div>
@@ -516,8 +828,10 @@ function useStartupNews() {
   return news;
 }
 
-function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth }) {
+function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth, connState, onConnect }) {
   const news = useStartupNews();
+  const [pymk, setPymk] = useState([]);
+  useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPymk(p)); return () => { on = false; }; }, [me]);
   const founders = useMemo(() => {
     const seen = new Set();
     const out = [];
@@ -529,6 +843,7 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
     }
     return out;
   }, [posts, me]);
+  const pymkList = (pymk || []).filter(p => !connState?.accepted?.has(p.id) && !connState?.outgoing?.has(p.id) && !connState?.incoming?.has(p.id)).slice(0, 4);
 
   return (
     <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
@@ -559,6 +874,21 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
           </div>
         ))}
       </div>
+      {me && pymkList.length > 0 && (
+        <div style={{ ...card, padding:'12px 16px' }}>
+          <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>People you may know</div>
+          {pymkList.map(f=>(
+            <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'flex-start' }}>
+              <Av name={f.name} uid={f.id} url={f.avatar_url} sz={40} onClick={()=>onProfile(f.id)}/>
+              <div style={{ flex:1, minWidth:0 }}>
+                <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
+                <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4, marginBottom:6 }}>{headlineOf(f)}</div>
+                <button onClick={requireAuth(()=>onConnect({ id:f.id, name:f.name, avatar_url:f.avatar_url, bio:f.bio }))} style={{ padding:'4px 16px', borderRadius:99, border:'1.5px solid #2563EB', fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:'#2563EB', fontFamily:F }}>🤝 Connect</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -568,7 +898,8 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
   const [people, setPeople] = useState(null);
   useEffect(() => {
     let on = true;
-    fetchFollowList(uid, type).then(p => on && setPeople(p));
+    const fetcher = type === 'connections' ? fetchConnections(uid) : fetchFollowList(uid, type);
+    fetcher.then(p => on && setPeople(p));
     return () => { on = false; };
   }, [uid, type]);
 
@@ -583,7 +914,7 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
           {people === null && <div style={{ padding:'24px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>}
           {people?.length === 0 && (
             <div style={{ padding:'30px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>
-              {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+              {type === 'followers' ? 'No followers yet.' : type === 'connections' ? 'No connections yet.' : 'Not following anyone yet.'}
             </div>
           )}
           {people?.map((u,i)=>(
@@ -607,21 +938,147 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
   );
 }
 
+// ── Edit profile modal ───────────────────────────────────────────────────────
+function EditProfileModal({ me, prof, onClose, onSaved }) {
+  const [name, setName] = useState(nameOf(me));
+  const [bio, setBio] = useState(prof?.bio || '');
+  const [about, setAbout] = useState(prof?.about || '');
+  const [location, setLocation] = useState(prof?.location || '');
+  const [skills, setSkills] = useState((prof?.skills || []).join(', '));
+  const [experience, setExperience] = useState(prof?.experience?.length ? prof.experience : []);
+  const [education, setEducation] = useState(prof?.education?.length ? prof.education : []);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [bannerFile, setBannerFile] = useState(null);
+  const [avatarPrev, setAvatarPrev] = useState(me?.user_metadata?.avatar_url || null);
+  const [bannerPrev, setBannerPrev] = useState(prof?.banner_url || null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const avInput = useRef(null);
+  const bnInput = useRef(null);
+
+  const setExp = (i, k, v) => setExperience(p => p.map((e,n)=>n===i?{...e,[k]:v}:e));
+  const setEdu = (i, k, v) => setEducation(p => p.map((e,n)=>n===i?{...e,[k]:v}:e));
+
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const fields = {
+        name: name.trim() || nameOf(me),
+        bio: bio.trim(),
+        about: about.trim(),
+        location: location.trim(),
+        skills: skills.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20),
+        experience: experience.filter(e=>e.title||e.company),
+        education: education.filter(e=>e.school||e.degree),
+      };
+      const authMeta = { full_name: fields.name };
+      if (avatarFile) { const url = await uploadProfileImage(me.id, avatarFile, 'avatar'); fields.avatar_url = url; authMeta.avatar_url = url; }
+      if (bannerFile) fields.banner_url = await uploadProfileImage(me.id, bannerFile, 'banner');
+      await updateProfile(me.id, fields);
+      await syncAuthMeta(authMeta);
+      onSaved(fields);
+      onClose();
+    } catch (e) { setErr(e?.message || 'Could not save. Try again.'); setBusy(false); }
+  };
+
+  const inp = { width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'9px 12px', fontSize:14, fontFamily:F, outline:'none', boxSizing:'border-box', background:'#fff' };
+  const lbl = { fontSize:12, fontWeight:700, color:'rgba(0,0,0,.65)', marginBottom:5, display:'block' };
+  const addBtn = { background:'none', border:'none', color:'#2563EB', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:F };
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:560, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Edit profile</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
+        </div>
+
+        <div style={{ position:'relative' }}>
+          <div onClick={()=>bnInput.current?.click()} style={{ height:120, cursor:'pointer', background: bannerPrev?`center/cover no-repeat url(${bannerPrev})`:coverOf(me?.id||'me') }}/>
+          <div style={{ position:'absolute', top:8, right:10, fontSize:11, fontWeight:600, color:'#fff', background:'rgba(0,0,0,.4)', padding:'4px 10px', borderRadius:99, pointerEvents:'none' }}>📷 Banner</div>
+          <div onClick={()=>avInput.current?.click()} style={{ position:'absolute', left:18, top:78, cursor:'pointer' }}>
+            <Av name={name} uid={me?.id||'me'} url={avatarPrev} sz={72} border/>
+            <div style={{ position:'absolute', bottom:0, right:0, background:'rgba(0,0,0,.9)', color:'#fff', width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>✎</div>
+          </div>
+        </div>
+        <input ref={avInput} type="file" accept="image/*" hidden onChange={e=>{ const f=e.target.files[0]; if(f){ setAvatarFile(f); setAvatarPrev(URL.createObjectURL(f)); } e.target.value=''; }}/>
+        <input ref={bnInput} type="file" accept="image/*" hidden onChange={e=>{ const f=e.target.files[0]; if(f){ setBannerFile(f); setBannerPrev(URL.createObjectURL(f)); } e.target.value=''; }}/>
+
+        <div style={{ padding:'40px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div><label style={lbl}>Name</label><input value={name} onChange={e=>setName(e.target.value)} style={inp}/></div>
+          <div><label style={lbl}>Headline</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="e.g. Founder · Building X for Y" style={inp}/></div>
+          <div><label style={lbl}>Location</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Hyderabad, India" style={inp}/></div>
+          <div><label style={lbl}>About</label><textarea value={about} onChange={e=>setAbout(e.target.value)} rows={4} placeholder="Tell founders about yourself, what you're building, and what you're looking for." style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/></div>
+          <div><label style={lbl}>Skills (comma-separated)</label><input value={skills} onChange={e=>setSkills(e.target.value)} placeholder="Product, Growth, Fundraising" style={inp}/></div>
+
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:14, fontWeight:700 }}>Experience</span>
+              <button onClick={()=>setExperience(p=>[...p,{title:'',company:'',period:'',desc:''}])} style={addBtn}>+ Add</button>
+            </div>
+            {experience.map((e,i)=>(
+              <div key={i} style={{ border:'1px solid rgba(0,0,0,.1)', borderRadius:8, padding:10, marginTop:8, display:'flex', flexDirection:'column', gap:8 }}>
+                <input value={e.title||''} onChange={ev=>setExp(i,'title',ev.target.value)} placeholder="Title (e.g. Founder)" style={inp}/>
+                <input value={e.company||''} onChange={ev=>setExp(i,'company',ev.target.value)} placeholder="Company" style={inp}/>
+                <input value={e.period||''} onChange={ev=>setExp(i,'period',ev.target.value)} placeholder="Period (e.g. 2023 – Present)" style={inp}/>
+                <textarea value={e.desc||''} onChange={ev=>setExp(i,'desc',ev.target.value)} rows={2} placeholder="What you did (optional)" style={{ ...inp, resize:'vertical' }}/>
+                <button onClick={()=>setExperience(p=>p.filter((_,n)=>n!==i))} style={{ alignSelf:'flex-start', background:'none', border:'none', color:'#DC2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F }}>Remove</button>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:14, fontWeight:700 }}>Education</span>
+              <button onClick={()=>setEducation(p=>[...p,{school:'',degree:'',period:''}])} style={addBtn}>+ Add</button>
+            </div>
+            {education.map((e,i)=>(
+              <div key={i} style={{ border:'1px solid rgba(0,0,0,.1)', borderRadius:8, padding:10, marginTop:8, display:'flex', flexDirection:'column', gap:8 }}>
+                <input value={e.school||''} onChange={ev=>setEdu(i,'school',ev.target.value)} placeholder="School / University" style={inp}/>
+                <input value={e.degree||''} onChange={ev=>setEdu(i,'degree',ev.target.value)} placeholder="Degree & field" style={inp}/>
+                <input value={e.period||''} onChange={ev=>setEdu(i,'period',ev.target.value)} placeholder="Period (e.g. 2018 – 2022)" style={inp}/>
+                <button onClick={()=>setEducation(p=>p.filter((_,n)=>n!==i))} style={{ alignSelf:'flex-start', background:'none', border:'none', color:'#DC2626', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F }}>Remove</button>
+              </div>
+            ))}
+          </div>
+
+          {err && <div style={{ fontSize:12.5, color:'#DC2626' }}>{err}</div>}
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
+          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ padding:'8px 24px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:busy?.6:1, fontFamily:F }}>{busy?'Saving…':'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete }) {
+function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onReact, onSave, onRepost, onOpenPost, savedIds, connState, onConnect, onRespondConn, onVote }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
+  const [connCount, setConnCount] = useState(0);
+  const [viewers, setViewers] = useState(null); // { count, viewers } — self only
   const [tab, setTab] = useState('ideas');
   const [received, setReceived] = useState(null);
   const [requests, setRequests] = useState(null);
-  const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following'
+  const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following' | 'connections'
+  const [editing, setEditing] = useState(false);
+  const linkBtn = { background:'none', border:'none', color:'#2563EB', fontWeight:600, fontSize:13.5, cursor:'pointer', fontFamily:F, padding:0 };
 
   useEffect(() => {
     let on = true;
     fetchProfile(uid).then(p => on && setProf(p));
     fetchFollowCounts(uid).then(c => on && setCounts(c));
-    if (me && uid === me.id) fetchFollowRequests(uid).then(r => on && setRequests(r));
+    fetchConnectionCount(uid).then(c => on && setConnCount(c));
+    if (me && uid === me.id) {
+      fetchFollowRequests(uid).then(r => on && setRequests(r));
+      fetchProfileViewers(uid).then(v => on && setViewers(v));
+    } else if (me) {
+      recordProfileView(me.id, uid);
+    }
     return () => { on = false; };
   }, [uid, me]);
   useEffect(() => {
@@ -635,6 +1092,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
     setRequests(prev => (prev||[]).filter(p => p.id !== followerId));
     if (accept) setCounts(c => ({ ...c, followers: c.followers + 1 }));
     await respondFollowRequest(me.id, followerId, accept);
+    if (accept) createNotification({ actorId:me.id, userId:followerId, type:'follow_accept' });
   };
 
   const fps = posts.filter(p=>p.user_id===uid);
@@ -643,6 +1101,12 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
   const isF = followingIds.has(uid);
   const isP = pendingIds?.has(uid);
   const reqCount = requests?.length || 0;
+  const filled = [avatar, prof?.banner_url, prof?.bio, prof?.about, prof?.location, prof?.skills?.length, prof?.experience?.length, prof?.education?.length].filter(Boolean).length;
+  const pct = Math.round((filled / 8) * 100);
+  const isConnected = connState?.accepted?.has(uid);
+  const connPending = connState?.outgoing?.has(uid);
+  const connIncoming = connState?.incoming?.has(uid);
+  const pill = { padding:'8px 18px', borderRadius:99, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F };
 
   const tabs = isSelf
     ? [['ideas','My Ideas'],['ratings','Ratings Received'],['requests', reqCount ? `Requests (${reqCount})` : 'Requests']]
@@ -651,7 +1115,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
   return (
     <div key={uid} className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
       <div style={{ ...card, overflow:'hidden' }}>
-        <div style={{ height:140, background:coverOf(uid), position:'relative' }}>
+        <div style={{ height:140, background: prof?.banner_url ? `center/cover no-repeat url(${prof.banner_url})` : coverOf(uid), position:'relative' }}>
           <button onClick={onBack} style={{ position:'absolute', top:12, left:12, padding:'6px 14px', borderRadius:99, background:'rgba(0,0,0,.35)', backdropFilter:'blur(10px)', color:'#fff', border:'none', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>← Back</button>
         </div>
         <div style={{ padding:'0 24px 20px', position:'relative' }}>
@@ -664,14 +1128,24 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
               <div style={{ fontSize:14, color:'rgba(0,0,0,.6)', marginTop:2 }}>{headlineOf(prof)}</div>
             </div>
             {!isSelf && (
-              <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                <button onClick={requireAuth(()=>onFollow(uid))} style={{ padding:'8px 20px', borderRadius:99, border:`1.5px solid ${isP?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:14, fontWeight:700, cursor:'pointer', background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':isP?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F }}>{isF?'Following':isP?'Requested':'Follow'}</button>
-                <button onClick={requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar }))} style={{ padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.25)', fontSize:14, fontWeight:600, cursor:'pointer', background:'transparent', color:'rgba(0,0,0,.7)', fontFamily:F }}>Message</button>
+              <div style={{ display:'flex', gap:8, marginTop:8, flexWrap:'wrap' }}>
+                {isConnected
+                  ? <button disabled style={{ ...pill, background:'rgba(0,0,0,.06)', color:'rgba(0,0,0,.6)', border:'1.5px solid rgba(0,0,0,.12)', cursor:'default' }}>✓ Connected</button>
+                  : connIncoming
+                    ? <button onClick={()=>onRespondConn(uid, true)} style={{ ...pill, background:'#2563EB', color:'#fff', border:'none' }}>Accept connection</button>
+                    : connPending
+                      ? <button disabled style={{ ...pill, background:'transparent', color:'rgba(0,0,0,.45)', border:'1.5px solid rgba(0,0,0,.2)', cursor:'default' }}>Pending</button>
+                      : <button onClick={requireAuth(()=>onConnect({ id:uid, name, avatar_url:avatar, bio:prof?.bio }))} style={{ ...pill, background:'#2563EB', color:'#fff', border:'none' }}>🤝 Connect</button>}
+                <button onClick={requireAuth(()=>onFollow(uid))} style={{ ...pill, border:`1.5px solid ${isP?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':isP?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)' }}>{isF?'Following':isP?'Requested':'Follow'}</button>
+                <button onClick={requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar }))} style={{ ...pill, fontWeight:600, border:'1.5px solid rgba(0,0,0,.25)', background:'transparent', color:'rgba(0,0,0,.7)' }}>Message</button>
               </div>
+            )}
+            {isSelf && (
+              <button onClick={()=>setEditing(true)} style={{ marginTop:8, padding:'8px 20px', borderRadius:99, border:'1.5px solid rgba(0,0,0,.25)', fontSize:14, fontWeight:600, cursor:'pointer', background:'transparent', color:'rgba(0,0,0,.8)', fontFamily:F }}>✎ Edit profile</button>
             )}
           </div>
           <div style={{ display:'flex', gap:24, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            {[['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
+            {[['Connections', connCount, 'connections'],['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
               <div key={l} onClick={modal ? ()=>setPeopleModal(modal) : undefined}
                 style={{ cursor: modal ? 'pointer' : 'default', borderRadius:6, padding:'2px 6px', margin:'-2px -6px', transition:'background .12s' }}
                 onMouseEnter={e=>{ if(modal) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
@@ -695,9 +1169,93 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
       </div>
 
       {(!isSelf || tab === 'ideas') && (
-        fps.length === 0
+        <>
+          {isSelf && viewers && (
+            <div style={{ ...card, padding:'14px 18px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: viewers.count?10:0 }}>
+                <span style={{ fontSize:13, fontWeight:700 }}>👁 Who viewed your profile</span>
+                <span style={{ fontSize:13, fontWeight:800 }}>{viewers.count}</span>
+              </div>
+              {viewers.count > 0
+                ? <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {viewers.viewers.slice(0,8).map(v=>(
+                      <div key={v.id} onClick={()=>onProfile(v.id)} title={v.name||'Founder'} style={{ cursor:'pointer' }}>
+                        <Av name={v.name} uid={v.id} url={v.avatar_url} sz={36}/>
+                      </div>
+                    ))}
+                  </div>
+                : <div style={{ fontSize:12.5, color:'rgba(0,0,0,.45)' }}>No profile views yet.</div>}
+            </div>
+          )}
+          {isSelf && pct < 100 && (
+            <div style={{ ...card, padding:'14px 18px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontSize:13, fontWeight:700 }}>Profile strength</span>
+                <span style={{ fontSize:13, fontWeight:700, color: pct>=80?'#059669':'#d97706' }}>{pct}%</span>
+              </div>
+              <div style={{ height:6, borderRadius:99, background:'rgba(0,0,0,.08)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${pct}%`, background: pct>=80?'#059669':'#2563EB', transition:'width .3s' }}/>
+              </div>
+              <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', marginTop:8 }}>Complete your profile to build trust with other founders. <button onClick={()=>setEditing(true)} style={{ ...linkBtn, fontSize:12 }}>Edit profile</button></div>
+            </div>
+          )}
+
+          {(prof?.about || prof?.location || prof?.skills?.length || isSelf) && (
+            <div style={{ ...card, padding:'16px 18px' }}>
+              <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>About</div>
+              {prof?.about
+                ? <p style={{ margin:0, fontSize:14, lineHeight:1.65, color:'rgba(0,0,0,.78)', whiteSpace:'pre-line' }}>{prof.about}</p>
+                : isSelf && <button onClick={()=>setEditing(true)} style={linkBtn}>+ Add an About section</button>}
+              {prof?.location && <div style={{ fontSize:13, color:'rgba(0,0,0,.5)', marginTop:10 }}>📍 {prof.location}</div>}
+              {prof?.skills?.length > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:12 }}>
+                  {prof.skills.map(s=><span key={s} style={{ fontSize:12, fontWeight:600, padding:'4px 10px', borderRadius:99, background:'rgba(0,0,0,.06)', color:'rgba(0,0,0,.7)' }}>{s}</span>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {(prof?.experience?.length > 0 || isSelf) && (
+            <div style={{ ...card, padding:'16px 18px' }}>
+              <div style={{ fontSize:15, fontWeight:700, marginBottom: prof?.experience?.length?12:8 }}>Experience</div>
+              {prof?.experience?.length
+                ? prof.experience.map((e,i)=>(
+                    <div key={i} style={{ display:'flex', gap:12, paddingBottom:i===prof.experience.length-1?0:12, marginBottom:i===prof.experience.length-1?0:12, borderBottom:i===prof.experience.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <div style={{ width:38, height:38, borderRadius:8, background:'rgba(0,0,0,.06)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>💼</div>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:700 }}>{e.title||'Role'}</div>
+                        <div style={{ fontSize:13, color:'rgba(0,0,0,.7)' }}>{e.company}</div>
+                        {e.period && <div style={{ fontSize:12, color:'rgba(0,0,0,.45)' }}>{e.period}</div>}
+                        {e.desc && <p style={{ margin:'4px 0 0', fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.7)' }}>{e.desc}</p>}
+                      </div>
+                    </div>
+                  ))
+                : <button onClick={()=>setEditing(true)} style={linkBtn}>+ Add experience</button>}
+            </div>
+          )}
+
+          {(prof?.education?.length > 0 || isSelf) && (
+            <div style={{ ...card, padding:'16px 18px' }}>
+              <div style={{ fontSize:15, fontWeight:700, marginBottom: prof?.education?.length?12:8 }}>Education</div>
+              {prof?.education?.length
+                ? prof.education.map((e,i)=>(
+                    <div key={i} style={{ display:'flex', gap:12, paddingBottom:i===prof.education.length-1?0:12, marginBottom:i===prof.education.length-1?0:12, borderBottom:i===prof.education.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <div style={{ width:38, height:38, borderRadius:8, background:'rgba(0,0,0,.06)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🎓</div>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:700 }}>{e.school||'School'}</div>
+                        <div style={{ fontSize:13, color:'rgba(0,0,0,.7)' }}>{e.degree}</div>
+                        {e.period && <div style={{ fontSize:12, color:'rgba(0,0,0,.45)' }}>{e.period}</div>}
+                      </div>
+                    </div>
+                  ))
+                : <button onClick={()=>setEditing(true)} style={linkBtn}>+ Add education</button>}
+            </div>
+          )}
+
+          {fps.length === 0
           ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
-          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} openDM={openDM}/>)
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onReact={onReact} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote}/>)}
+        </>
       )}
 
       {isSelf && tab === 'ratings' && (
@@ -746,16 +1304,28 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
         <PeopleModal uid={uid} type={peopleModal} me={me} followingIds={followingIds} pendingIds={pendingIds}
           onFollow={onFollow} onProfile={onProfile} requireAuth={requireAuth} onClose={()=>setPeopleModal(null)}/>
       )}
+      {editing && (
+        <EditProfileModal me={me} prof={prof} onClose={()=>setEditing(false)}
+          onSaved={f=>setProf(prev=>({ ...(prev||{ id:uid }), ...f }))}/>
+      )}
     </div>
   );
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────
-export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount }) {
+export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, focusPostId, onConsumeFocus }) {
   const [view, setView] = useState('feed');         // feed | profile | messages
   const [pid, setPid] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [notifs, setNotifs] = useState([]);
+  const [focusId, setFocusId] = useState(null);
+  const [savedIds, setSavedIds] = useState(new Set());
+  const [repostOf, setRepostOf] = useState(null);
+  const [connState, setConnState] = useState({ accepted:new Set(), outgoing:new Set(), incoming:new Set() });
+  const [connRequests, setConnRequests] = useState([]);
+  const [connectTarget, setConnectTarget] = useState(null);
+  const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [followState, setFollowState] = useState({ accepted: new Set(), pending: new Set() });
@@ -783,8 +1353,16 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (user) {
       fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
       fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
-      // Keep the bell fresh — poll for new follow requests every 30s
-      const iv = setInterval(() => fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); }), 30000);
+      fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
+      fetchSavedPosts(user.id).then(s => { if (on) setSavedIds(s); });
+      fetchConnectionState(user.id).then(s => { if (on) setConnState(s); });
+      fetchConnectionRequests(user.id).then(r => { if (on) setConnRequests(r); });
+      // Keep the bell fresh — poll for new requests + notifications every 30s
+      const iv = setInterval(() => {
+        fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
+        fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
+        fetchConnectionRequests(user.id).then(r => { if (on) setConnRequests(r); });
+      }, 30000);
       return () => { on = false; clearInterval(iv); };
     }
     return () => { on = false; };
@@ -835,11 +1413,37 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     setRequests(prev => prev.filter(r => r.id !== followerId));
     if (accept) setFollowerCount(c => c + 1);
     await respondFollowRequest(user.id, followerId, accept);
+    if (accept) createNotification({ actorId:user.id, userId:followerId, type:'follow_accept' });
+  }, [user]);
+
+  const handleConnect = useCallback(target => {
+    if (!user) return onSignIn?.();
+    if (target.id === user.id) return;
+    setConnectTarget(target);
+  }, [user, onSignIn]);
+
+  const submitConnect = useCallback(async (target, note) => {
+    if (!user) return;
+    setConnState(prev => { const outgoing = new Set(prev.outgoing); outgoing.add(target.id); return { ...prev, outgoing }; });
+    await sendConnect(user.id, target.id, note);
+  }, [user]);
+
+  const respondConn = useCallback(async (requesterId, accept) => {
+    if (!user) return;
+    setConnRequests(prev => prev.filter(r => r.id !== requesterId));
+    setConnState(prev => {
+      const incoming = new Set(prev.incoming); incoming.delete(requesterId);
+      const accepted = new Set(prev.accepted); if (accept) accepted.add(requesterId);
+      return { ...prev, incoming, accepted };
+    });
+    await respondConnection(user.id, requesterId, accept);
+    if (accept) createNotification({ actorId:user.id, userId:requesterId, type:'connect_accept' });
   }, [user]);
 
   const handleRate = useCallback(async (postId, n10) => {
     if (!user) return;
     const value = n10 / 2;
+    const target = posts.find(p => p.id === postId);
     setPosts(prev => prev.map(p => {
       if (p.id !== postId) return p;
       const others = (p.ratings||[]).filter(r => r.user_id !== user.id);
@@ -847,6 +1451,45 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     }));
     setTimeout(() => setROpen(null), 700);
     await ratePost(user.id, postId, value);
+    if (target) createNotification({ actorId:user.id, userId:target.user_id, type:'rating', postId, data:{ value:n10, title:target.title } });
+  }, [user, posts]);
+
+  const handleReact = useCallback(async (postId, type) => {
+    if (!user) return onSignIn?.();
+    const target = posts.find(p => p.id === postId);
+    const mine = target?.reactions?.find(r => r.user_id === user.id);
+    const remove = mine && mine.type === type;
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      const others = (p.reactions||[]).filter(r => r.user_id !== user.id);
+      return { ...p, reactions: remove ? others : [...others, { user_id:user.id, type }] };
+    }));
+    await reactToPost(user.id, postId, remove ? null : type);
+    if (!remove && target && target.user_id !== user.id) createNotification({ actorId:user.id, userId:target.user_id, type:'reaction', postId, data:{ type, title:target.title || target.original?.title } });
+  }, [user, posts, onSignIn]);
+
+  const handleSave = useCallback(async postId => {
+    if (!user) return onSignIn?.();
+    const has = savedIds.has(postId);
+    setSavedIds(prev => { const n = new Set(prev); has ? n.delete(postId) : n.add(postId); return n; });
+    await setSavedPost(user.id, postId, !has);
+  }, [user, savedIds, onSignIn]);
+
+  const handleVote = useCallback(async (postId, idx) => {
+    if (!user) return onSignIn?.();
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      const others = (p.pollVotes||[]).filter(v => v.user_id !== user.id);
+      return { ...p, pollVotes: [...others, { user_id:user.id, option_idx:idx }] };
+    }));
+    await votePoll(user.id, postId, idx);
+  }, [user, onSignIn]);
+
+  const handleRepost = useCallback(async (original, commentary) => {
+    if (!user) return;
+    const row = await repostPost(user.id, original.id, commentary);
+    setPosts(prev => [{ id:row.id, created_at:row.created_at, user_id:user.id, title:'', body:commentary||'', tags:[], media:[], meta:null, repost_of:original.id, original, reactions:[], ratings:[], sugCount:0, author:{ id:user.id, name:nameOf(user), avatar_url:user.user_metadata?.avatar_url } }, ...prev]);
+    if (original.user_id !== user.id) createNotification({ actorId:user.id, userId:original.user_id, type:'repost', postId:original.id, data:{ title:original.title } });
   }, [user]);
 
   const handleDelete = useCallback(async post => {
@@ -883,11 +1526,49 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   }, [user]);
 
   const unread = useMemo(() => Object.values(convs).reduce((s,c)=>s+(c.unread||0),0), [convs]);
+  const bellCount = requests.length + connRequests.length + useMemo(() => notifs.filter(n => !n.read).length, [notifs]);
+  const bellItems = useMemo(() => ([
+    ...requests.map(u => ({ kind:'request', key:'r_'+u.id, user:u, time:u.requested_at })),
+    ...connRequests.map(u => ({ kind:'connreq', key:'c_'+u.id, user:u, time:u.requested_at })),
+    ...notifs.map(n => ({ kind:'notif', key:n.id, notif:n, time:n.created_at })),
+  ].sort((a,b) => new Date(b.time) - new Date(a.time))), [requests, connRequests, notifs]);
+  const notifText = n => {
+    const name = n.actor?.name || 'Someone';
+    if (n.type === 'rating') return `${name} rated your idea ${n.data?.value ?? ''}/10`;
+    if (n.type === 'suggestion') return `${name} suggested on "${n.data?.title || 'your idea'}"`;
+    if (n.type === 'reaction') return `${name} ${RMAP[n.data?.type]?.emoji || '👍'} reacted to your idea`;
+    if (n.type === 'comment_like') return `${name} liked your comment`;
+    if (n.type === 'reply') return `${name} replied to your comment`;
+    if (n.type === 'repost') return `${name} reposted your idea`;
+    if (n.type === 'follow_accept') return `${name} accepted your follow request`;
+    if (n.type === 'connect_accept') return `${name} accepted your connection request`;
+    return `${name} interacted with your idea`;
+  };
+  const openNotif = n => { setBellOpen(false); if (n.post_id) focusPost(n.post_id); else if (n.actor?.id) goProfile(n.actor.id); };
   const toggleR = id => { setROpen(p=>p===id?null:id); setCOpen(null); };
   const toggleC = id => { setCOpen(p=>p===id?null:id); setROpen(null); };
   const goProfile = uid => { setPid(uid); setView('profile'); };
   const goFeed = () => setView('feed');
   const goMessages = () => { if (!user) return onSignIn?.(); setView('messages'); };
+
+  const focusPost = useCallback(async postId => {
+    setView('feed'); setBellOpen(false);
+    if (!posts.some(p => p.id === postId)) {
+      const p = await fetchPostById(postId);
+      if (p) setPosts(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
+    }
+    setFocusId(postId);
+    setTimeout(() => document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior:'smooth', block:'center' }), 150);
+    setTimeout(() => setFocusId(f => f === postId ? null : f), 2800);
+  }, [posts]);
+
+  useEffect(() => {
+    if (focusPostId && !loading && !didFocus.current) {
+      didFocus.current = true;
+      focusPost(focusPostId);
+      onConsumeFocus?.();
+    }
+  }, [focusPostId, loading, focusPost, onConsumeFocus]);
 
   const shown = useMemo(() => {
     let l = [...posts];
@@ -896,12 +1577,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       l = l.filter(p => p.title?.toLowerCase().includes(q) || p.body?.toLowerCase().includes(q) || p.tags?.some(t=>t.toLowerCase().includes(q)) || p.author?.name?.toLowerCase().includes(q));
     }
     if (tab === 'following') l = l.filter(p => followingIds.has(p.user_id));
+    if (tab === 'saved') l = l.filter(p => savedIds.has(p.id));
     if (tab === 'top-rated') l.sort((a,b) => avg10(b.ratings) - avg10(a.ratings));
     if (tab === 'most-discussed') l.sort((a,b) => (b.sugCount||0) - (a.sugCount||0));
     return l;
-  }, [posts, tab, search, followingIds]);
+  }, [posts, tab, search, followingIds, savedIds]);
 
-  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM };
+  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onReact:handleReact, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -918,7 +1600,12 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         .act-btn.on{color:#0f172a;background:rgba(0,0,0,.06)}
         .act-btn.rated{color:#92400e}
         @media (max-width:1100px){ .comm-right{display:none!important} }
-        @media (max-width:840px){ .comm-left{display:none!important} }
+        @media (max-width:840px){ .comm-left{display:none!important} .comm-page{padding-bottom:74px!important} }
+        .comm-mobnav{display:none}
+        @media (max-width:840px){ .comm-mobnav{display:flex} }
+        .mobnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;font-size:18px;color:rgba(0,0,0,.55);font-family:'DM Sans',system-ui,sans-serif;position:relative}
+        .mobnav-btn.on{color:rgba(0,0,0,.95)}
+        .mobnav-btn span{font-size:10px;font-weight:600}
       `}</style>
 
       {/* Top nav */}
@@ -931,14 +1618,14 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <div style={{ flex:1 }}/>
         {/* Notifications bell */}
         <div style={{ position:'relative' }}>
-          <button onClick={user ? ()=>{ const next = !bellOpen; setBellOpen(next); if (next) fetchFollowRequests(user.id).then(setRequests); } : requireAuth(()=>{})}
+          <button onClick={user ? ()=>{ const next = !bellOpen; setBellOpen(next); if (next) { fetchFollowRequests(user.id).then(setRequests); fetchNotifications(user.id).then(n => setNotifs(n.map(x=>({...x,read:true})))); markNotificationsRead(user.id); } } : requireAuth(()=>{})}
             title="Notifications"
             style={{ position:'relative', width:36, height:36, borderRadius:'50%', border:'none', background:bellOpen?'rgba(0,0,0,.08)':'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}
             onMouseEnter={e=>{ if(!bellOpen) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
             onMouseLeave={e=>{ if(!bellOpen) e.currentTarget.style.background='transparent'; }}>
             <svg width="19" height="19" viewBox="0 0 22 22" fill="none"><path d="M11 2a7 7 0 00-7 7v5l-2 2v1h18v-1l-2-2V9a7 7 0 00-7-7Z" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinejoin="round"/><path d="M9 18a2 2 0 004 0" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinecap="round"/></svg>
-            {requests.length > 0 && (
-              <span style={{ position:'absolute', top:2, right:1, minWidth:16, height:16, background:'#DC2626', color:'#fff', borderRadius:9, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{requests.length}</span>
+            {bellCount > 0 && (
+              <span style={{ position:'absolute', top:2, right:1, minWidth:16, height:16, background:'#DC2626', color:'#fff', borderRadius:9, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{bellCount}</span>
             )}
           </button>
 
@@ -948,20 +1635,41 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               <div className="fade-up" style={{ position:'absolute', top:42, right:0, width:330, maxWidth:'90vw', background:'#fff', borderRadius:10, border:'1px solid rgba(0,0,0,.08)', boxShadow:'0 12px 40px rgba(0,0,0,.14)', zIndex:241, overflow:'hidden' }}>
                 <div style={{ padding:'11px 16px', borderBottom:'1px solid rgba(0,0,0,.08)', fontSize:14, fontWeight:700 }}>Notifications</div>
                 <div style={{ maxHeight:360, overflowY:'auto', padding:'4px 16px 8px' }}>
-                  {requests.length === 0 && (
+                  {bellItems.length === 0 && (
                     <div style={{ padding:'26px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>No new notifications.</div>
                   )}
-                  {requests.map((u,i)=>(
-                    <div key={u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:i===requests.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
-                      <Av name={u.name} uid={u.id} url={u.avatar_url} sz={38} onClick={()=>{ setBellOpen(false); goProfile(u.id); }}/>
-                      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>{ setBellOpen(false); goProfile(u.id); }}>
-                        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.name || 'Founder'}</div>
-                        <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>requested to follow you · {timeAgo(u.requested_at)}</div>
+                  {bellItems.map((it,i)=> it.kind === 'request' ? (
+                    <div key={it.key} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <Av name={it.user.name} uid={it.user.id} url={it.user.avatar_url} sz={38} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}/>
+                      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}>
+                        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.user.name || 'Founder'}</div>
+                        <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>requested to follow you · {timeAgo(it.user.requested_at)}</div>
                       </div>
-                      <button onClick={()=>respondRequest(u.id, true)}
+                      <button onClick={()=>respondRequest(it.user.id, true)}
                         style={{ padding:'5px 13px', borderRadius:99, border:'none', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Accept</button>
-                      <button onClick={()=>respondRequest(u.id, false)}
+                      <button onClick={()=>respondRequest(it.user.id, false)}
                         style={{ padding:'5px 11px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Reject</button>
+                    </div>
+                  ) : it.kind === 'connreq' ? (
+                    <div key={it.key} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 0', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <Av name={it.user.name} uid={it.user.id} url={it.user.avatar_url} sz={38} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}/>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, cursor:'pointer' }} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}><b>{it.user.name || 'Founder'}</b> wants to connect</div>
+                        {it.user.note && <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', marginTop:2, fontStyle:'italic' }}>"{it.user.note}"</div>}
+                        <div style={{ display:'flex', gap:8, marginTop:6 }}>
+                          <button onClick={()=>respondConn(it.user.id, true)} style={{ padding:'5px 14px', borderRadius:99, border:'none', background:'#2563EB', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Accept</button>
+                          <button onClick={()=>respondConn(it.user.id, false)} style={{ padding:'5px 12px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F }}>Ignore</button>
+                        </div>
+                      </div>
+                      <div style={{ fontSize:11, color:'rgba(0,0,0,.4)', flexShrink:0 }}>{timeAgo(it.user.requested_at)}</div>
+                    </div>
+                  ) : (
+                    <div key={it.key} onClick={()=>openNotif(it.notif)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', cursor:'pointer', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
+                      <Av name={it.notif.actor?.name} uid={it.notif.actor?.id||it.key} url={it.notif.actor?.avatar_url} sz={38}/>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, color:'rgba(0,0,0,.8)', lineHeight:1.4 }}>{notifText(it.notif)}</div>
+                        <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)' }}>{timeAgo(it.notif.created_at)}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -981,7 +1689,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       </header>
 
       {/* 3-column layout */}
-      <div style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
+      <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
           <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
         </div>
@@ -990,7 +1698,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           {view === 'feed' && (
             <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
               <div style={{ ...card, display:'flex' }}>
-                {[['all','All'],['top-rated','Top Rated'],['most-discussed','Most Discussed'],['following','Following']].map(([id,label])=>(
+                {[['all','All'],['top-rated','Top Rated'],['most-discussed','Most Discussed'],['following','Following'],['saved','Saved']].map(([id,label])=>(
                   <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'12px 4px', border:'none', borderBottom:tab===id?'2px solid rgba(0,0,0,.9)':'2px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?'rgba(0,0,0,.9)':'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
                     {label}
                   </button>
@@ -999,17 +1707,17 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               {loading && <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Loading ideas…</div>}
               {!loading && shown.length === 0 && (
                 <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>
-                  {search ? `No ideas matching "${search}".` : tab==='following' ? 'Follow some founders to see their ideas here.' : 'No ideas yet — be the first to share one.'}
+                  {search ? `No ideas matching "${search}".` : tab==='following' ? 'Follow some founders to see their ideas here.' : tab==='saved' ? 'No saved ideas yet. Tap Save on any idea to keep it here.' : 'No ideas yet — be the first to share one.'}
                 </div>
               )}
               {shown.map(p=>(
-                <PostCard key={p.id} post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id}/>
+                <PostCard key={p.id} post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id} highlight={focusId===p.id} saved={savedIds.has(p.id)}/>
               ))}
             </div>
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)}/>
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onReact={handleReact} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} connState={connState} onConnect={handleConnect} onRespondConn={respondConn} onVote={handleVote}/>
           )}
 
           {view === 'messages' && (
@@ -1020,7 +1728,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
+          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} connState={connState} onConnect={handleConnect}/>
         )}
       </div>
 
@@ -1029,10 +1737,33 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <ComposerModal me={user} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
       )}
 
+      {/* Repost modal */}
+      {repostOf && user && (
+        <RepostModal original={repostOf} me={user} onClose={()=>setRepostOf(null)} onDone={txt=>handleRepost(repostOf, txt)}/>
+      )}
+
+      {/* Connect request modal */}
+      {connectTarget && user && (
+        <ConnectModal target={connectTarget} me={user} onClose={()=>setConnectTarget(null)} onSend={note=>submitConnect(connectTarget, note)}/>
+      )}
+
       {/* DM slide-over */}
       {dmUser && user && (
         <DMPanel peer={dmUser} me={user} msgs={convs[dmUser.id]?.messages || []} onSend={handleSend} onClose={()=>setDmUser(null)}/>
       )}
+
+      {/* Mobile bottom nav */}
+      <div className="comm-mobnav" style={{ position:'fixed', left:0, right:0, bottom:0, height:62, background:'#fff', borderTop:'1px solid rgba(0,0,0,.1)', zIndex:200, alignItems:'stretch', padding:'0 6px', boxShadow:'0 -4px 16px rgba(0,0,0,.05)' }}>
+        <button className={'mobnav-btn'+(view==='feed'?' on':'')} onClick={goFeed}>▦<span>Ideas</span></button>
+        <button className="mobnav-btn" onClick={user ? ()=>setComposerOpen(true) : requireAuth(()=>{})}>
+          <span style={{ fontSize:22, lineHeight:1, fontWeight:400 }}>＋</span><span>Post</span>
+        </button>
+        <button className={'mobnav-btn'+(view==='messages'?' on':'')} onClick={goMessages}>
+          ✉<span>Messages</span>
+          {unread>0 && <span style={{ position:'absolute', top:4, right:'28%', minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{unread}</span>}
+        </button>
+        <button className={'mobnav-btn'+(view==='profile'&&pid===user?.id?' on':'')} onClick={user ? ()=>goProfile(user.id) : requireAuth(()=>{})}>◉<span>Profile</span></button>
+      </div>
 
       {/* Delete confirm */}
       {confirmDel && (

@@ -89,10 +89,11 @@ const Block = ({ b }) => {
   return null;
 };
 
-export default function MasterReport({ data, meta, ideaName, onBack }) {
+export default function MasterReport({ data, meta, ideaName, onBack, onShareCommunity }) {
   const [active, setActive] = useState(REPORT[0].id);
   const [sub, setSub] = useState(REPORT[0].subs[0]);
   const [mobileNav, setMobileNav] = useState(false);
+  const [shared, setShared] = useState("idle");
   const section = REPORT.find((s) => s.id === active);
   const content = data?.[active]?.[sub];
 
@@ -102,6 +103,13 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
     setSub(s.subs[0]);
     setMobileNav(false);
   };
+
+  const doShare = async () => {
+    if (shared === "busy" || shared === "done") return;
+    setShared("busy");
+    try { await onShareCommunity(); setShared("done"); } catch { setShared("error"); }
+  };
+  const shareLabel = { idle: "↗ Share to Community", busy: "Sharing…", done: "✓ Shared to Community", error: "Retry share" }[shared];
 
   return (
     <div className="flex min-h-screen bg-white text-neutral-900" style={F}>
@@ -146,6 +154,11 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
             </div>
           ))}
         </nav>
+        {onShareCommunity && (
+          <button onClick={doShare} disabled={shared === "busy"} className={`mx-3 mt-1 rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition ${shared === "done" ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white hover:bg-neutral-700"}`}>
+            {shareLabel}
+          </button>
+        )}
         {onBack && (
           <button onClick={onBack} className="m-3 rounded-lg px-3 py-2 text-left text-sm text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-900">
             ← Validate another idea
@@ -174,6 +187,11 @@ export default function MasterReport({ data, meta, ideaName, onBack }) {
                 {s.label}
               </button>
             ))}
+            {onShareCommunity && (
+              <button onClick={doShare} disabled={shared === "busy"} className={`col-span-2 rounded-lg px-3 py-2 text-center text-sm font-semibold ${shared === "done" ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white"}`}>
+                {shareLabel}
+              </button>
+            )}
             {onBack && (
               <button onClick={onBack} className="col-span-2 rounded-lg bg-neutral-100 px-3 py-2 text-left text-sm text-neutral-500">
                 ← Validate another idea

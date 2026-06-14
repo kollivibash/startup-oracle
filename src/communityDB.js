@@ -1,26 +1,106 @@
 import { supabase } from './supabaseClient';
 
+const POST_CORE = 'id, title, body, tags, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
+const POST_VARIANTS = [
+  POST_CORE + ', media, meta, repost_of, kind, poll, link_preview, reactions:post_reactions(user_id, type), pollVotes:poll_votes(user_id, option_idx)',
+  POST_CORE + ', media, meta, repost_of, reactions:post_reactions(user_id, type)',
+  POST_CORE + ', media, meta, repost_of',
+  POST_CORE + ', media, meta',
+  POST_CORE + ', media',
+  POST_CORE,
+];
+const POST_DEGRADE = /media|meta|repost|reaction|relationship|schema cache|column|does not exist|poll|kind|link/i;
+const shapePost = p => ({ ...p, media: p.media || [], meta: p.meta || null, repost_of: p.repost_of || null, reactions: p.reactions || [], kind: p.kind || 'post', poll: p.poll || null, link_preview: p.link_preview || null, pollVotes: p.pollVotes || [], sugCount: p.sug?.[0]?.count ?? 0 });
+
+// Attaches the embedded original onto each repost, resolving from the loaded set.
+const linkReposts = list => {
+  const byId = Object.fromEntries(list.map(p => [p.id, p]));
+  list.forEach(p => { if (p.repost_of) p.original = byId[p.repost_of] || null; });
+  return list;
+};
+
 export async function fetchPosts() {
-  const cols = 'id, title, body, tags, media, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
-  let { data, error } = await supabase
-    .from('community_posts').select(cols).order('created_at', { ascending: false }).limit(100);
-  // Fall back gracefully if the media column hasn't been migrated yet
-  if (error && /media/i.test(error.message || '')) {
-    ({ data, error } = await supabase
-      .from('community_posts').select(cols.replace(', media', '')).order('created_at', { ascending: false }).limit(100));
+  for (const cols of POST_VARIANTS) {
+    const { data, error } = await supabase
+      .from('community_posts').select(cols).order('created_at', { ascending: false }).limit(100);
+    if (!error) return linkReposts((data || []).map(shapePost));
+    if (!POST_DEGRADE.test(error.message || '')) { console.error('fetchPosts failed', error.message || error); return []; }
   }
-  if (error) { console.error('fetchPosts failed', error.message || error); return []; }
-  return (data || []).map(p => ({ ...p, media: p.media || [], sugCount: p.sug?.[0]?.count ?? 0 }));
+  return [];
 }
 
-export async function createPost(userId, { title, body, tags, media = [] }) {
-  const { data, error } = await supabase
-    .from('community_posts')
-    .insert({ user_id: userId, title, body, tags, media })
-    .select('id, created_at')
-    .single();
-  if (error) { console.error('createPost failed', error); throw error; }
-  return data;
+export async function fetchPostById(id) {
+  for (const cols of POST_VARIANTS) {
+    const { data, error } = await supabase.from('community_posts').select(cols).eq('id', id).single();
+    if (!error) return shapePost(data);
+    if (!POST_DEGRADE.test(error.message || '')) return null;
+  }
+  return null;
+}
+
+export async function reactToPost(userId, postId, type) {
+  if (!type) {
+    const { error } = await supabase.from('post_reactions').delete().eq('post_id', postId).eq('user_id', userId);
+    if (error) console.error('removeReaction failed', error);
+    return;
+  }
+  const { error } = await supabase.from('post_reactions').upsert({ post_id: postId, user_id: userId, type }, { onConflict: 'post_id,user_id' });
+  if (error) console.error('reactToPost failed', error);
+}
+
+export async function fetchSavedPosts(userId) {
+  if (!userId) return new Set();
+  const { data, error } = await supabase.from('saved_posts').select('post_id').eq('user_id', userId);
+  if (error) { if (!/relation|does not exist|schema cache|saved_posts/i.test(error.message || '')) console.error('fetchSavedPosts failed', error); return new Set(); }
+  return new Set((data || []).map(r => r.post_id));
+}
+
+export async function setSavedPost(userId, postId, saved) {
+  if (saved) {
+    const { error } = await supabase.from('saved_posts').insert({ user_id: userId, post_id: postId });
+    if (error && error.code !== '23505') console.error('savePost failed', error);
+  } else {
+    const { error } = await supabase.from('saved_posts').delete().eq('user_id', userId).eq('post_id', postId);
+    if (error) console.error('unsavePost failed', error);
+  }
+}
+
+export async function repost(userId, originalId, commentary = '') {
+  const payload = { user_id: userId, title: '', body: commentary, tags: [], media: [], meta: null, repost_of: originalId };
+  let res = await supabase.from('community_posts').insert(payload).select('id, created_at').single();
+  if (res.error && /meta/i.test(res.error.message || '')) { delete payload.meta; res = await supabase.from('community_posts').insert(payload).select('id, created_at').single(); }
+  if (res.error) { console.error('repost failed', res.error); throw res.error; }
+  return res.data;
+}
+
+export async function createPost(userId, { title, body, tags, media = [], meta = null, kind = 'post', poll = null, link_preview = null }) {
+  const payload = { user_id: userId, title, body, tags, media, meta, kind, poll, link_preview };
+  const strip = keys => keys.forEach(k => delete payload[k]);
+  const insert = () => supabase.from('community_posts').insert(payload).select('id, created_at').single();
+  let res = await insert();
+  if (res.error && /kind|poll|link/i.test(res.error.message || '')) { strip(['kind', 'poll', 'link_preview']); res = await insert(); }
+  if (res.error && /meta/i.test(res.error.message || '')) { strip(['meta']); res = await insert(); }
+  if (res.error && /media/i.test(res.error.message || '')) { strip(['media']); res = await insert(); }
+  if (res.error) { console.error('createPost failed', res.error); throw res.error; }
+  return res.data;
+}
+
+export async function votePoll(userId, postId, optionIdx) {
+  const { error } = await supabase.from('poll_votes').upsert({ post_id: postId, user_id: userId, option_idx: optionIdx }, { onConflict: 'post_id,user_id' });
+  if (error) console.error('votePoll failed', error);
+}
+
+// Calls the serverless /api/unfurl to get a link preview (server-side fetch).
+export async function unfurlLink(url) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return null;
+  try {
+    const r = await fetch('/api/unfurl', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ url }) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d && d.title ? d : null;
+  } catch { return null; }
 }
 
 // Uploads one photo/document to the post-media bucket, returns its public URL.
@@ -48,21 +128,40 @@ export async function ratePost(userId, postId, value) {
 export async function fetchSuggestions(postId) {
   const { data, error } = await supabase
     .from('community_suggestions')
-    .select('id, text, created_at, user_id, author:profiles!community_suggestions_user_id_fkey(name, avatar_url)')
+    .select('id, text, created_at, user_id, parent_id, author:profiles!community_suggestions_user_id_fkey(name, avatar_url), likes:suggestion_likes(user_id)')
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
-  if (error) { console.error('fetchSuggestions failed', error); return []; }
-  return data || [];
+  if (error) {
+    const r2 = await supabase
+      .from('community_suggestions')
+      .select('id, text, created_at, user_id, author:profiles!community_suggestions_user_id_fkey(name, avatar_url)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+    if (r2.error) { console.error('fetchSuggestions failed', r2.error); return []; }
+    return (r2.data || []).map(s => ({ ...s, parent_id: null, likes: [] }));
+  }
+  return (data || []).map(s => ({ ...s, likes: s.likes || [] }));
 }
 
-export async function addSuggestion(userId, postId, text) {
-  const { data, error } = await supabase
-    .from('community_suggestions')
-    .insert({ post_id: postId, user_id: userId, text })
-    .select('id, text, created_at, user_id')
-    .single();
-  if (error) { console.error('addSuggestion failed', error); throw error; }
-  return data;
+export async function addSuggestion(userId, postId, text, parentId = null) {
+  const payload = { post_id: postId, user_id: userId, text, parent_id: parentId };
+  let res = await supabase.from('community_suggestions').insert(payload).select('id, text, created_at, user_id, parent_id').single();
+  if (res.error && /parent_id/i.test(res.error.message || '')) {
+    delete payload.parent_id;
+    res = await supabase.from('community_suggestions').insert(payload).select('id, text, created_at, user_id').single();
+  }
+  if (res.error) { console.error('addSuggestion failed', res.error); throw res.error; }
+  return res.data;
+}
+
+export async function likeSuggestion(userId, suggestionId, like) {
+  if (like) {
+    const { error } = await supabase.from('suggestion_likes').insert({ suggestion_id: suggestionId, user_id: userId });
+    if (error && error.code !== '23505') console.error('likeSuggestion failed', error);
+  } else {
+    const { error } = await supabase.from('suggestion_likes').delete().eq('suggestion_id', suggestionId).eq('user_id', userId);
+    if (error) console.error('unlikeSuggestion failed', error);
+  }
 }
 
 // Returns { accepted: Set<uid>, pending: Set<uid> } for people I follow / requested.
@@ -156,8 +255,36 @@ export async function fetchRatingsReceived(userId) {
 // ── Direct messages ──────────────────────────────────────────────────────────
 
 export async function fetchProfile(id) {
-  const { data } = await supabase.from('profiles').select('id, name, avatar_url, bio').eq('id', id).single();
+  let { data, error } = await supabase
+    .from('profiles')
+    .select('id, name, avatar_url, bio, about, location, banner_url, experience, education, skills')
+    .eq('id', id).single();
+  if (error) ({ data } = await supabase.from('profiles').select('id, name, avatar_url, bio').eq('id', id).single());
   return data;
+}
+
+export async function updateProfile(userId, fields) {
+  let { error } = await supabase.from('profiles').update(fields).eq('id', userId);
+  if (error && /column|schema cache|does not exist/i.test(error.message || '')) {
+    const safe = {}; for (const k of ['name', 'bio', 'avatar_url']) if (k in fields) safe[k] = fields[k];
+    ({ error } = await supabase.from('profiles').update(safe).eq('id', userId));
+  }
+  if (error) { console.error('updateProfile failed', error); throw error; }
+}
+
+// Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).
+export async function syncAuthMeta(meta) {
+  const { error } = await supabase.auth.updateUser({ data: meta });
+  if (error) console.error('syncAuthMeta failed', error);
+}
+
+export async function uploadProfileImage(userId, file, kind) {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const path = `${userId}/${kind}_${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('avatars').upload(path, file, { cacheControl: '3600', upsert: true });
+  if (error) { console.error('uploadProfileImage failed', error); throw error; }
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  return data.publicUrl;
 }
 
 // Returns { [peerId]: { peer:{id,name,avatar_url}, messages:[...], unread:n } }
@@ -199,6 +326,124 @@ export async function markConversationRead(userId, peerId) {
     .eq('sender_id', peerId)
     .eq('read', false);
   if (error) console.error('markConversationRead failed', error);
+}
+
+// ── Connections + network ───────────────────────────────────────────────────────
+const connMissing = e => /relation|does not exist|schema cache|connections|profile_views/i.test(e?.message || '');
+
+// Returns { accepted:Set<otherId>, outgoing:Set, incoming:Set } for the user.
+export async function fetchConnectionState(userId) {
+  const empty = { accepted: new Set(), outgoing: new Set(), incoming: new Set() };
+  if (!userId) return empty;
+  const { data, error } = await supabase
+    .from('connections').select('requester_id, addressee_id, status')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  if (error) { if (!connMissing(error)) console.error('fetchConnectionState failed', error); return empty; }
+  const out = { accepted: new Set(), outgoing: new Set(), incoming: new Set() };
+  for (const r of data || []) {
+    const other = r.requester_id === userId ? r.addressee_id : r.requester_id;
+    if (r.status === 'accepted') out.accepted.add(other);
+    else if (r.requester_id === userId) out.outgoing.add(other);
+    else out.incoming.add(other);
+  }
+  return out;
+}
+
+export async function sendConnect(userId, targetId, note = '') {
+  const { error } = await supabase.from('connections').insert({ requester_id: userId, addressee_id: targetId, status: 'pending', note });
+  if (error && error.code !== '23505') console.error('sendConnect failed', error);
+}
+
+export async function respondConnection(userId, requesterId, accept) {
+  const q = accept
+    ? supabase.from('connections').update({ status: 'accepted' }).eq('requester_id', requesterId).eq('addressee_id', userId)
+    : supabase.from('connections').delete().eq('requester_id', requesterId).eq('addressee_id', userId);
+  const { error } = await q;
+  if (error) console.error('respondConnection failed', error);
+}
+
+export async function removeConnection(userId, otherId) {
+  const { error } = await supabase.from('connections')
+    .delete().or(`and(requester_id.eq.${userId},addressee_id.eq.${otherId}),and(requester_id.eq.${otherId},addressee_id.eq.${userId})`);
+  if (error) console.error('removeConnection failed', error);
+}
+
+export async function fetchConnectionRequests(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabase.from('connections')
+    .select('note, created_at, person:profiles!connections_requester_id_fkey(id, name, avatar_url, bio)')
+    .eq('addressee_id', userId).eq('status', 'pending').order('created_at', { ascending: false });
+  if (error) { if (!connMissing(error)) console.error('fetchConnectionRequests failed', error); return []; }
+  return (data || []).map(r => ({ ...r.person, note: r.note, requested_at: r.created_at })).filter(p => p?.id);
+}
+
+export async function fetchConnectionCount(userId) {
+  if (!userId) return 0;
+  const { count, error } = await supabase.from('connections')
+    .select('*', { count: 'exact', head: true }).eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function fetchConnections(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabase.from('connections')
+    .select('requester_id, addressee_id, requester:profiles!connections_requester_id_fkey(id, name, avatar_url, bio), addressee:profiles!connections_addressee_id_fkey(id, name, avatar_url, bio)')
+    .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  if (error) { if (!connMissing(error)) console.error('fetchConnections failed', error); return []; }
+  return (data || []).map(r => (r.requester_id === userId ? r.addressee : r.requester)).filter(Boolean);
+}
+
+export async function recordProfileView(viewerId, viewedId) {
+  if (!viewerId || !viewedId || viewerId === viewedId) return;
+  const { error } = await supabase.from('profile_views')
+    .upsert({ viewer_id: viewerId, viewed_id: viewedId, created_at: new Date().toISOString() }, { onConflict: 'viewer_id,viewed_id' });
+  if (error && !connMissing(error)) console.error('recordProfileView failed', error);
+}
+
+export async function fetchProfileViewers(userId) {
+  if (!userId) return { count: 0, viewers: [] };
+  const { data, error } = await supabase.from('profile_views')
+    .select('created_at, viewer:profiles!profile_views_viewer_id_fkey(id, name, avatar_url, bio)')
+    .eq('viewed_id', userId).order('created_at', { ascending: false }).limit(20);
+  if (error) { if (!connMissing(error)) console.error('fetchProfileViewers failed', error); return { count: 0, viewers: [] }; }
+  const viewers = (data || []).map(r => ({ ...r.viewer, viewed_at: r.created_at })).filter(v => v?.id);
+  return { count: viewers.length, viewers };
+}
+
+export async function fetchPeopleYouMayKnow(userId, excludeIds = []) {
+  if (!userId) return [];
+  const { data, error } = await supabase.from('profiles').select('id, name, avatar_url, bio').neq('id', userId).limit(40);
+  if (error) { console.error('fetchPeopleYouMayKnow failed', error); return []; }
+  const ex = new Set([userId, ...excludeIds]);
+  return (data || []).filter(p => !ex.has(p.id)).slice(0, 6);
+}
+
+// ── Notifications ──────────────────────────────────────────────────────────────
+const notifMissing = e => /relation|does not exist|notifications|schema cache/i.test(e?.message || '');
+
+export async function createNotification({ actorId, userId, type, postId = null, data = {} }) {
+  if (!actorId || !userId || actorId === userId) return;
+  const { error } = await supabase.from('notifications').insert({ actor_id: actorId, user_id: userId, type, post_id: postId, data });
+  if (error && !notifMissing(error)) console.error('createNotification failed', error);
+}
+
+export async function fetchNotifications(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('id, type, post_id, data, read, created_at, actor:profiles!notifications_actor_id_fkey(id, name, avatar_url)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) { if (!notifMissing(error)) console.error('fetchNotifications failed', error); return []; }
+  return (data || []).map(n => ({ ...n, actor: n.actor || {} }));
+}
+
+export async function markNotificationsRead(userId) {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  if (error && !notifMissing(error)) console.error('markNotificationsRead failed', error);
 }
 
 export function subscribeToMessages(userId, onMessage) {

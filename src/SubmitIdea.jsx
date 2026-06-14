@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import MasterReport from "./MasterReport";
 import { generateMasterReport } from "./reportEngine";
 import { saveIdea } from "./ideasDB";
+import { createPost } from "./communityDB";
 
 const C = { black:'#0a0a0a', white:'#ffffff', surface:'#f5f5f5', border:'#e0e0e0', body:'#555555', muted:'#999999', light:'#f9f9f9' };
 const F = "'Plus Jakarta Sans', system-ui, sans-serif";
@@ -274,6 +275,16 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
               meta={results.meta}
               ideaName={form.name}
               onBack={()=>{ setForm(INIT); setResults(null); go(1); }}
+              onShareCommunity={user ? async () => {
+                const body = [form.oneliner, form.problem && `Problem: ${form.problem}`, form.solution && `Solution: ${form.solution}`].filter(Boolean).join('\n\n');
+                await createPost(user.id, {
+                  title: form.name || 'My Startup Idea',
+                  body,
+                  tags: form.category ? [form.category] : [],
+                  media: [],
+                  meta: results.meta ? { overallScore: results.meta.overallScore, badge: results.meta.badge, validated: true } : { validated: true },
+                });
+              } : undefined}
             />
           : (
             <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center' }}>
