@@ -1,15 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, reactToPost, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, fetchConnectionState, sendConnect, respondConnection, fetchConnectionRequests, fetchConnectionCount, fetchConnections, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
-
-const REACTIONS = [
-  { type:'like', emoji:'👍', label:'Like', color:'#2563EB' },
-  { type:'celebrate', emoji:'🎉', label:'Celebrate', color:'#059669' },
-  { type:'support', emoji:'🤝', label:'Support', color:'#7c3aed' },
-  { type:'insightful', emoji:'💡', label:'Insightful', color:'#d97706' },
-  { type:'love', emoji:'❤️', label:'Love', color:'#DB2777' },
-  { type:'funny', emoji:'😄', label:'Funny', color:'#0891b2' },
-];
-const RMAP = Object.fromEntries(REACTIONS.map(r => [r.type, r]));
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, fetchConnectionState, sendConnect, respondConnection, fetchConnectionRequests, fetchConnectionCount, fetchConnections, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f3f2ef';
@@ -305,11 +295,10 @@ const MediaGrid = ({ media }) => {
   );
 };
 
-function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onReact, onSave, onRepost, saved, onOpenPost, onVote }) {
+function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extraSug, setExtraSug] = useState(0);
-  const [showReact, setShowReact] = useState(false);
   const author = post.author || {};
   const isSelf = me && post.user_id === me.id;
   const isRepost = !!post.repost_of;
@@ -318,10 +307,6 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
   const ratings = post.ratings || [];
   const myR = me ? ratings.find(r=>r.user_id===me.id) : null;
   const uRating = myR ? to10(myR.value) : null;
-  const rx = post.reactions || [];
-  const myReaction = me ? rx.find(r=>r.user_id===me.id)?.type : null;
-  const rxCounts = {}; rx.forEach(r=>{ rxCounts[r.type]=(rxCounts[r.type]||0)+1; });
-  const topRx = Object.keys(rxCounts).sort((a,b)=>rxCounts[b]-rxCounts[a]).slice(0,3);
   const isF = followingIds.has(post.user_id);
   const isP = pendingIds?.has(post.user_id);
   const body = post.body || '';
@@ -391,31 +376,17 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
 
       <div style={{ padding:'8px 16px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(0,0,0,.08)' }}>
         <span style={{ fontSize:12, color:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          {rx.length > 0 && <span style={{ display:'inline-flex', alignItems:'center', gap:1 }}>{topRx.map(t=><span key={t} style={{ fontSize:13 }}>{RMAP[t].emoji}</span>)}<span style={{ marginLeft:3 }}>{rx.length}</span></span>}
-          {!isRepost && ratings.length > 0 && <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
-            <span style={{ background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:'50%', width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9 }}>★</span>
-            avg <b style={{ color:'rgba(0,0,0,.7)' }}>{avg10(ratings).toFixed(1)}</b>/10
-          </span>}
-          {rx.length === 0 && (isRepost || ratings.length === 0) && <span>No reactions yet</span>}
+          {!isRepost && !isPoll && ratings.length > 0
+            ? <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                <span style={{ background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:'50%', width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9 }}>★</span>
+                avg <b style={{ color:'rgba(0,0,0,.7)' }}>{avg10(ratings).toFixed(1)}</b>/10 · {ratings.length} rating{ratings.length!==1?'s':''}
+              </span>
+            : <span>{isRepost || isPoll ? '' : 'No ratings yet'}</span>}
         </span>
         <span style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>{sugCount} suggestion{sugCount!==1?'s':''}</span>
       </div>
 
       <div style={{ display:'flex', padding:'4px 4px' }}>
-        <div style={{ position:'relative', flex:1, display:'flex' }} onMouseEnter={()=>setShowReact(true)} onMouseLeave={()=>setShowReact(false)}>
-          <button className="act-btn" onClick={requireAuth(()=>onReact(post.id, myReaction || 'like'))} style={myReaction?{color:RMAP[myReaction].color}:undefined}>
-            {myReaction ? `${RMAP[myReaction].emoji} ${RMAP[myReaction].label}` : '👍 React'}
-          </button>
-          {showReact && (
-            <div style={{ position:'absolute', bottom:'calc(100% + 6px)', left:0, display:'flex', gap:2, background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:99, padding:'5px 8px', boxShadow:'0 8px 24px rgba(0,0,0,.18)', zIndex:60 }}>
-              {REACTIONS.map(r=>(
-                <button key={r.type} title={r.label} onClick={requireAuth(()=>{ setShowReact(false); onReact(post.id, r.type); })}
-                  style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, lineHeight:1, padding:'2px 3px', transition:'transform .1s' }}
-                  onMouseEnter={e=>e.currentTarget.style.transform='scale(1.35)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>{r.emoji}</button>
-              ))}
-            </div>
-          )}
-        </div>
         {!isSelf && !isRepost && !isPoll && (
           <button className={'act-btn'+(uRating?' rated':'')} onClick={requireAuth(onTR)}>★ {uRating?`Rated ${uRating}`:'Rate'}</button>
         )}
@@ -1055,7 +1026,7 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onReact, onSave, onRepost, onOpenPost, savedIds, connState, onConnect, onRespondConn, onVote }) {
+function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, connState, onConnect, onRespondConn, onVote }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
@@ -1254,7 +1225,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
 
           {fps.length === 0
           ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
-          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onReact={onReact} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote}/>)}
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote}/>)}
         </>
       )}
 
@@ -1454,20 +1425,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (target) createNotification({ actorId:user.id, userId:target.user_id, type:'rating', postId, data:{ value:n10, title:target.title } });
   }, [user, posts]);
 
-  const handleReact = useCallback(async (postId, type) => {
-    if (!user) return onSignIn?.();
-    const target = posts.find(p => p.id === postId);
-    const mine = target?.reactions?.find(r => r.user_id === user.id);
-    const remove = mine && mine.type === type;
-    setPosts(prev => prev.map(p => {
-      if (p.id !== postId) return p;
-      const others = (p.reactions||[]).filter(r => r.user_id !== user.id);
-      return { ...p, reactions: remove ? others : [...others, { user_id:user.id, type }] };
-    }));
-    await reactToPost(user.id, postId, remove ? null : type);
-    if (!remove && target && target.user_id !== user.id) createNotification({ actorId:user.id, userId:target.user_id, type:'reaction', postId, data:{ type, title:target.title || target.original?.title } });
-  }, [user, posts, onSignIn]);
-
   const handleSave = useCallback(async postId => {
     if (!user) return onSignIn?.();
     const has = savedIds.has(postId);
@@ -1536,7 +1493,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     const name = n.actor?.name || 'Someone';
     if (n.type === 'rating') return `${name} rated your idea ${n.data?.value ?? ''}/10`;
     if (n.type === 'suggestion') return `${name} suggested on "${n.data?.title || 'your idea'}"`;
-    if (n.type === 'reaction') return `${name} ${RMAP[n.data?.type]?.emoji || '👍'} reacted to your idea`;
     if (n.type === 'comment_like') return `${name} liked your comment`;
     if (n.type === 'reply') return `${name} replied to your comment`;
     if (n.type === 'repost') return `${name} reposted your idea`;
@@ -1583,7 +1539,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds, savedIds]);
 
-  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onReact:handleReact, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote };
+  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -1717,7 +1673,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onReact={handleReact} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} connState={connState} onConnect={handleConnect} onRespondConn={respondConn} onVote={handleVote}/>
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} connState={connState} onConnect={handleConnect} onRespondConn={respondConn} onVote={handleVote}/>
           )}
 
           {view === 'messages' && (
