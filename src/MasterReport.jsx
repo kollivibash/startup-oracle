@@ -89,6 +89,65 @@ const Block = ({ b }) => {
   return null;
 };
 
+// ── Score dashboard (shown on Validation → Summary) ──────────────────────────
+const SCORE_FIELDS = [
+  ["marketScore", "Market Opportunity"],
+  ["feasibilityScore", "Feasibility"],
+  ["competitiveEdgeScore", "Competitive Edge"],
+  ["originalityScore", "Originality"],
+];
+
+const ScoreRing = ({ score = 0 }) => {
+  const r = 52, circ = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, Number(score) || 0)) / 100;
+  return (
+    <div className="relative h-[128px] w-[128px] shrink-0">
+      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
+        <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" className="stroke-neutral-200" />
+        <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round" className="stroke-neutral-900 transition-all duration-700" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[34px] font-extrabold leading-none tracking-tight">{score ?? 0}</span>
+        <span className="mt-0.5 text-[11px] font-medium text-neutral-400">/ 100</span>
+      </div>
+    </div>
+  );
+};
+
+function ScoreOverview({ meta }) {
+  if (!meta) return null;
+  const fields = SCORE_FIELDS.filter(([k]) => meta[k] != null);
+  return (
+    <div className="mb-10 rounded-2xl border border-neutral-200 bg-neutral-50 p-6 md:p-8">
+      <div className="flex flex-col gap-7 sm:flex-row sm:items-center sm:gap-9">
+        <div className="flex items-center gap-5">
+          <ScoreRing score={meta.overallScore} />
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Overall verdict</p>
+            <p className="mt-1.5 text-2xl font-extrabold tracking-tight">{meta.badge || "Validation Score"}</p>
+            <p className="mt-1 text-[13px] leading-5 text-neutral-500">AI assessment across {fields.length || 4} dimensions</p>
+          </div>
+        </div>
+        {fields.length > 0 && (
+          <div className="grid flex-1 grid-cols-1 gap-x-10 gap-y-4 sm:grid-cols-2">
+            {fields.map(([k, label]) => (
+              <div key={k}>
+                <div className="mb-1.5 flex items-center justify-between text-[12.5px]">
+                  <span className="font-medium text-neutral-600">{label}</span>
+                  <span className="font-bold text-neutral-900">{meta[k]}</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                  <div className="h-full rounded-full bg-neutral-900 transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, Number(meta[k]) || 0))}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MasterReport({ data, meta, ideaName, onBack, onShareCommunity }) {
   const [active, setActive] = useState(REPORT[0].id);
   const [sub, setSub] = useState(REPORT[0].subs[0]);
@@ -221,6 +280,8 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
             <h2 className="mt-2 text-3xl font-extrabold tracking-tight">{sub}</h2>
             <div className="mt-5 h-px bg-neutral-200" />
           </div>
+
+          {active === "validation" && sub === "Summary" && <div className="mt-6"><ScoreOverview meta={meta} /></div>}
 
           {content ? (
             <div className="mt-2 md:mt-6">
