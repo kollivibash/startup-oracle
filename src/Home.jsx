@@ -58,7 +58,6 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
           ) : (
             <NavLink onClick={onSignIn}>Sign in</NavLink>
           )}
-          <InkBtn onClick={onAnalyse}>Get Started</InkBtn>
         </div>
       </nav>
 
@@ -74,7 +73,7 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
           Post your ideas. Get real feedback. Validate your startup with a community that actually builds.
         </p>
         <div className="hero-c">
-          <InkBtn size="lg" onClick={onCommunity}>Join Community</InkBtn>
+          <InkBtn size="lg" onClick={onCommunity}>Build Community</InkBtn>
         </div>
       </div>
 

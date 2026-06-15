@@ -1,16 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, fetchConnectionState, sendConnect, respondConnection, fetchConnectionRequests, fetchConnectionCount, fetchConnections, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f1f3f5';
-// Brand palette (green/teal evolution)
-const GREEN = '#0e7c66';
-const GREEN_DEEP = '#0a5c4c';
-const GREEN_SOFT = '#e6f4f0';
+// Brand palette — black & white minimal (constant names kept to limit churn)
+const GREEN = '#0f172a';            // primary accent (monochrome ink)
+const GREEN_SOFT = 'rgba(0,0,0,.06)';
 const INK = '#0f172a';
-const AV_COLORS = ['#0e7c66','#2563EB','#7c3aed','#C2410C','#d97706','#0891b2','#DB2777','#4F46E5','#059669'];
+const AV_COLORS = ['#0f172a','#1f2937','#334155','#374151','#475569','#111827','#1e293b','#0a0a0a','#3f3f46'];
 const avColor = id => AV_COLORS[(String(id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % AV_COLORS.length];
-const coverOf = () => `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN} 100%)`;
+const coverOf = () => `linear-gradient(135deg, #1f2937 0%, #0f172a 100%)`;
 const initials = name => (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const timeAgo = d => {
   const s = Math.floor((Date.now() - new Date(d).getTime())/1000);
@@ -602,38 +601,6 @@ function ComposerModal({ me, onClose, onPosted }) {
   );
 }
 
-// ── Connect request modal (LinkedIn-style note) ──────────────────────────────
-function ConnectModal({ target, onClose, onSend }) {
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async () => { setBusy(true); try { await onSend(note.trim()); onClose(); } catch { setBusy(false); } };
-  return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'60px 16px', overflowY:'auto' }}>
-      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:460, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span style={{ fontSize:16, fontWeight:700 }}>Connect with {target.name || 'this founder'}</span>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
-        </div>
-        <div style={{ padding:'16px 18px' }}>
-          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
-            <Av name={target.name} uid={target.id} url={target.avatar_url} sz={44}/>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700 }}>{target.name || 'Founder'}</div>
-              <div style={{ fontSize:12.5, color:'rgba(0,0,0,.55)' }}>{headlineOf(target)}</div>
-            </div>
-          </div>
-          <textarea autoFocus value={note} onChange={e=>setNote(e.target.value)} rows={3} maxLength={300} placeholder="Add a note (optional) — say why you'd like to connect."
-            style={{ width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, lineHeight:1.6, resize:'vertical', fontFamily:F, outline:'none', boxSizing:'border-box' }}/>
-        </div>
-        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)' }}>
-          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
-          <button onClick={submit} disabled={busy} style={{ padding:'8px 24px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:busy?.6:1, fontFamily:F }}>{busy?'Sending…':'Send request'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Chat (Messages view + DM panel) ──────────────────────────────────────────
 function ChatArea({ peer, msgs, me, onSend }) {
   const [input, setInput] = useState('');
@@ -730,7 +697,7 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goNetwork, goOpenings, onPost, requireAuth }) {
+function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const myRatings = myPosts.flatMap(p=>p.ratings||[]);
   const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
@@ -768,7 +735,6 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
           {[
             ['feed','Browse Ideas','home', goFeed],
             ['profile','My Profile','profile', me?()=>goProfile(me.id):requireAuth(()=>{})],
-            ['network','My Network','network', goNetwork],
             ['messages','Messages','messages', goMessages],
             ['openings','Openings','openings', goOpenings],
           ].map(([id,label,ico,fn])=>{
@@ -803,12 +769,13 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
 }
 
 // ── Right sidebar ────────────────────────────────────────────────────────────
-// Live startup news via TechCrunch's RSS feed (through a CORS-friendly proxy),
-// with a static fallback if the feed can't be reached.
+// Live startup news. Primary source is our own serverless /api/news (server-side
+// TechCrunch RSS fetch — reliable, no CORS). Falls back to the rss2json proxy, then
+// to a tiny static list only if both are unreachable.
 const NEWS_FALLBACK = [
-  { h:'Visit TechCrunch for the latest startup news', t:'Live feed', link:'https://techcrunch.com/category/startups/' },
-  { h:'YC, a16z, and Sequoia portfolio updates', t:'Markets', link:'https://news.crunchbase.com/' },
-  { h:'Funding rounds, launches & acquisitions', t:'Daily', link:'https://techcrunch.com/category/venture/' },
+  { h:'Latest startup news on TechCrunch', t:'Live feed', link:'https://techcrunch.com/category/startups/' },
+  { h:'Funding rounds, launches & acquisitions', t:'Crunchbase News', link:'https://news.crunchbase.com/' },
+  { h:'Venture & markets coverage', t:'Daily', link:'https://techcrunch.com/category/venture/' },
 ];
 const NEWS_FEED = 'https://techcrunch.com/category/startups/feed/';
 
@@ -816,69 +783,59 @@ function useStartupNews() {
   const [news, setNews] = useState(NEWS_FALLBACK);
   useEffect(() => {
     let on = true;
-    fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(NEWS_FEED)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (!on || d.status !== 'ok' || !d.items?.length) return;
-        setNews(d.items.slice(0, 6).map(i => ({ h: i.title, t: timeAgo(i.pubDate.replace(' ', 'T') + 'Z'), link: i.link })));
-      })
-      .catch(() => { /* keep fallback */ });
+    (async () => {
+      try {
+        const r = await fetch('/api/news');
+        if (r.ok) {
+          const d = await r.json();
+          if (on && d.items?.length) { setNews(d.items.slice(0, 6).map(i => ({ h: i.title, t: i.pubDate ? timeAgo(i.pubDate) : '', link: i.link }))); return; }
+        }
+      } catch { /* fall through to proxy */ }
+      try {
+        const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(NEWS_FEED)}`);
+        const d = await r.json();
+        if (on && d.status === 'ok' && d.items?.length) setNews(d.items.slice(0, 6).map(i => ({ h: i.title, t: timeAgo(i.pubDate.replace(' ', 'T') + 'Z'), link: i.link })));
+      } catch { /* keep static fallback */ }
+    })();
     return () => { on = false; };
   }, []);
   return news;
 }
 
-function RightBar({ me, posts, onFollow, onProfile, requireAuth, connState, onConnect, goNetwork }) {
+function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth }) {
   const news = useStartupNews();
   const [pymk, setPymk] = useState([]);
   useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPymk(p)); return () => { on = false; }; }, [me]);
-  const founders = useMemo(() => {
+  const fallback = useMemo(() => {
     const seen = new Set();
     const out = [];
     for (const p of posts) {
       if (p.user_id === me?.id || seen.has(p.user_id)) continue;
       seen.add(p.user_id);
       out.push({ id:p.user_id, ...p.author });
-      if (out.length >= 4) break;
+      if (out.length >= 5) break;
     }
     return out;
   }, [posts, me]);
-  const pymkList = (pymk || []).filter(p => !connState?.accepted?.has(p.id) && !connState?.outgoing?.has(p.id) && !connState?.incoming?.has(p.id)).slice(0, 4);
+  const source = me ? (pymk.length ? pymk : fallback) : fallback;
+  const list = source.filter(p => p.id !== me?.id && !followingIds?.has(p.id) && !pendingIds?.has(p.id)).slice(0, 5);
 
   return (
     <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
       <div style={{ ...card, padding:'14px 16px' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-          <span style={{ fontSize:15, fontWeight:700 }}>Add to your network</span>
-          <button onClick={goNetwork} style={{ background:'none', border:'none', color:GREEN, fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>See all →</button>
-        </div>
-        {me ? (
-          pymkList.length === 0
-            ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>No suggestions yet.</div>
-            : pymkList.map(f=>(
-                <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
-                  <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{f.name || 'Founder'}</button>
-                    <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(f)}</div>
-                  </div>
-                  <button onClick={requireAuth(()=>onConnect({ id:f.id, name:f.name, avatar_url:f.avatar_url, bio:f.bio }))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Connect</button>
+        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>Founders to follow</div>
+        {list.length === 0
+          ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>
+          : list.map(f=>(
+              <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
+                <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{f.name || 'Founder'}</button>
+                  <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(f)}</div>
                 </div>
-              ))
-        ) : (
-          founders.length === 0
-            ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>
-            : founders.map(f=>(
-                <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
-                  <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
-                    <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{headlineOf(f)}</div>
-                  </div>
-                  <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Follow</button>
-                </div>
-              ))
-        )}
+                <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Follow</button>
+              </div>
+            ))}
       </div>
       <div style={{ ...card, padding:'14px 16px' }}>
         <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>📰 Startup News</div>
@@ -900,8 +857,7 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
   const [people, setPeople] = useState(null);
   useEffect(() => {
     let on = true;
-    const fetcher = type === 'connections' ? fetchConnections(uid) : fetchFollowList(uid, type);
-    fetcher.then(p => on && setPeople(p));
+    fetchFollowList(uid, type).then(p => on && setPeople(p));
     return () => { on = false; };
   }, [uid, type]);
 
@@ -916,7 +872,7 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
           {people === null && <div style={{ padding:'24px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>Loading…</div>}
           {people?.length === 0 && (
             <div style={{ padding:'30px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>
-              {type === 'followers' ? 'No followers yet.' : type === 'connections' ? 'No connections yet.' : 'Not following anyone yet.'}
+              {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
             </div>
           )}
           {people?.map((u,i)=>(
@@ -1057,24 +1013,22 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, connState, onConnect, onRespondConn, onVote }) {
+function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
-  const [connCount, setConnCount] = useState(0);
   const [viewers, setViewers] = useState(null); // { count, viewers } — self only
   const [tab, setTab] = useState('ideas');
   const [received, setReceived] = useState(null);
   const [requests, setRequests] = useState(null);
-  const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following' | 'connections'
+  const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following'
   const [editing, setEditing] = useState(false);
-  const linkBtn = { background:'none', border:'none', color:'#2563EB', fontWeight:600, fontSize:13.5, cursor:'pointer', fontFamily:F, padding:0 };
+  const linkBtn = { background:'none', border:'none', color:GREEN, fontWeight:600, fontSize:13.5, cursor:'pointer', fontFamily:F, padding:0 };
 
   useEffect(() => {
     let on = true;
     fetchProfile(uid).then(p => on && setProf(p));
     fetchFollowCounts(uid).then(c => on && setCounts(c));
-    fetchConnectionCount(uid).then(c => on && setConnCount(c));
     if (me && uid === me.id) {
       fetchFollowRequests(uid).then(r => on && setRequests(r));
       fetchProfileViewers(uid).then(v => on && setViewers(v));
@@ -1105,9 +1059,6 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
   const reqCount = requests?.length || 0;
   const filled = [avatar, prof?.banner_url, prof?.bio, prof?.about, prof?.location, prof?.skills?.length, prof?.experience?.length, prof?.education?.length].filter(Boolean).length;
   const pct = Math.round((filled / 8) * 100);
-  const isConnected = connState?.accepted?.has(uid);
-  const connPending = connState?.outgoing?.has(uid);
-  const connIncoming = connState?.incoming?.has(uid);
   const pill = { padding:'8px 18px', borderRadius:99, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F };
 
   const tabs = isSelf
@@ -1131,14 +1082,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
             </div>
             {!isSelf && (
               <div style={{ display:'flex', gap:8, marginTop:8, flexWrap:'wrap' }}>
-                {isConnected
-                  ? <button disabled style={{ ...pill, background:'rgba(0,0,0,.06)', color:'rgba(0,0,0,.6)', border:'1.5px solid rgba(0,0,0,.12)', cursor:'default' }}>✓ Connected</button>
-                  : connIncoming
-                    ? <button onClick={()=>onRespondConn(uid, true)} style={{ ...pill, background:'#2563EB', color:'#fff', border:'none' }}>Accept connection</button>
-                    : connPending
-                      ? <button disabled style={{ ...pill, background:'transparent', color:'rgba(0,0,0,.45)', border:'1.5px solid rgba(0,0,0,.2)', cursor:'default' }}>Pending</button>
-                      : <button onClick={requireAuth(()=>onConnect({ id:uid, name, avatar_url:avatar, bio:prof?.bio }))} style={{ ...pill, background:'#2563EB', color:'#fff', border:'none' }}>🤝 Connect</button>}
-                <button onClick={requireAuth(()=>onFollow(uid))} style={{ ...pill, border:`1.5px solid ${isP?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, background:isF?'rgba(0,0,0,.9)':'transparent', color:isF?'#fff':isP?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)' }}>{isF?'Following':isP?'Requested':'Follow'}</button>
+                <button onClick={requireAuth(()=>onFollow(uid))} style={{ ...pill, border:`1.5px solid ${isP?'rgba(0,0,0,.3)':INK}`, background:isF?INK:'transparent', color:isF?'#fff':isP?'rgba(0,0,0,.45)':INK }}>{isF?'Following':isP?'Requested':'Follow'}</button>
                 <button onClick={requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar }))} style={{ ...pill, fontWeight:600, border:'1.5px solid rgba(0,0,0,.25)', background:'transparent', color:'rgba(0,0,0,.7)' }}>Message</button>
               </div>
             )}
@@ -1147,7 +1091,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
             )}
           </div>
           <div style={{ display:'flex', gap:24, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            {[['Connections', connCount, 'connections'],['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
+            {[['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
               <div key={l} onClick={modal ? ()=>setPeopleModal(modal) : undefined}
                 style={{ cursor: modal ? 'pointer' : 'default', borderRadius:6, padding:'2px 6px', margin:'-2px -6px', transition:'background .12s' }}
                 onMouseEnter={e=>{ if(modal) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
@@ -1315,46 +1259,6 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────
-// ── Network view (connection requests + suggestions) ─────────────────────────
-function NetworkView({ me, connState, connRequests, onConnect, onRespondConn, onProfile, requireAuth, onSignIn }) {
-  const [people, setPeople] = useState([]);
-  useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPeople(p)); return () => { on = false; }; }, [me]);
-  if (!me) return <div className="fade-up" style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to grow your network. <button onClick={()=>onSignIn?.()} style={{ background:'none', border:'none', color:GREEN, fontWeight:700, cursor:'pointer', fontFamily:F }}>Sign in</button></div>;
-  const suggestions = (people || []).filter(p => !connState?.accepted?.has(p.id) && !connState?.outgoing?.has(p.id) && !connState?.incoming?.has(p.id));
-  const row = (u, sub, right) => (
-    <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 0', borderBottom:'1px solid rgba(0,0,0,.06)' }}>
-      <Av name={u.name} uid={u.id} url={u.avatar_url} sz={48} onClick={()=>onProfile(u.id)}/>
-      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>onProfile(u.id)}>
-        <div style={{ fontSize:14.5, fontWeight:700 }}>{u.name || 'Founder'}</div>
-        <div style={{ fontSize:12.5, color:'rgba(0,0,0,.55)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>
-      </div>
-      {right}
-    </div>
-  );
-  const connectBtn = u => <button onClick={requireAuth(()=>onConnect({ id:u.id, name:u.name, avatar_url:u.avatar_url, bio:u.bio }))} style={{ padding:'6px 18px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>🤝 Connect</button>;
-  return (
-    <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-      <div style={{ ...card, padding:'16px 18px' }}>
-        <div style={{ fontSize:16, fontWeight:700, marginBottom: connRequests.length?6:0 }}>Connection requests {connRequests.length>0 && <span style={{ color:GREEN }}>({connRequests.length})</span>}</div>
-        {connRequests.length === 0
-          ? <div style={{ fontSize:13, color:'rgba(0,0,0,.45)' }}>No pending requests.</div>
-          : connRequests.map(u => row(u, u.note ? `"${u.note}"` : headlineOf(u), (
-              <div style={{ display:'flex', gap:8, flexShrink:0 }}>
-                <button onClick={()=>onRespondConn(u.id, true)} style={{ padding:'6px 16px', borderRadius:99, border:'none', background:GREEN, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>Accept</button>
-                <button onClick={()=>onRespondConn(u.id, false)} style={{ padding:'6px 12px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>Ignore</button>
-              </div>
-            )))}
-      </div>
-      <div style={{ ...card, padding:'16px 18px' }}>
-        <div style={{ fontSize:16, fontWeight:700, marginBottom:4 }}>People you may know</div>
-        {suggestions.length === 0
-          ? <div style={{ fontSize:13, color:'rgba(0,0,0,.45)', paddingTop:8 }}>No suggestions right now.</div>
-          : suggestions.map(u => row(u, headlineOf(u), connectBtn(u)))}
-      </div>
-    </div>
-  );
-}
-
 // ── Openings view (jobs/roles — placeholder) ─────────────────────────────────
 function OpeningsView({ onSubmitIdea }) {
   return (
@@ -1378,9 +1282,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [focusId, setFocusId] = useState(null);
   const [savedIds, setSavedIds] = useState(new Set());
   const [repostOf, setRepostOf] = useState(null);
-  const [connState, setConnState] = useState({ accepted:new Set(), outgoing:new Set(), incoming:new Set() });
-  const [connRequests, setConnRequests] = useState([]);
-  const [connectTarget, setConnectTarget] = useState(null);
   const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -1411,13 +1312,10 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
       fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
       fetchSavedPosts(user.id).then(s => { if (on) setSavedIds(s); });
-      fetchConnectionState(user.id).then(s => { if (on) setConnState(s); });
-      fetchConnectionRequests(user.id).then(r => { if (on) setConnRequests(r); });
       // Keep the bell fresh — poll for new requests + notifications every 30s
       const iv = setInterval(() => {
         fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
         fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
-        fetchConnectionRequests(user.id).then(r => { if (on) setConnRequests(r); });
       }, 30000);
       return () => { on = false; clearInterval(iv); };
     }
@@ -1470,30 +1368,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (accept) setFollowerCount(c => c + 1);
     await respondFollowRequest(user.id, followerId, accept);
     if (accept) createNotification({ actorId:user.id, userId:followerId, type:'follow_accept' });
-  }, [user]);
-
-  const handleConnect = useCallback(target => {
-    if (!user) return onSignIn?.();
-    if (target.id === user.id) return;
-    setConnectTarget(target);
-  }, [user, onSignIn]);
-
-  const submitConnect = useCallback(async (target, note) => {
-    if (!user) return;
-    setConnState(prev => { const outgoing = new Set(prev.outgoing); outgoing.add(target.id); return { ...prev, outgoing }; });
-    await sendConnect(user.id, target.id, note);
-  }, [user]);
-
-  const respondConn = useCallback(async (requesterId, accept) => {
-    if (!user) return;
-    setConnRequests(prev => prev.filter(r => r.id !== requesterId));
-    setConnState(prev => {
-      const incoming = new Set(prev.incoming); incoming.delete(requesterId);
-      const accepted = new Set(prev.accepted); if (accept) accepted.add(requesterId);
-      return { ...prev, incoming, accepted };
-    });
-    await respondConnection(user.id, requesterId, accept);
-    if (accept) createNotification({ actorId:user.id, userId:requesterId, type:'connect_accept' });
   }, [user]);
 
   const handleRate = useCallback(async (postId, n10) => {
@@ -1568,12 +1442,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   }, [user]);
 
   const unread = useMemo(() => Object.values(convs).reduce((s,c)=>s+(c.unread||0),0), [convs]);
-  const bellCount = requests.length + connRequests.length + useMemo(() => notifs.filter(n => !n.read).length, [notifs]);
+  const bellCount = requests.length + useMemo(() => notifs.filter(n => !n.read).length, [notifs]);
   const bellItems = useMemo(() => ([
     ...requests.map(u => ({ kind:'request', key:'r_'+u.id, user:u, time:u.requested_at })),
-    ...connRequests.map(u => ({ kind:'connreq', key:'c_'+u.id, user:u, time:u.requested_at })),
     ...notifs.map(n => ({ kind:'notif', key:n.id, notif:n, time:n.created_at })),
-  ].sort((a,b) => new Date(b.time) - new Date(a.time))), [requests, connRequests, notifs]);
+  ].sort((a,b) => new Date(b.time) - new Date(a.time))), [requests, notifs]);
   const notifText = n => {
     const name = n.actor?.name || 'Someone';
     if (n.type === 'rating') return `${name} rated your idea ${n.data?.value ?? ''}/10`;
@@ -1591,7 +1464,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const goProfile = uid => { setPid(uid); setView('profile'); };
   const goFeed = () => setView('feed');
   const goMessages = () => { if (!user) return onSignIn?.(); setView('messages'); };
-  const goNetwork = () => setView('network');
   const goOpenings = () => setView('openings');
 
   const focusPost = useCallback(async postId => {
@@ -1662,7 +1534,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <div style={{ flex:1 }}/>
         <nav style={{ display:'flex', alignItems:'center', gap:2 }} className="comm-topnav">
           <NavBtn icon="home" label="Home" active={view==='feed'} onClick={goFeed}/>
-          <NavBtn icon="network" label="Network" active={view==='network'} onClick={goNetwork}/>
           <NavBtn icon="openings" label="Openings" active={view==='openings'} onClick={goOpenings}/>
           <NavBtn icon="messages" label="Messages" active={view==='messages'} onClick={goMessages} badge={unread}/>
           {/* Alerts (notifications) */}
@@ -1690,19 +1561,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                         style={{ padding:'5px 13px', borderRadius:99, border:'none', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Accept</button>
                       <button onClick={()=>respondRequest(it.user.id, false)}
                         style={{ padding:'5px 11px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 }}>Reject</button>
-                    </div>
-                  ) : it.kind === 'connreq' ? (
-                    <div key={it.key} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 0', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
-                      <Av name={it.user.name} uid={it.user.id} url={it.user.avatar_url} sz={38} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}/>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, cursor:'pointer' }} onClick={()=>{ setBellOpen(false); goProfile(it.user.id); }}><b>{it.user.name || 'Founder'}</b> wants to connect</div>
-                        {it.user.note && <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', marginTop:2, fontStyle:'italic' }}>"{it.user.note}"</div>}
-                        <div style={{ display:'flex', gap:8, marginTop:6 }}>
-                          <button onClick={()=>respondConn(it.user.id, true)} style={{ padding:'5px 14px', borderRadius:99, border:'none', background:'#2563EB', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Accept</button>
-                          <button onClick={()=>respondConn(it.user.id, false)} style={{ padding:'5px 12px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:11.5, fontWeight:600, cursor:'pointer', fontFamily:F }}>Ignore</button>
-                        </div>
-                      </div>
-                      <div style={{ fontSize:11, color:'rgba(0,0,0,.4)', flexShrink:0 }}>{timeAgo(it.user.requested_at)}</div>
                     </div>
                   ) : (
                     <div key={it.key} onClick={()=>openNotif(it.notif)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', cursor:'pointer', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
@@ -1733,7 +1591,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goNetwork={goNetwork} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
+          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
@@ -1778,7 +1636,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} connState={connState} onConnect={handleConnect} onRespondConn={respondConn} onVote={handleVote}/>
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote}/>
           )}
 
           {view === 'messages' && (
@@ -1787,17 +1645,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               : <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to see your messages.</div>
           )}
 
-          {view === 'network' && (
-            <NetworkView me={user} connState={connState} connRequests={connRequests} onConnect={handleConnect} onRespondConn={respondConn} onProfile={goProfile} requireAuth={requireAuth} onSignIn={onSignIn}/>
-          )}
-
           {view === 'openings' && (
             <OpeningsView onSubmitIdea={onSubmitIdea}/>
           )}
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} connState={connState} onConnect={handleConnect} goNetwork={goNetwork}/>
+          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
         )}
       </div>
 
@@ -1811,10 +1665,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <RepostModal original={repostOf} me={user} onClose={()=>setRepostOf(null)} onDone={txt=>handleRepost(repostOf, txt)}/>
       )}
 
-      {/* Connect request modal */}
-      {connectTarget && user && (
-        <ConnectModal target={connectTarget} me={user} onClose={()=>setConnectTarget(null)} onSend={note=>submitConnect(connectTarget, note)}/>
-      )}
 
       {/* DM slide-over */}
       {dmUser && user && (
