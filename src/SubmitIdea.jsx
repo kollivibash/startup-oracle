@@ -3,6 +3,7 @@ import MasterReport from "./MasterReport";
 import { generateMasterReport } from "./reportEngine";
 import { saveIdea } from "./ideasDB";
 import { createPost } from "./communityDB";
+import { consumeValidation, refundValidation } from "./billingDB";
 
 const C = { black:'#0a0a0a', white:'#ffffff', surface:'#f5f5f5', border:'#e0e0e0', body:'#555555', muted:'#999999', light:'#f9f9f9' };
 const F = "'Plus Jakarta Sans', system-ui, sans-serif";
@@ -149,7 +150,7 @@ const ReviewRow = ({ label, value }) => value ? (
   </div>
 ) : null;
 
-const Step3 = ({ form, onBack, onSubmit }) => {
+const Step3 = ({ form, onBack, onSubmit, submitting }) => {
   const [agreed, setAgreed] = useState(false);
   const stageLabel = { idea:'Just an idea', proto:'Building a prototype', live:'Already live' }[form.stage];
   return (
@@ -173,7 +174,7 @@ const Step3 = ({ form, onBack, onSubmit }) => {
       </div>
       <div style={{ display:'flex', gap:10 }}>
         <Btn onClick={onBack} secondary style={{ flexShrink:0 }}>← Back</Btn>
-        <Btn onClick={onSubmit} disabled={!agreed} style={{ flex:1 }}>Submit for Validation →</Btn>
+        <Btn onClick={onSubmit} disabled={!agreed || submitting} style={{ flex:1 }}>{submitting ? 'Checking…' : 'Submit for Validation →'}</Btn>
       </div>
     </div>
   );
@@ -216,12 +217,23 @@ const Loading = ({ form, onDone }) => {
   );
 };
 
-export default function SubmitIdea({ onHome, user, onAccount }) {
+export default function SubmitIdea({ onHome, user, onAccount, onPricing }) {
   const [step, setStep]       = useState(1);
   const [form, setForm]       = useState(INIT);
   const [results, setResults] = useState(null);
+  const [blockReason, setBlockReason] = useState('');
+  const [checking, setChecking] = useState(false);
   const set = k => v => setForm(f=>({...f,[k]:v}));
   const go  = s => { setStep(s); window.scrollTo({top:0}); };
+
+  // Quota gate: 1 free validation, then subscribers get 2/month. Fails open if billing isn't set up.
+  const startValidation = async () => {
+    setChecking(true);
+    const r = await consumeValidation();
+    setChecking(false);
+    if (!r.allowed && r.reason !== 'billing_off') { setBlockReason(r.reason || 'need_sub'); go('paywall'); return; }
+    go('loading');
+  };
 
   const isForm = step===1||step===2||step===3;
 
@@ -264,9 +276,27 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
 
       {step==='loading' && <Loading form={form} onDone={data=>{
         setResults(data); go('results');
-        if (!data?.sections) return;
+        if (!data?.sections) { refundValidation(); return; }
         saveIdea(user?.id ?? null, { form, meta: data.meta, sections: data.sections });
       }}/>}
+
+      {step==='paywall' && (
+        <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center', animation:'fadeIn 0.4s ease' }}>
+          <div style={{ fontSize:42, marginBottom:16 }}>🔒</div>
+          <h2 style={{ fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>
+            {blockReason==='month_limit' ? "You've used this month's validations" : "You've used your free validation"}
+          </h2>
+          <p style={{ fontSize:15, color:C.muted, lineHeight:1.7, marginBottom:28 }}>
+            {blockReason==='month_limit'
+              ? 'Your subscription includes 2 validations per month — they reset at the start of next month.'
+              : 'Your first validation was free. Subscribe to keep validating ideas and get the Verified Founder badge.'}
+          </p>
+          <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+            {blockReason!=='month_limit' && <Btn onClick={onPricing}>View plans →</Btn>}
+            <Btn onClick={()=>go(3)} secondary>← Back</Btn>
+          </div>
+        </div>
+      )}
 
       {step==='results' && (
         results?.sections
@@ -305,7 +335,7 @@ export default function SubmitIdea({ onHome, user, onAccount }) {
         <div style={{ maxWidth:660, margin:'0 auto', padding:'56px 40px 80px' }}>
           {step===1 && <Step1 form={form} set={set} onNext={()=>go(2)}/>}
           {step===2 && <Step2 form={form} set={set} onBack={()=>go(1)} onNext={()=>go(3)}/>}
-          {step===3 && <Step3 form={form} onBack={()=>go(2)} onSubmit={()=>go('loading')}/>}
+          {step===3 && <Step3 form={form} onBack={()=>go(2)} onSubmit={startValidation} submitting={checking}/>}
         </div>
       )}
     </div>

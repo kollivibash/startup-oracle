@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
+import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const BG = '#f1f3f5';
@@ -58,6 +59,14 @@ const Av = ({ name, uid, url, sz=40, onClick, border=false }) => {
 
 const Tag = ({ t }) => <span style={{ display:'inline-flex', padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600, background:'rgba(0,0,0,.05)', color:'rgba(0,0,0,.6)' }}>#{String(t).replace(/^#/,'').replace(/\s+/g,'')}</span>;
 
+// Instagram-style verified badge for paid subscribers ("Verified Founder").
+const VerifiedBadge = ({ sz=15 }) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" style={{ flexShrink:0, verticalAlign:'-2px' }}><title>Verified Founder</title>
+    <path fill="#0095F6" d="M12 1.5l2.7 2 3.3-.3 1 3.1 2.8 1.8-1.1 3.1 1.1 3.1-2.8 1.8-1 3.1-3.3-.3-2.7 2-2.7-2-3.3.3-1-3.1L2 14.3l1.1-3.1L2 8.1l2.8-1.8 1-3.1 3.3.3z"/>
+    <path fill="#fff" d="M10.7 14.8l-2.4-2.4 1.1-1.1 1.3 1.3 3.9-3.9 1.1 1.1z"/>
+  </svg>
+);
+
 // ── Rating scale (1–10) ──────────────────────────────────────────────────────
 const RatingScale = ({ current, onRate, avg, rc }) => {
   const [hov, setHov] = useState(null);
@@ -83,7 +92,7 @@ const RatingScale = ({ current, onRate, avg, rc }) => {
 };
 
 // ── Suggestions panel ────────────────────────────────────────────────────────
-const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount }) => {
+const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount, verifiedIds }) => {
   const [items, setItems] = useState(null);
   const [txt, setTxt] = useState('');
   const [replyTo, setReplyTo] = useState(null);
@@ -130,6 +139,7 @@ const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount 
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ background:'rgba(0,0,0,.04)', borderRadius:8, padding:'8px 12px' }}>
             <span style={{ fontSize:13, fontWeight:700 }}>{c.author?.name || 'Founder'}</span>
+            {verifiedIds?.has(c.user_id) && <span style={{ marginLeft:4 }}><VerifiedBadge sz={13}/></span>}
             <span style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginLeft:6 }}>{timeAgo(c.created_at)}</span>
             <p style={{ margin:'4px 0 0', fontSize:13, lineHeight:1.5, color:'rgba(0,0,0,.8)' }}>{c.text}</p>
           </div>
@@ -318,7 +328,7 @@ const MediaGrid = ({ media }) => {
   );
 };
 
-function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote }) {
+function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extraSug, setExtraSug] = useState(0);
@@ -351,6 +361,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
               <button onClick={()=>onProfile(post.user_id)} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', fontFamily:F }}>{author.name || 'Founder'}</button>
+              {verifiedIds?.has(post.user_id) && <VerifiedBadge/>}
               {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:700, color:GREEN, background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':isP?'· Requested':'· + Follow'}</button>}
             </div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
@@ -424,7 +435,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
       </div>
 
       {rOpen && !isSelf && !isRepost && !isPoll && <RatingScale current={uRating} avg={avg10(ratings)} rc={ratings.length} onRate={n=>onRate(post.id, n)}/>}
-      {cOpen && <Suggestions postId={post.id} postOwnerId={post.user_id} postTitle={shareTitle} me={me} requireAuth={requireAuth} onCount={()=>setExtraSug(n=>n+1)}/>}
+      {cOpen && <Suggestions postId={post.id} postOwnerId={post.user_id} postTitle={shareTitle} me={me} requireAuth={requireAuth} onCount={()=>setExtraSug(n=>n+1)} verifiedIds={verifiedIds}/>}
     </div>
   );
 }
@@ -697,7 +708,7 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth }) {
+function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const myRatings = myPosts.flatMap(p=>p.ratings||[]);
   const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
@@ -717,7 +728,10 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
             <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={62} border onClick={me?()=>goProfile(me.id):undefined}/>
           </div>
           <div style={{ paddingTop:40 }}>
-            <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)', display:'block', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
+              {me && verifiedIds?.has(me.id) && <VerifiedBadge sz={16}/>}
+            </div>
             <p style={{ margin:'2px 0 0', fontSize:12.5, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{me?'Founder · Startup Oracle':'Join the founder community'}</p>
           </div>
         </div>
@@ -802,7 +816,7 @@ function useStartupNews() {
   return news;
 }
 
-function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth }) {
+function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth, verifiedIds }) {
   const news = useStartupNews();
   const [pymk, setPymk] = useState([]);
   useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPymk(p)); return () => { on = false; }; }, [me]);
@@ -830,7 +844,10 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
               <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
                 <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{f.name || 'Founder'}</button>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, minWidth:0 }}>
+                    <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', textAlign:'left', fontFamily:F, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name || 'Founder'}</button>
+                    {verifiedIds?.has(f.id) && <VerifiedBadge sz={13}/>}
+                  </div>
                   <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(f)}</div>
                 </div>
                 <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Follow</button>
@@ -1013,7 +1030,7 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote }) {
+function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
@@ -1077,7 +1094,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
           </div>
           <div style={{ paddingTop:50, display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
             <div>
-              <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{name}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', display:'flex', alignItems:'center', gap:7 }}>{name}{verifiedIds?.has(uid) && <VerifiedBadge sz={18}/>}</div>
               <div style={{ fontSize:14, color:'rgba(0,0,0,.6)', marginTop:2 }}>{headlineOf(prof)}</div>
             </div>
             {!isSelf && (
@@ -1200,7 +1217,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
 
           {fps.length === 0
           ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
-          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote}/>)}
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote} verifiedIds={verifiedIds}/>)}
         </>
       )}
 
@@ -1282,6 +1299,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [focusId, setFocusId] = useState(null);
   const [savedIds, setSavedIds] = useState(new Set());
   const [repostOf, setRepostOf] = useState(null);
+  const [verifiedIds, setVerifiedIds] = useState(new Set());
   const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -1304,6 +1322,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   useEffect(() => { dmUserRef.current = dmUser?.id ?? null; }, [dmUser]);
 
   useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
+  useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
   useEffect(() => {
     let on = true;
     fetchFollowState(user?.id ?? null).then(s => { if (on) setFollowState(s); });
@@ -1498,7 +1517,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds, savedIds]);
 
-  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote };
+  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -1591,7 +1610,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
+          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
@@ -1636,7 +1655,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote}/>
+            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
           )}
 
           {view === 'messages' && (
@@ -1651,7 +1670,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth}/>
+          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         )}
       </div>
 

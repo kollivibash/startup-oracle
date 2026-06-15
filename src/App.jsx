@@ -5,9 +5,10 @@ import Community from './Community'
 import Auth from './Auth'
 import Account from './Account'
 import MasterReport from './MasterReport'
+import Pricing from './Pricing'
 import { supabase } from './supabaseClient'
 
-const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account']
+const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing']
 
 export default function App() {
   // Survive page reloads on the same view (e.g. stay in Community on refresh)
@@ -144,7 +145,8 @@ export default function App() {
         onViewReport={idea => { setActiveIdea(idea); setView('report'); }}
       />
     : null
-  if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} />
+  if (view === 'pricing')   return <Pricing user={user} onHome={() => setView('oracle')} onSignIn={goSignIn} />
+  if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} />
   if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
   if (view === 'auth')      return (
     <Auth
@@ -162,6 +164,7 @@ export default function App() {
       onAnalyse={() => goAuth('submit')}
       onSignIn={goSignIn}
       onAccount={goAccount}
+      onPricing={() => setView('pricing')}
     />
   )
 }
