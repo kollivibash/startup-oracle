@@ -2,10 +2,15 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, fetchConnectionState, sendConnect, respondConnection, fetchConnectionRequests, fetchConnectionCount, fetchConnections, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
-const BG = '#f3f2ef';
-const AV_COLORS = ['#2563EB','#7c3aed','#C2410C','#d97706','#0891b2','#DB2777','#4F46E5','#059669','#dc2626'];
+const BG = '#f1f3f5';
+// Brand palette (green/teal evolution)
+const GREEN = '#0e7c66';
+const GREEN_DEEP = '#0a5c4c';
+const GREEN_SOFT = '#e6f4f0';
+const INK = '#0f172a';
+const AV_COLORS = ['#0e7c66','#2563EB','#7c3aed','#C2410C','#d97706','#0891b2','#DB2777','#4F46E5','#059669'];
 const avColor = id => AV_COLORS[(String(id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % AV_COLORS.length];
-const coverOf = id => `linear-gradient(160deg,#1e1b4b 0%,${avColor(id)} 100%)`;
+const coverOf = () => `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN} 100%)`;
 const initials = name => (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const timeAgo = d => {
   const s = Math.floor((Date.now() - new Date(d).getTime())/1000);
@@ -21,7 +26,26 @@ const headlineOf = p => p?.bio || 'Founder · Startup Oracle';
 const to10 = v => Math.round(Number(v) * 2);
 const avg10 = ratings => ratings?.length ? (ratings.reduce((a,r)=>a+Number(r.value),0)/ratings.length)*2 : 0;
 
-const card = { background:'#fff', borderRadius:8, border:'1px solid rgba(0,0,0,.08)', boxShadow:'0 0 0 1px rgba(0,0,0,.04)' };
+const card = { background:'#fff', borderRadius:10, border:'1px solid rgba(0,0,0,.08)', boxShadow:'0 1px 2px rgba(0,0,0,.04)' };
+
+// Top-nav line icons
+const NAV_ICONS = {
+  home: 'M3 11.2 12 4l9 7.2M5.5 9.8V20h13V9.8',
+  network: 'M9 11a3 3 0 100-6 3 3 0 000 6Zm7.5 0a2.5 2.5 0 100-5M3 19a6 6 0 0112 0m2.5-.5a5.5 5.5 0 00-3.5-5',
+  openings: 'M4 8.5h16V20H4zM9 8.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 6v2.5M4 13h16',
+  messages: 'M4 5h16v10.5H8.5L4 19.5z',
+  alerts: 'M11 3.5a6 6 0 016 6v3.5l1.8 1.8v1.2H4.2v-1.2L6 13V9.5a6 6 0 016-6ZM9.2 18a2.8 2.8 0 005.6 0',
+};
+function NavBtn({ icon, label, active, onClick, badge }) {
+  return (
+    <button onClick={onClick} style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', padding:'4px 12px', color: active?GREEN:'rgba(0,0,0,.5)', fontFamily:F }}>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={NAV_ICONS[icon]}/></svg>
+      <span style={{ fontSize:11, fontWeight: active?700:500 }}>{label}</span>
+      {active && <span style={{ position:'absolute', bottom:-8, left:10, right:10, height:2.5, background:GREEN, borderRadius:3 }}/>}
+      {badge > 0 && <span style={{ position:'absolute', top:-1, right:8, minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px', border:'1.5px solid #fff' }}>{badge}</span>}
+    </button>
+  );
+}
 
 const Av = ({ name, uid, url, sz=40, onClick, border=false }) => {
   const base = { width:sz, height:sz, borderRadius:'50%', flexShrink:0, cursor:onClick?'pointer':'default', border:border?'2px solid #fff':'none' };
@@ -33,7 +57,7 @@ const Av = ({ name, uid, url, sz=40, onClick, border=false }) => {
   );
 };
 
-const Tag = ({ t }) => <span style={{ display:'inline-flex', padding:'2px 8px', borderRadius:99, fontSize:12, fontWeight:500, background:'rgba(0,0,0,.06)', color:'rgba(0,0,0,.7)' }}>{t}</span>;
+const Tag = ({ t }) => <span style={{ display:'inline-flex', padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600, background:'rgba(0,0,0,.05)', color:'rgba(0,0,0,.6)' }}>#{String(t).replace(/^#/,'').replace(/\s+/g,'')}</span>;
 
 // ── Rating scale (1–10) ──────────────────────────────────────────────────────
 const RatingScale = ({ current, onRate, avg, rc }) => {
@@ -328,10 +352,13 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
               <button onClick={()=>onProfile(post.user_id)} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', fontFamily:F }}>{author.name || 'Founder'}</button>
-              {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:600, color:'#0f172a', background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':isP?'· Requested':'· + Follow'}</button>}
+              {!isSelf && <button onClick={requireAuth(()=>onFollow(post.user_id))} style={{ fontSize:13, fontWeight:700, color:GREEN, background:'none', border:'none', cursor:'pointer', padding:'0 2px', fontFamily:F }}>{isF?'· Following':isP?'· Requested':'· + Follow'}</button>}
             </div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
-            <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1 }}>{timeAgo(post.created_at)} · 🌐</div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1, display:'flex', alignItems:'center', gap:6 }}>
+              <span>{timeAgo(post.created_at)} · 🌐</span>
+              <span style={{ padding:'1px 8px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11, fontWeight:600, color:'rgba(0,0,0,.55)' }}>{isRepost?'Repost':isPoll?'Poll':isArticle?'Article':'Idea'}</span>
+            </div>
           </div>
         </div>
         {isSelf && onDelete && (
@@ -343,7 +370,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
         {isRepost ? (
           <>
             {body && <p style={{ margin:'0 0 4px', fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
-            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:GREEN, padding:'2px 0', fontFamily:F }}>{expanded?'show less':'…see more'}</button>}
             <EmbeddedPost post={post.original} onOpen={onOpenPost}/>
           </>
         ) : isPoll ? (
@@ -366,7 +393,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
             {isArticle && post.media?.length > 0 && <MediaGrid media={post.media}/>}
             <div style={{ fontSize: isArticle?20:14, fontWeight: isArticle?800:700, color:'rgba(0,0,0,.9)', margin: isArticle?'6px 0 6px':'0 0 4px', lineHeight:1.3 }}>{post.title}</div>
             {body && <p style={{ margin:0, fontSize:14, lineHeight:1.6, color:'rgba(0,0,0,.8)', whiteSpace:'pre-line' }}>{shown}</p>}
-            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'rgba(0,0,0,.55)', padding:'2px 0', fontFamily:F }}>{expanded?'…show less':'…see more'}</button>}
+            {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:GREEN, padding:'2px 0', fontFamily:F }}>{expanded?'show less':'…see more'}</button>}
             {post.link_preview && <LinkPreview data={post.link_preview}/>}
             {!isArticle && post.media?.length > 0 && <MediaGrid media={post.media}/>}
             {post.tags?.length > 0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'10px 0 8px' }}>{post.tags.map(t=><Tag key={t} t={t}/>)}</div>}
@@ -703,7 +730,7 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, onPost, requireAuth }) {
+function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goNetwork, goOpenings, onPost, requireAuth }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const myRatings = myPosts.flatMap(p=>p.ratings||[]);
   const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
@@ -712,60 +739,62 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
     posts.forEach(p=>(p.tags||[]).forEach(t=>{ c[t]=(c[t]||0)+1; }));
     return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,4);
   }, [posts]);
+  const navIco = { home:NAV_ICONS.home, profile:'M12 12a4 4 0 100-8 4 4 0 000 8Zm-7 8a7 7 0 0114 0', network:NAV_ICONS.network, messages:NAV_ICONS.messages, openings:NAV_ICONS.openings };
 
   return (
-    <div style={{ width:225, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
+    <div style={{ width:238, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
       <div style={{ ...card, overflow:'hidden' }}>
-        <div style={{ height:56, background:coverOf(me?.id||'me'), cursor:'pointer' }} onClick={me?()=>goProfile(me.id):requireAuth(()=>{})}/>
-        <div style={{ padding:'0 12px 12px', position:'relative' }}>
-          <div style={{ position:'absolute', top:-24 }}>
-            <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={56} border onClick={me?()=>goProfile(me.id):undefined}/>
+        <div style={{ height:64, background:coverOf(), cursor:'pointer' }} onClick={me?()=>goProfile(me.id):requireAuth(()=>{})}/>
+        <div style={{ padding:'0 14px 14px', position:'relative' }}>
+          <div style={{ position:'absolute', top:-28 }}>
+            <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={62} border onClick={me?()=>goProfile(me.id):undefined}/>
           </div>
-          <div style={{ paddingTop:36 }}>
-            <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:15, fontWeight:700, color:'rgba(0,0,0,.9)', display:'block', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
-            <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{me?'Founder · Startup Oracle':'Join the founder community'}</p>
+          <div style={{ paddingTop:40 }}>
+            <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)', display:'block', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
+            <p style={{ margin:'2px 0 0', fontSize:12.5, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{me?'Founder · Startup Oracle':'Join the founder community'}</p>
           </div>
         </div>
         {me && (
-          <div style={{ borderTop:'1px solid rgba(0,0,0,.08)', padding:'10px 12px', display:'flex', flexDirection:'column', gap:6 }}>
-            {[['Followers', followerCount],['Ideas posted', myPosts.length],['Avg rating', myAvg==='—'?'—':`${myAvg}/10`]].map(([l,v])=>(
-              <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span style={{ fontSize:12, color:'rgba(0,0,0,.6)' }}>{l}</span>
-                <span style={{ fontSize:12, fontWeight:700, color:'rgba(0,0,0,.9)' }}>{v}</span>
+          <div style={{ borderTop:'1px solid rgba(0,0,0,.08)', padding:'12px 8px', display:'flex' }}>
+            {[['Followers', followerCount],['Ideas', myPosts.length],['Rating', myAvg==='—'?'—':`${myAvg}`]].map(([l,v])=>(
+              <div key={l} style={{ flex:1, textAlign:'center' }}>
+                <div style={{ fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{v}</div>
+                <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>{l}</div>
               </div>
             ))}
           </div>
         )}
-      </div>
-
-      <div style={{ ...card, padding:'8px 0' }}>
-        <div style={{ padding:'4px 12px 8px' }}>
-          <button onClick={me ? onPost : requireAuth(()=>{})}
-            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'10px', background:'rgba(0,0,0,.9)', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>
-            ✎ Post an Idea
-          </button>
+        <div style={{ borderTop:'1px solid rgba(0,0,0,.08)', padding:'6px 6px' }}>
+          {[
+            ['feed','Browse Ideas','home', goFeed],
+            ['profile','My Profile','profile', me?()=>goProfile(me.id):requireAuth(()=>{})],
+            ['network','My Network','network', goNetwork],
+            ['messages','Messages','messages', goMessages],
+            ['openings','Openings','openings', goOpenings],
+          ].map(([id,label,ico,fn])=>{
+            const act = view===id || (id==='profile' && view==='profile-self');
+            return (
+              <button key={id} onClick={fn} style={{ width:'100%', display:'flex', alignItems:'center', gap:11, padding:'10px 12px', borderRadius:8, border:'none', background:act?GREEN_SOFT:'transparent', color:act?GREEN:'rgba(0,0,0,.6)', fontSize:13.5, fontWeight:act?700:600, cursor:'pointer', fontFamily:F, transition:'all .15s' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={navIco[ico]}/></svg>
+                {label}
+                {id==='messages' && unread>0 && <span style={{ marginLeft:'auto', background:GREEN, color:'#fff', fontSize:9.5, fontWeight:700, minWidth:17, height:17, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{unread}</span>}
+              </button>
+            );
+          })}
         </div>
-        {[
-          ['feed','Browse Ideas','▦', goFeed],
-          ['profile','My Profile','◉', me?()=>goProfile(me.id):requireAuth(()=>{})],
-          ['messages','Messages','✉', goMessages],
-        ].map(([id,label,icon,fn])=>{
-          const act = view===id || (id==='profile' && view==='profile-self');
-          return (
-            <button key={id} onClick={fn} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 16px', border:'none', background:act?'rgba(0,0,0,.06)':'transparent', color:act?'rgba(0,0,0,.9)':'rgba(0,0,0,.6)', fontSize:13, fontWeight:act?700:500, cursor:'pointer', borderLeft:act?'3px solid rgba(0,0,0,.9)':'3px solid transparent', fontFamily:F, transition:'all .15s' }}>
-              <span>{icon}</span>{label}
-              {id==='messages' && unread>0 && <span style={{ marginLeft:'auto', background:'rgba(0,0,0,.9)', color:'#fff', fontSize:9.5, fontWeight:700, minWidth:17, height:17, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{unread}</span>}
-            </button>
-          );
-        })}
       </div>
 
-      <div style={{ ...card, padding:'12px 16px' }}>
-        <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:'rgba(0,0,0,.9)' }}>Trending topics</div>
-        {tagCounts.length === 0 && <div style={{ fontSize:12, color:'rgba(0,0,0,.4)' }}>No topics yet.</div>}
+      <button onClick={me ? onPost : requireAuth(()=>{})}
+        style={{ ...card, width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'13px', background:INK, color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F }}>
+        + Post an Idea
+      </button>
+
+      <div style={{ ...card, padding:'14px 16px' }}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:10, color:'rgba(0,0,0,.9)' }}>Trending Topics</div>
+        {tagCounts.length === 0 && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>No topics yet.</div>}
         {tagCounts.map(([t,n])=>(
-          <div key={t} style={{ fontSize:12, color:'rgba(0,0,0,.6)', marginBottom:6, lineHeight:1.4 }}>
-            <span style={{ fontWeight:600, color:'rgba(0,0,0,.8)' }}>#{t.replace(/\s+/g,'')}</span> <span style={{ color:'rgba(0,0,0,.45)' }}>·</span> {n} idea{n!==1?'s':''}
+          <div key={t} style={{ fontSize:12.5, color:'rgba(0,0,0,.6)', marginBottom:7, lineHeight:1.4 }}>
+            <span style={{ fontWeight:700, color:GREEN }}>#{t.replace(/\s+/g,'')}</span> <span style={{ color:'rgba(0,0,0,.4)' }}>· {n} idea{n!==1?'s':''}</span>
           </div>
         ))}
       </div>
@@ -799,7 +828,7 @@ function useStartupNews() {
   return news;
 }
 
-function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, requireAuth, connState, onConnect }) {
+function RightBar({ me, posts, onFollow, onProfile, requireAuth, connState, onConnect, goNetwork }) {
   const news = useStartupNews();
   const [pymk, setPymk] = useState([]);
   useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPymk(p)); return () => { on = false; }; }, [me]);
@@ -817,8 +846,41 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
   const pymkList = (pymk || []).filter(p => !connState?.accepted?.has(p.id) && !connState?.outgoing?.has(p.id) && !connState?.incoming?.has(p.id)).slice(0, 4);
 
   return (
-    <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
-      <div style={{ ...card, padding:'12px 16px' }}>
+    <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ ...card, padding:'14px 16px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <span style={{ fontSize:15, fontWeight:700 }}>Add to your network</span>
+          <button onClick={goNetwork} style={{ background:'none', border:'none', color:GREEN, fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>See all →</button>
+        </div>
+        {me ? (
+          pymkList.length === 0
+            ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>No suggestions yet.</div>
+            : pymkList.map(f=>(
+                <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
+                  <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{f.name || 'Founder'}</button>
+                    <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(f)}</div>
+                  </div>
+                  <button onClick={requireAuth(()=>onConnect({ id:f.id, name:f.name, avatar_url:f.avatar_url, bio:f.bio }))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Connect</button>
+                </div>
+              ))
+        ) : (
+          founders.length === 0
+            ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>
+            : founders.map(f=>(
+                <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center' }}>
+                  <Av name={f.name} uid={f.id} url={f.avatar_url} sz={42} onClick={()=>onProfile(f.id)}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
+                    <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{headlineOf(f)}</div>
+                  </div>
+                  <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Follow</button>
+                </div>
+              ))
+        )}
+      </div>
+      <div style={{ ...card, padding:'14px 16px' }}>
         <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>📰 Startup News</div>
         {news.map((n,i)=>(
           <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
@@ -829,37 +891,6 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
           </a>
         ))}
       </div>
-      <div style={{ ...card, padding:'12px 16px' }}>
-        <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>Founders to follow</div>
-        {founders.length === 0 && <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>}
-        {founders.map(f=>(
-          <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'flex-start' }}>
-            <Av name={f.name} uid={f.id} url={f.avatar_url} sz={40} onClick={()=>onProfile(f.id)}/>
-            <div style={{ flex:1, minWidth:0 }}>
-              <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
-              <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4, marginBottom:6 }}>{headlineOf(f)}</div>
-              <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'4px 16px', borderRadius:99, border:`1.5px solid ${pendingIds?.has(f.id)?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .15s', background:followingIds.has(f.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(f.id)?'#fff':pendingIds?.has(f.id)?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F }}>
-                {followingIds.has(f.id)?'Following':pendingIds?.has(f.id)?'Requested':'Follow'}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {me && pymkList.length > 0 && (
-        <div style={{ ...card, padding:'12px 16px' }}>
-          <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>People you may know</div>
-          {pymkList.map(f=>(
-            <div key={f.id} style={{ display:'flex', gap:10, marginBottom:14, alignItems:'flex-start' }}>
-              <Av name={f.name} uid={f.id} url={f.avatar_url} sz={40} onClick={()=>onProfile(f.id)}/>
-              <div style={{ flex:1, minWidth:0 }}>
-                <button onClick={()=>onProfile(f.id)} style={{ background:'none', border:'none', padding:0, fontSize:14, fontWeight:700, color:'rgba(0,0,0,.9)', cursor:'pointer', display:'block', textAlign:'left', fontFamily:F }}>{f.name || 'Founder'}</button>
-                <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4, marginBottom:6 }}>{headlineOf(f)}</div>
-                <button onClick={requireAuth(()=>onConnect({ id:f.id, name:f.name, avatar_url:f.avatar_url, bio:f.bio }))} style={{ padding:'4px 16px', borderRadius:99, border:'1.5px solid #2563EB', fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:'#2563EB', fontFamily:F }}>🤝 Connect</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1284,6 +1315,60 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────
+// ── Network view (connection requests + suggestions) ─────────────────────────
+function NetworkView({ me, connState, connRequests, onConnect, onRespondConn, onProfile, requireAuth, onSignIn }) {
+  const [people, setPeople] = useState([]);
+  useEffect(() => { let on = true; if (me) fetchPeopleYouMayKnow(me.id).then(p => on && setPeople(p)); return () => { on = false; }; }, [me]);
+  if (!me) return <div className="fade-up" style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to grow your network. <button onClick={()=>onSignIn?.()} style={{ background:'none', border:'none', color:GREEN, fontWeight:700, cursor:'pointer', fontFamily:F }}>Sign in</button></div>;
+  const suggestions = (people || []).filter(p => !connState?.accepted?.has(p.id) && !connState?.outgoing?.has(p.id) && !connState?.incoming?.has(p.id));
+  const row = (u, sub, right) => (
+    <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 0', borderBottom:'1px solid rgba(0,0,0,.06)' }}>
+      <Av name={u.name} uid={u.id} url={u.avatar_url} sz={48} onClick={()=>onProfile(u.id)}/>
+      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>onProfile(u.id)}>
+        <div style={{ fontSize:14.5, fontWeight:700 }}>{u.name || 'Founder'}</div>
+        <div style={{ fontSize:12.5, color:'rgba(0,0,0,.55)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>
+      </div>
+      {right}
+    </div>
+  );
+  const connectBtn = u => <button onClick={requireAuth(()=>onConnect({ id:u.id, name:u.name, avatar_url:u.avatar_url, bio:u.bio }))} style={{ padding:'6px 18px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>🤝 Connect</button>;
+  return (
+    <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ ...card, padding:'16px 18px' }}>
+        <div style={{ fontSize:16, fontWeight:700, marginBottom: connRequests.length?6:0 }}>Connection requests {connRequests.length>0 && <span style={{ color:GREEN }}>({connRequests.length})</span>}</div>
+        {connRequests.length === 0
+          ? <div style={{ fontSize:13, color:'rgba(0,0,0,.45)' }}>No pending requests.</div>
+          : connRequests.map(u => row(u, u.note ? `"${u.note}"` : headlineOf(u), (
+              <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+                <button onClick={()=>onRespondConn(u.id, true)} style={{ padding:'6px 16px', borderRadius:99, border:'none', background:GREEN, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>Accept</button>
+                <button onClick={()=>onRespondConn(u.id, false)} style={{ padding:'6px 12px', borderRadius:99, border:'1px solid rgba(0,0,0,.2)', background:'transparent', color:'rgba(0,0,0,.6)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>Ignore</button>
+              </div>
+            )))}
+      </div>
+      <div style={{ ...card, padding:'16px 18px' }}>
+        <div style={{ fontSize:16, fontWeight:700, marginBottom:4 }}>People you may know</div>
+        {suggestions.length === 0
+          ? <div style={{ fontSize:13, color:'rgba(0,0,0,.45)', paddingTop:8 }}>No suggestions right now.</div>
+          : suggestions.map(u => row(u, headlineOf(u), connectBtn(u)))}
+      </div>
+    </div>
+  );
+}
+
+// ── Openings view (jobs/roles — placeholder) ─────────────────────────────────
+function OpeningsView({ onSubmitIdea }) {
+  return (
+    <div className="fade-up" style={{ ...card, padding:'56px 32px', textAlign:'center' }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>💼</div>
+      <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', marginBottom:8 }}>Openings are coming soon</div>
+      <p style={{ fontSize:14, color:'rgba(0,0,0,.55)', lineHeight:1.6, maxWidth:380, margin:'0 auto 20px' }}>
+        Soon you'll be able to post co-founder roles, early hires, and gigs — and apply to other founders' openings, right here.
+      </p>
+      <button onClick={onSubmitIdea} style={{ padding:'10px 22px', borderRadius:99, background:GREEN, color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F }}>✦ Validate an idea meanwhile</button>
+    </div>
+  );
+}
+
 export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, focusPostId, onConsumeFocus }) {
   const [view, setView] = useState('feed');         // feed | profile | messages
   const [pid, setPid] = useState(null);
@@ -1506,6 +1591,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const goProfile = uid => { setPid(uid); setView('profile'); };
   const goFeed = () => setView('feed');
   const goMessages = () => { if (!user) return onSignIn?.(); setView('messages'); };
+  const goNetwork = () => setView('network');
+  const goOpenings = () => setView('openings');
 
   const focusPost = useCallback(async postId => {
     setView('feed'); setBellOpen(false);
@@ -1551,10 +1638,10 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:600px}}
         .slide-down{animation:slideDown .2s ease both;overflow:hidden}
         @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
-        .act-btn{display:flex;flex:1;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:4px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
-        .act-btn:hover{background:rgba(0,0,0,.08);color:rgba(0,0,0,.9)}
-        .act-btn.on{color:#0f172a;background:rgba(0,0,0,.06)}
-        .act-btn.rated{color:#92400e}
+        .act-btn{display:flex;flex:1;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:8px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
+        .act-btn:hover{background:${GREEN_SOFT};color:${GREEN}}
+        .act-btn.on{color:${GREEN};background:${GREEN_SOFT}}
+        .act-btn.rated{color:${GREEN}}
         @media (max-width:1100px){ .comm-right{display:none!important} }
         @media (max-width:840px){ .comm-left{display:none!important} .comm-page{padding-bottom:74px!important} }
         .comm-mobnav{display:none}
@@ -1565,25 +1652,23 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       `}</style>
 
       {/* Top nav */}
-      <header style={{ height:52, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 16px', gap:12, position:'sticky', top:0, zIndex:100 }}>
-        <span onClick={onHome} style={{ fontSize:18, fontWeight:800, letterSpacing:'-0.5px', color:'rgba(0,0,0,.9)', whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.06)', borderRadius:4, padding:'0 10px', height:34, flex:'0 1 220px' }}>
-          🔍<input value={search} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas"
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:13, fontFamily:F, minWidth:0 }}/>
+      <header style={{ height:62, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 22px', gap:16, position:'sticky', top:0, zIndex:100 }}>
+        <span onClick={onHome} style={{ fontSize:20, fontWeight:800, letterSpacing:'-0.5px', color:GREEN, whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.05)', borderRadius:8, padding:'0 12px', height:38, flex:'0 1 320px' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input value={search} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas, people…"
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, fontFamily:F, minWidth:0 }}/>
         </div>
         <div style={{ flex:1 }}/>
-        {/* Notifications bell */}
-        <div style={{ position:'relative' }}>
-          <button onClick={user ? ()=>{ const next = !bellOpen; setBellOpen(next); if (next) { fetchFollowRequests(user.id).then(setRequests); fetchNotifications(user.id).then(n => setNotifs(n.map(x=>({...x,read:true})))); markNotificationsRead(user.id); } } : requireAuth(()=>{})}
-            title="Notifications"
-            style={{ position:'relative', width:36, height:36, borderRadius:'50%', border:'none', background:bellOpen?'rgba(0,0,0,.08)':'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}
-            onMouseEnter={e=>{ if(!bellOpen) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
-            onMouseLeave={e=>{ if(!bellOpen) e.currentTarget.style.background='transparent'; }}>
-            <svg width="19" height="19" viewBox="0 0 22 22" fill="none"><path d="M11 2a7 7 0 00-7 7v5l-2 2v1h18v-1l-2-2V9a7 7 0 00-7-7Z" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinejoin="round"/><path d="M9 18a2 2 0 004 0" stroke="rgba(0,0,0,.65)" strokeWidth="1.6" strokeLinecap="round"/></svg>
-            {bellCount > 0 && (
-              <span style={{ position:'absolute', top:2, right:1, minWidth:16, height:16, background:'#DC2626', color:'#fff', borderRadius:9, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{bellCount}</span>
-            )}
-          </button>
+        <nav style={{ display:'flex', alignItems:'center', gap:2 }} className="comm-topnav">
+          <NavBtn icon="home" label="Home" active={view==='feed'} onClick={goFeed}/>
+          <NavBtn icon="network" label="Network" active={view==='network'} onClick={goNetwork}/>
+          <NavBtn icon="openings" label="Openings" active={view==='openings'} onClick={goOpenings}/>
+          <NavBtn icon="messages" label="Messages" active={view==='messages'} onClick={goMessages} badge={unread}/>
+          {/* Alerts (notifications) */}
+          <div style={{ position:'relative' }}>
+            <NavBtn icon="alerts" label="Alerts" active={bellOpen} badge={bellCount}
+              onClick={user ? ()=>{ const next = !bellOpen; setBellOpen(next); if (next) { fetchFollowRequests(user.id).then(setRequests); fetchNotifications(user.id).then(n => setNotifs(n.map(x=>({...x,read:true})))); markNotificationsRead(user.id); } } : requireAuth(()=>{})}/>
 
           {bellOpen && (
             <>
@@ -1632,30 +1717,50 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               </div>
             </>
           )}
-        </div>
+          </div>
+        </nav>
         {user ? (
-          <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-            <Av name={nameOf(user)} uid={user.id} url={user.user_metadata?.avatar_url} sz={30}/>
-            <span style={{ fontSize:13, fontWeight:600, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nameOf(user)}</span>
+          <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer', paddingLeft:8, borderLeft:'1px solid rgba(0,0,0,.1)' }}>
+            <Av name={nameOf(user)} uid={user.id} url={user.user_metadata?.avatar_url} sz={34}/>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </div>
         ) : (
-          <span onClick={()=>onSignIn?.()} style={{ fontSize:13, color:'rgba(0,0,0,.6)', cursor:'pointer', fontWeight:500 }}>Sign in</span>
+          <span onClick={()=>onSignIn?.()} style={{ fontSize:13, color:'rgba(0,0,0,.6)', cursor:'pointer', fontWeight:600, paddingLeft:8 }}>Sign in</span>
         )}
-        <button onClick={onSubmitIdea} style={{ padding:'7px 16px', background:'rgba(0,0,0,.9)', color:'#fff', border:'none', borderRadius:99, fontSize:13, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', fontFamily:F }}>Validate My Idea →</button>
+        <button onClick={onSubmitIdea} style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', background:GREEN, color:'#fff', border:'none', borderRadius:99, fontSize:13.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', fontFamily:F }}>✦ Validate My Idea</button>
       </header>
 
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
+          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goNetwork={goNetwork} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth}/>
         </div>
 
-        <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':555 }}>
+        <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
           {view === 'feed' && (
-            <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {/* Composer trigger */}
+              <div style={{ ...card, padding:'14px 16px' }}>
+                <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                  <Av name={nameOf(user)} uid={user?.id||'me'} url={user?.user_metadata?.avatar_url} sz={44} onClick={user?()=>goProfile(user.id):undefined}/>
+                  <button onClick={user ? ()=>setComposerOpen(true) : requireAuth(()=>{})}
+                    style={{ flex:1, textAlign:'left', height:48, borderRadius:99, border:'1px solid rgba(0,0,0,.15)', background:'#fff', color:'rgba(0,0,0,.5)', padding:'0 20px', fontSize:14.5, cursor:'pointer', fontFamily:F }}>
+                    Share your idea or startup update…
+                  </button>
+                </div>
+                <div style={{ display:'flex', marginTop:10, paddingTop:4, borderTop:'1px solid rgba(0,0,0,.06)' }}>
+                  {[['🖼','Photo'],['🎥','Video'],['✎','Idea'],['@','Mention']].map(([ic,l])=>(
+                    <button key={l} onClick={user ? ()=>setComposerOpen(true) : requireAuth(()=>{})}
+                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px 4px', marginTop:6, border:'none', background:'none', cursor:'pointer', fontSize:13.5, fontWeight:600, color:'rgba(0,0,0,.6)', borderRadius:8, fontFamily:F }}
+                      onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                      <span style={{ fontSize:15 }}>{ic}</span>{l}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div style={{ ...card, display:'flex' }}>
                 {[['all','All'],['top-rated','Top Rated'],['most-discussed','Most Discussed'],['following','Following'],['saved','Saved']].map(([id,label])=>(
-                  <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'12px 4px', border:'none', borderBottom:tab===id?'2px solid rgba(0,0,0,.9)':'2px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?'rgba(0,0,0,.9)':'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
+                  <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'13px 4px', border:'none', borderBottom:tab===id?`2.5px solid ${GREEN}`:'2.5px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?GREEN:'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
                     {label}
                   </button>
                 ))}
@@ -1681,10 +1786,18 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               ? <MessagesView me={user} convs={convs} activePeer={activePeer} onOpenConv={openConv} onSend={handleSend}/>
               : <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to see your messages.</div>
           )}
+
+          {view === 'network' && (
+            <NetworkView me={user} connState={connState} connRequests={connRequests} onConnect={handleConnect} onRespondConn={respondConn} onProfile={goProfile} requireAuth={requireAuth} onSignIn={onSignIn}/>
+          )}
+
+          {view === 'openings' && (
+            <OpeningsView onSubmitIdea={onSubmitIdea}/>
+          )}
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} connState={connState} onConnect={handleConnect}/>
+          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} connState={connState} onConnect={handleConnect} goNetwork={goNetwork}/>
         )}
       </div>
 
