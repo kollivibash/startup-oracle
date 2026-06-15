@@ -142,7 +142,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
     <div>
       <div style={{ marginBottom:36 }}>
         <h1 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
-        <p style={{ fontSize:15, color:C.muted }}>Sign in to your IdeaProof account</p>
+        <p style={{ fontSize:15, color:C.muted }}>Sign in to your Startup Oracle account</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
         <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
@@ -314,7 +314,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
 
       {/* Navbar */}
       <div style={{ borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>ideaproof</span>
+        <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
         <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
       </div>
 
