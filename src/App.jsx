@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Home from './Home'
 import SubmitIdea from './SubmitIdea'
 import Community from './Community'
@@ -24,6 +24,7 @@ export default function App() {
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
+  const histInit = useRef(false)
 
   useEffect(() => {
     try { if (PERSISTED_VIEWS.includes(view)) sessionStorage.setItem('so_view', view) } catch { /* private mode */ }
@@ -67,6 +68,28 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => { setUser(data.session?.user ?? null); setAuthReady(true) })
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null))
     return () => sub.subscription.unsubscribe()
+  }, [])
+
+  // Browser back/forward: reflect the in-app view in history so the back button
+  // returns to the previous view (e.g. Community → back → Home).
+  useEffect(() => {
+    if (!histInit.current) {
+      histInit.current = true
+      window.history.replaceState({ soView: view }, '')
+      return
+    }
+    if (window.history.state?.soView !== view) {
+      window.history.pushState({ soView: view }, '')
+    }
+  }, [view])
+
+  useEffect(() => {
+    const onPop = (e) => {
+      const v = e.state?.soView
+      setView(PERSISTED_VIEWS.includes(v) ? v : 'oracle')
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   // Never show the auth screen to someone who is already logged in

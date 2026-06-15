@@ -1607,7 +1607,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   </button>
                 </div>
                 <div style={{ display:'flex', marginTop:10, paddingTop:4, borderTop:'1px solid rgba(0,0,0,.06)' }}>
-                  {[['🖼','Photo'],['🎥','Video'],['✎','Idea'],['@','Mention']].map(([ic,l])=>(
+                  {[['🖼','Photo'],['🎥','Video'],['✎','Idea']].map(([ic,l])=>(
                     <button key={l} onClick={user ? ()=>setComposerOpen(true) : requireAuth(()=>{})}
                       style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px 4px', marginTop:6, border:'none', background:'none', cursor:'pointer', fontSize:13.5, fontWeight:600, color:'rgba(0,0,0,.6)', borderRadius:8, fontFamily:F }}
                       onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
