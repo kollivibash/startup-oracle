@@ -238,20 +238,49 @@ function RepostModal({ original, me, onClose, onDone }) {
 const formatSize = b => !b ? '' : b > 1048576 ? `${(b/1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b/1024))} KB`;
 
 // Swipeable carousel for multi-image / document-deck posts (LinkedIn-style).
-const Carousel = ({ images }) => {
+const ExpandIcon = ({ c='#fff' }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4H4v5M20 9V4h-5M4 15v5h5M15 20h5v-5"/></svg>
+);
+
+// Fullscreen photo viewer — arrow keys / on-screen arrows / Esc, swipe through photos.
+const Lightbox = ({ images, start, onClose }) => {
+  const [i, setI] = useState(start);
+  const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + images.length) % images.length); };
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight') setI(p => (p + 1) % images.length);
+      else if (e.key === 'ArrowLeft') setI(p => (p - 1 + images.length) % images.length);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey); };
+  }, [images.length, onClose]);
+  const nav = side => ({ position:'absolute', top:'50%', [side]:'2.5%', transform:'translateY(-50%)', width:48, height:48, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3 });
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(0,0,0,.93)', display:'flex', alignItems:'center', justifyContent:'center', animation:'fadeUp .15s ease both' }}>
+      <button onClick={onClose} title="Close (Esc)" style={{ position:'absolute', top:18, right:22, width:42, height:42, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:20, cursor:'pointer', zIndex:3 }}>✕</button>
+      {images.length > 1 && <button onClick={e=>go(-1,e)} title="Previous" style={nav('left')}>‹</button>}
+      <img src={images[i].url} alt={images[i].name||''} onClick={e=>e.stopPropagation()} style={{ maxWidth:'92vw', maxHeight:'88vh', objectFit:'contain', display:'block', borderRadius:4 }}/>
+      {images.length > 1 && <button onClick={e=>go(1,e)} title="Next" style={nav('right')}>›</button>}
+      {images.length > 1 && <div style={{ position:'absolute', bottom:22, left:0, right:0, textAlign:'center', color:'#fff', fontSize:13, fontWeight:600 }}>{i+1} / {images.length}</div>}
+    </div>
+  );
+};
+
+const Carousel = ({ images, onOpen }) => {
   const [i, setI] = useState(0);
-  const go = d => setI(p => (p + d + images.length) % images.length);
-  const arrow = side => ({ position:'absolute', top:'50%', [side]:8, transform:'translateY(-50%)', width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.55)', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 });
+  const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + images.length) % images.length); };
+  const arrow = side => ({ position:'absolute', top:'50%', [side]:8, transform:'translateY(-50%)', width:34, height:34, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.55)', color:'#fff', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 });
   return (
     <div style={{ position:'relative', borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)', background:'#000' }}>
-      <a href={images[i].url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
-        <img src={images[i].url} alt={images[i].name||''} loading="lazy" style={{ width:'100%', height:380, objectFit:'contain', display:'block', background:'#000' }}/>
-      </a>
-      <button onClick={()=>go(-1)} style={arrow('left')}>‹</button>
-      <button onClick={()=>go(1)} style={arrow('right')}>›</button>
+      <img src={images[i].url} alt={images[i].name||''} loading="lazy" onClick={()=>onOpen?.(i)} style={{ width:'100%', height:380, objectFit:'contain', display:'block', background:'#000', cursor:'zoom-in' }}/>
+      <button onClick={e=>go(-1,e)} title="Previous" style={arrow('left')}>‹</button>
+      <button onClick={e=>go(1,e)} title="Next" style={arrow('right')}>›</button>
       <div style={{ position:'absolute', top:8, right:10, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:99 }}>{i+1} / {images.length}</div>
-      <div style={{ position:'absolute', bottom:8, left:0, right:0, display:'flex', justifyContent:'center', gap:5 }}>
-        {images.map((_,n)=><span key={n} onClick={()=>setI(n)} style={{ width:7, height:7, borderRadius:'50%', background:n===i?'#fff':'rgba(255,255,255,.45)', cursor:'pointer' }}/>)}
+      <button onClick={()=>onOpen?.(i)} title="View full screen" style={{ position:'absolute', bottom:10, right:10, width:30, height:30, borderRadius:6, border:'none', background:'rgba(0,0,0,.55)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}><ExpandIcon/></button>
+      <div style={{ position:'absolute', bottom:12, left:0, right:0, display:'flex', justifyContent:'center', gap:5, pointerEvents:'none' }}>
+        {images.map((_,n)=><span key={n} style={{ width:7, height:7, borderRadius:'50%', background:n===i?'#fff':'rgba(255,255,255,.45)' }}/>)}
       </div>
     </div>
   );
@@ -303,16 +332,16 @@ const Poll = ({ post, me, onVote, requireAuth }) => {
 const MediaGrid = ({ media }) => {
   const images = media.filter(m => m.type === 'image');
   const files = media.filter(m => m.type !== 'image');
+  const [lb, setLb] = useState(null); // lightbox start index, or null
   return (
     <div style={{ margin:'6px 0 8px' }}>
-      {images.length > 1 && <Carousel images={images}/>}
+      {images.length > 1 && <Carousel images={images} onOpen={setLb}/>}
       {images.length === 1 && (
         <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)' }}>
-          <a href={images[0].url} target="_blank" rel="noopener noreferrer" style={{ display:'block', lineHeight:0 }}>
-            <img src={images[0].url} alt={images[0].name||''} loading="lazy" style={{ width:'100%', height:'auto', maxHeight:420, objectFit:'cover', display:'block' }}/>
-          </a>
+          <img src={images[0].url} alt={images[0].name||''} loading="lazy" onClick={()=>setLb(0)} style={{ width:'100%', height:'auto', maxHeight:420, objectFit:'cover', display:'block', cursor:'zoom-in' }}/>
         </div>
       )}
+      {lb !== null && <Lightbox images={images} start={lb} onClose={()=>setLb(null)}/>}
       {files.map((m,i)=>(
         <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" download={m.name}
           style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginTop:6, border:'1px solid rgba(0,0,0,.12)', borderRadius:8, textDecoration:'none', color:'rgba(0,0,0,.85)', background:'rgba(0,0,0,.02)' }}>
