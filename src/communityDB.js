@@ -327,9 +327,9 @@ export async function uploadProfileImage(userId, file, kind) {
 // Rich-message columns (supabase_message_media.sql). Selects fall back to the base set
 // until that migration runs, so DMs keep working with text-only.
 const MSG_JOINS = 'sender:profiles!messages_sender_id_fkey(id, name, avatar_url), recipient:profiles!messages_recipient_id_fkey(id, name, avatar_url)';
-const MSG_FULL  = `id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, forwarded, read, created_at, ${MSG_JOINS}`;
+const MSG_FULL  = `id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, deleted, forwarded, read, created_at, ${MSG_JOINS}`;
 const MSG_BASE  = `id, sender_id, recipient_id, text, read, created_at, ${MSG_JOINS}`;
-const MSG_ROW   = 'id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, forwarded, read, created_at';
+const MSG_ROW   = 'id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, deleted, forwarded, read, created_at';
 const msgColMissing = e => /column|schema cache|does not exist/i.test(e?.message || '');
 
 // Returns { [peerId]: { peer:{id,name,avatar_url}, messages:[...], unread:n } }
@@ -381,10 +381,16 @@ export async function toggleMessageReaction(messageId, emoji, userId, reactions 
   return next;
 }
 
-// Hide a message for the given user ids (one id = delete-for-me, both parties = unsend-for-everyone).
+// Delete-for-me: hide a message from the listed user ids' own view.
 export async function setMessageDeletedFor(messageId, deletedFor) {
   const { error } = await supabase.from('messages').update({ deleted_for: deletedFor }).eq('id', messageId);
   if (error && !msgColMissing(error)) console.error('setMessageDeletedFor failed', error);
+}
+
+// Delete-for-everyone: flip the tombstone flag (both parties then see "This message was deleted").
+export async function setMessageDeleted(messageId, deleted) {
+  const { error } = await supabase.from('messages').update({ deleted }).eq('id', messageId);
+  if (error && !msgColMissing(error)) console.error('setMessageDeleted failed', error);
 }
 
 export async function markConversationRead(userId, peerId) {

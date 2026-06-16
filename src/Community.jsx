@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, subscribeToMessages, subscribeTyping, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -645,7 +645,17 @@ const EMOJI_SET = ['😀','😄','😁','😂','🤣','🙂','😉','😊','😍
 const REACT_SET = ['👍','❤️','😂','😮','😢','🙏'];
 const dmType = f => (f.type||'').startsWith('image') ? 'image' : (f.type||'').startsWith('video') ? 'video' : (f.type||'').startsWith('audio') ? 'audio' : 'file';
 const mediaLabel = media => { const t = media?.[0]?.type; return t==='image'?'📷 Photo':t==='video'?'🎬 Video':t==='audio'?'🎙 Voice message':'📄 File'; };
-const msgPreview = m => (m?.text && m.text.trim()) ? m.text : (m?.media?.length ? mediaLabel(m.media) : '');
+const msgPreview = m => m?.deleted ? 'This message was deleted' : (m?.text && m.text.trim()) ? m.text : (m?.media?.length ? mediaLabel(m.media) : '');
+// Incoming messages still unread by me, excluding ones deleted / hidden-for-me.
+const countUnread = (messages, peerId, meId) => messages.filter(m => m.sender_id === peerId && !m.read && !m.deleted && !(m.deleted_for || []).includes(meId)).length;
+// Merge a patch into one message in a conversation map and refresh its unread count.
+const patchMsg = (convs, peerId, msgId, patch, meId) => {
+  const c = convs[peerId]; if (!c) return convs;
+  const messages = c.messages.map(m => m.id === msgId ? { ...m, ...patch } : m);
+  return { ...convs, [peerId]: { ...c, messages, unread: countUnread(messages, peerId, meId) } };
+};
+// Last message visible to me (skips ones I deleted-for-me) — for the conversation-list preview.
+const lastVisible = (messages, meId) => { for (let i = messages.length - 1; i >= 0; i--) if (!(messages[i].deleted_for || []).includes(meId)) return messages[i]; return null; };
 
 // LinkedIn-style monochrome line icons for the composer (stroke = currentColor).
 const icoBase = { fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
@@ -755,6 +765,20 @@ function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onRe
   const mItem = { display:'flex', alignItems:'center', gap:9, width:'100%', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.82)', fontFamily:F, textAlign:'left' };
   const hoverBg = e => e.currentTarget.style.background = 'rgba(0,0,0,.05)';
   const clearBg = e => e.currentTarget.style.background = 'none';
+
+  // Deleted-for-everyone tombstone — both parties see this in place of the message.
+  if (m.deleted) return (
+    <div style={{ display:'flex', gap:8, maxWidth:'82%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row', alignItems:'flex-end' }}>
+      {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:mine?'flex-end':'flex-start' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 13px', fontSize:12.5, fontStyle:'italic', color:'rgba(0,0,0,.45)', background:'rgba(0,0,0,.035)', border:'1px dashed rgba(0,0,0,.16)', borderRadius:mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>
+          <span style={{ fontStyle:'normal' }}>🚫</span>{mine ? 'You deleted this message' : 'This message was deleted'}
+        </div>
+        <div style={{ fontSize:10, color:'rgba(0,0,0,.4)', marginTop:3 }}>{new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</div>
+      </div>
+    </div>
+  );
+
   return (
     <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
       style={{ display:'flex', gap:8, maxWidth:'82%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row', alignItems:'flex-end' }}>
@@ -818,8 +842,8 @@ function DeleteMsgDialog({ msg, me, onForEveryone, onForMe, onClose }) {
   const canEveryone = msg.sender_id === me.id && !msg.read;
   const btn = (bg, color) => ({ width:'100%', padding:'12px', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F, border:'none', background:bg, color });
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, boxShadow:'0 20px 60px rgba(0,0,0,.2)', width:'100%', maxWidth:300, padding:20 }}>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.12)', padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, boxShadow:'0 24px 70px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.06)', width:'100%', maxWidth:300, padding:20 }}>
         <p style={{ margin:'0 0 4px', fontSize:16, fontWeight:700, textAlign:'center' }}>Delete message?</p>
         <p style={{ margin:'0 0 18px', fontSize:12.5, color:'rgba(0,0,0,.5)', textAlign:'center', lineHeight:1.5 }}>{canEveryone ? 'Delete this for everyone, or just remove it from your view.' : 'This will be removed from your view only.'}</p>
         <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
@@ -833,7 +857,7 @@ function DeleteMsgDialog({ msg, me, onForEveryone, onForMe, onClose }) {
 }
 
 function ChatArea({ peer, msgs, chat }) {
-  const { me, onSend, onReact, onDeleteForMe, onUnsend, onForward } = chat;
+  const { me, onSend, onReact, onDeleteForMe, onUnsend, onUndoDelete, onForward } = chat;
   const [input, setInput] = useState('');
   const [atts, setAtts] = useState([]);          // { file, type, name, size, preview }
   const [replyTo, setReplyTo] = useState(null);
@@ -842,8 +866,12 @@ function ChatArea({ peer, msgs, chat }) {
   const [lb, setLb] = useState(null);            // { images, start }
   const [peerTyping, setPeerTyping] = useState(false);
   const [delMsg, setDelMsg] = useState(null);    // message pending delete-confirm
+  const [undo, setUndo] = useState(null);        // { text, fn } 5s undo snackbar
   const boxRef = useRef(null), pvInput = useRef(null), docInput = useRef(null);
-  const typingApi = useRef(null), lastTyped = useRef(0), stopTO = useRef(null), peerTO = useRef(null);
+  const typingApi = useRef(null), lastTyped = useRef(0), stopTO = useRef(null), peerTO = useRef(null), undoTO = useRef(null);
+
+  const showUndo = (text, fn) => { clearTimeout(undoTO.current); setUndo({ text, fn }); undoTO.current = setTimeout(() => setUndo(null), 5000); };
+  useEffect(() => () => clearTimeout(undoTO.current), []);
 
   const visible = useMemo(() => msgs.filter(m => !(m.deleted_for || []).includes(me.id)), [msgs, me.id]);
   const lastMineId = useMemo(() => { for (let i = visible.length - 1; i >= 0; i--) if (visible[i].sender_id === me.id) return visible[i].id; return null; }, [visible, me.id]);
@@ -920,8 +948,8 @@ function ChatArea({ peer, msgs, chat }) {
       {lb && <Lightbox images={lb.images} start={lb.start} onClose={()=>setLb(null)}/>}
 
       {delMsg && <DeleteMsgDialog msg={delMsg} me={me}
-        onForEveryone={()=>{ onUnsend(peer.id, delMsg); setDelMsg(null); }}
-        onForMe={()=>{ onDeleteForMe(peer.id, delMsg); setDelMsg(null); }}
+        onForEveryone={()=>{ const t = delMsg; onUnsend(peer.id, t); setDelMsg(null); showUndo('Message deleted for everyone', ()=>onUndoDelete(peer.id, t, 'everyone')); }}
+        onForMe={()=>{ const t = delMsg; onDeleteForMe(peer.id, t); setDelMsg(null); showUndo('Message deleted', ()=>onUndoDelete(peer.id, t, 'me')); }}
         onClose={()=>setDelMsg(null)}/>}
 
       {replyTo && (
@@ -945,6 +973,14 @@ function ChatArea({ peer, msgs, chat }) {
               <button onClick={()=>setAtts(p=>p.filter((_,n)=>n!==i))} title="Remove" style={{ position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:10, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {undo && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, margin:'0 14px 8px', padding:'10px 14px', background:'rgba(0,0,0,.88)', color:'#fff', borderRadius:10, flexShrink:0, animation:'fadeUp .15s ease both' }}>
+          <span style={{ fontSize:12.5 }}>{undo.text}</span>
+          <button onClick={()=>{ clearTimeout(undoTO.current); undo.fn(); setUndo(null); }}
+            style={{ background:'none', border:'none', color:'#fff', fontWeight:700, fontSize:12.5, cursor:'pointer', fontFamily:F, textDecoration:'underline', flexShrink:0 }}>Undo</button>
         </div>
       )}
 
@@ -1014,7 +1050,7 @@ function MessagesView({ convs, activePeer, onOpenConv, chat }) {
       <div style={{ width:240, minWidth:240, borderRight:'1px solid rgba(0,0,0,.08)', overflowY:'auto', padding:'12px 0' }}>
         {list.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:12.5, padding:'30px 16px', lineHeight:1.6 }}>No conversations yet. Hit "DM" on any idea to start one.</div>}
         {list.map(c=>{
-          const last = c.messages[c.messages.length-1];
+          const last = lastVisible(c.messages, chat.me.id);
           return (
             <div key={c.peer.id} onClick={()=>onOpenConv(c.peer.id)}
               style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer', background:activePeer===c.peer.id?'rgba(0,0,0,.05)':'transparent' }}>
@@ -1755,18 +1791,12 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         }
         if (isOpen) markConversationRead(user.id, peerId);
       },
-      // A message I sent or received changed: read receipt, reaction, or unsend/delete.
+      // A message I sent or received changed: read receipt, reaction, delete-for-me, or tombstone.
       onUpdate: row => {
         const peerId = row.sender_id === user.id ? row.recipient_id : row.sender_id;
         setConvs(prev => {
-          const c = prev[peerId]; if (!c) return prev;
-          if (Array.isArray(row.deleted_for) && row.deleted_for.includes(user.id)) {
-            const messages = c.messages.filter(m => m.id !== row.id);
-            const unread = messages.filter(m => m.sender_id === peerId && !m.read).length;
-            return { ...prev, [peerId]: { ...c, messages, unread } };
-          }
-          if (!c.messages.some(m => m.id === row.id)) return prev;
-          return { ...prev, [peerId]: { ...c, messages: c.messages.map(m => m.id === row.id ? { ...m, ...row } : m) } };
+          const c = prev[peerId]; if (!c || !c.messages.some(m => m.id === row.id)) return prev;
+          return patchMsg(prev, peerId, row.id, row, user.id);
         });
       },
     });
@@ -1873,21 +1903,36 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     await toggleMessageReaction(msg.id, emoji, user.id, cur);
   }, [user]);
 
+  // Delete-for-me: hidden from my own view but kept in state so Undo can restore it.
   const handleDeleteForMe = useCallback(async (peerId, msg) => {
     if (!user) return;
-    setConvs(prev => { const c = prev[peerId]; if (!c) return prev; const messages = c.messages.filter(m => m.id !== msg.id); const unread = messages.filter(m => m.sender_id === peerId && !m.read).length; return { ...prev, [peerId]: { ...c, messages, unread } }; });
-    if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, [...new Set([...(msg.deleted_for || []), user.id])]);
+    const nextDF = [...new Set([...(msg.deleted_for || []), user.id])];
+    setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted_for: nextDF }, user.id));
+    if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, nextDF);
   }, [user]);
 
-  // Unsend for everyone — allowed only on my own message the recipient hasn't read yet.
+  // Delete-for-everyone — own message, recipient hasn't read it yet; both then see a tombstone.
   const handleUnsend = useCallback(async (peerId, msg) => {
     if (!user || msg.sender_id !== user.id || msg.read) return;
-    setConvs(prev => { const c = prev[peerId]; if (!c) return prev; return { ...prev, [peerId]: { ...c, messages: c.messages.filter(m => m.id !== msg.id) } }; });
-    if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, [...new Set([...(msg.deleted_for || []), user.id, peerId])]);
+    setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted: true }, user.id));
+    if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, true);
   }, [user]);
 
-  const chatApi = useMemo(() => ({ me:user, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onForward:setForwardMsg }),
-    [user, handleSend, handleReact, handleDeleteForMe, handleUnsend]);
+  // Roll back a delete within the 5s window.
+  const handleUndoDelete = useCallback(async (peerId, msg, mode) => {
+    if (!user) return;
+    if (mode === 'everyone') {
+      setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted: false }, user.id));
+      if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, false);
+    } else {
+      const nextDF = (msg.deleted_for || []).filter(id => id !== user.id);
+      setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted_for: nextDF }, user.id));
+      if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, nextDF);
+    }
+  }, [user]);
+
+  const chatApi = useMemo(() => ({ me:user, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg }),
+    [user, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete]);
 
   const openConv = useCallback(peerId => {
     setActivePeer(peerId);

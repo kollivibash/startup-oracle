@@ -57,7 +57,8 @@ src/
                      rich profiles, photo carousel + fullscreen lightbox, link previews, verified
                      badge, "Followed by X" social proof, mobile bottom nav, and rich realtime DMs
                      (attachments: photo/video/doc/voice-note; emoji picker; reply; forward;
-                     message reactions; read receipts; typing indicator; delete-for-me / unsend)
+                     message reactions; read receipts; typing indicator; WhatsApp-style delete
+                     [for-me / for-everyone tombstone] with 5s Undo)
   Pricing.jsx      — pricing page (₹50/mo, ₹500/yr) + Razorpay checkout
   Account.jsx      — account, validated-ideas list, re-open reports, hard delete
   reportEngine.js  — 6 Gemini section calls via /api/generate (2-worker concurrency, retries/backoff)
@@ -88,8 +89,9 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
 9.  supabase_profiles_rich.sql      profile fields (about/skills/experience/…) + avatars bucket
 10. supabase_network.sql            connections* (unused) + profile_views ("who viewed your profile")
 11. supabase_posts_extra.sql        kind/poll/link_preview + poll_votes
-12. supabase_message_media.sql      messages.media/reply_to/reactions/deleted_for/forwarded +
-                                    text nullable + broadened update RLS (rich DMs; reuses post-media bucket)
+12. supabase_message_media.sql      messages.media/reply_to/reactions/deleted_for/deleted/forwarded +
+                                    text nullable + broadened update RLS (rich DMs; reuses post-media
+                                    bucket). Idempotent — safe to re-run if you added columns earlier.
 13. supabase_billing.sql            LAST — only when Razorpay is ready (see Billing below)
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
@@ -103,7 +105,8 @@ Article; **Rate 1–10** is the only post engagement (post reactions/Like were r
 comments with likes + replies; repost with commentary (embedded original); save/bookmark; **follow
 is approval-based** (Instagram-style requests in the bell, 30s polling); **rich realtime DMs**
 (photo/video/document/voice-note attachments, built-in emoji picker, reply, forward, message
-reactions, "Seen" read receipts, typing indicator, delete-for-me + unsend-before-read); rich profiles
+reactions, "Seen" read receipts, typing indicator, WhatsApp-style delete — delete-for-me, or
+delete-for-everyone leaving a "This message was deleted" tombstone, with a 5s Undo); rich profiles
 (headline/About/Experience/Education/Skills, avatar+banner upload, profile-strength meter, "Who
 viewed your profile"); **"Followed by X and Y"** social proof on profiles + sidebar suggestions;
 multi-photo **carousel + fullscreen lightbox** (arrows, dots, Esc/arrow keys); link previews; polls;
