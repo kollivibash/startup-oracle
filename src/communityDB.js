@@ -324,17 +324,25 @@ export async function uploadProfileImage(userId, file, kind) {
   return data.publicUrl;
 }
 
+// Rich-message columns (supabase_message_media.sql). Selects fall back to the base set
+// until that migration runs, so DMs keep working with text-only.
+const MSG_JOINS = 'sender:profiles!messages_sender_id_fkey(id, name, avatar_url), recipient:profiles!messages_recipient_id_fkey(id, name, avatar_url)';
+const MSG_FULL  = `id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, forwarded, read, created_at, ${MSG_JOINS}`;
+const MSG_BASE  = `id, sender_id, recipient_id, text, read, created_at, ${MSG_JOINS}`;
+const MSG_ROW   = 'id, sender_id, recipient_id, text, media, reply_to, reactions, deleted_for, forwarded, read, created_at';
+const msgColMissing = e => /column|schema cache|does not exist/i.test(e?.message || '');
+
 // Returns { [peerId]: { peer:{id,name,avatar_url}, messages:[...], unread:n } }
 export async function fetchConversations(userId) {
-  const { data, error } = await supabase
-    .from('messages')
-    .select('id, sender_id, recipient_id, text, read, created_at, sender:profiles!messages_sender_id_fkey(id, name, avatar_url), recipient:profiles!messages_recipient_id_fkey(id, name, avatar_url)')
+  const q = sel => supabase.from('messages').select(sel)
     .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
-    .order('created_at', { ascending: true })
-    .limit(500);
+    .order('created_at', { ascending: true }).limit(500);
+  let { data, error } = await q(MSG_FULL);
+  if (error && msgColMissing(error)) ({ data, error } = await q(MSG_BASE));
   if (error) { console.error('fetchConversations failed', error); return {}; }
   const convs = {};
   for (const m of data || []) {
+    if (Array.isArray(m.deleted_for) && m.deleted_for.includes(userId)) continue; // hidden for me
     const mine   = m.sender_id === userId;
     const peer   = mine ? m.recipient : m.sender;
     if (!peer) continue;
@@ -345,14 +353,38 @@ export async function fetchConversations(userId) {
   return convs;
 }
 
-export async function sendMessage(senderId, recipientId, text) {
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ sender_id: senderId, recipient_id: recipientId, text })
-    .select('id, sender_id, recipient_id, text, read, created_at')
-    .single();
-  if (error) { console.error('sendMessage failed', error); throw error; }
-  return data;
+// opts: { text, media, replyTo, forwarded }
+export async function sendMessage(senderId, recipientId, opts = {}) {
+  const { text = '', media = null, replyTo = null, forwarded = false } =
+    typeof opts === 'string' ? { text: opts } : (opts || {});
+  const row = { sender_id: senderId, recipient_id: recipientId, text: text || null, media, reply_to: replyTo, forwarded };
+  let res = await supabase.from('messages').insert(row).select(MSG_ROW).single();
+  if (res.error && msgColMissing(res.error)) {
+    // Pre-migration: store something non-null so the message still sends.
+    const fallbackText = text || (media?.length ? '[attachment]' : '');
+    res = await supabase.from('messages')
+      .insert({ sender_id: senderId, recipient_id: recipientId, text: fallbackText })
+      .select('id, sender_id, recipient_id, text, read, created_at').single();
+  }
+  if (res.error) { console.error('sendMessage failed', res.error); throw res.error; }
+  return res.data;
+}
+
+// Toggle the current user's reaction emoji on a message; returns the new reactions map.
+export async function toggleMessageReaction(messageId, emoji, userId, reactions = {}) {
+  const next = { ...(reactions || {}) };
+  const set = new Set(next[emoji] || []);
+  set.has(userId) ? set.delete(userId) : set.add(userId);
+  if (set.size) next[emoji] = [...set]; else delete next[emoji];
+  const { error } = await supabase.from('messages').update({ reactions: next }).eq('id', messageId);
+  if (error && !msgColMissing(error)) console.error('toggleMessageReaction failed', error);
+  return next;
+}
+
+// Hide a message for the given user ids (one id = delete-for-me, both parties = unsend-for-everyone).
+export async function setMessageDeletedFor(messageId, deletedFor) {
+  const { error } = await supabase.from('messages').update({ deleted_for: deletedFor }).eq('id', messageId);
+  if (error && !msgColMissing(error)) console.error('setMessageDeletedFor failed', error);
 }
 
 export async function markConversationRead(userId, peerId) {
@@ -483,12 +515,30 @@ export async function markNotificationsRead(userId) {
   if (error && !notifMissing(error)) console.error('markNotificationsRead failed', error);
 }
 
-export function subscribeToMessages(userId, onMessage) {
-  const channel = supabase
-    .channel(`dm_${userId}`)
-    .on('postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: `recipient_id=eq.${userId}` },
-      payload => onMessage(payload.new))
+// handlers: a function (legacy = onInsert only) or { onInsert, onUpdate }.
+// onInsert fires for incoming messages; onUpdate fires when a message I sent OR received
+// changes (read receipt, reaction, unsend/delete).
+export function subscribeToMessages(userId, handlers) {
+  const onInsert = typeof handlers === 'function' ? handlers : handlers?.onInsert;
+  const onUpdate = typeof handlers === 'function' ? null      : handlers?.onUpdate;
+  const t = 'messages', schema = 'public';
+  const channel = supabase.channel(`dm_${userId}`)
+    .on('postgres_changes', { event: 'INSERT', schema, table: t, filter: `recipient_id=eq.${userId}` }, p => onInsert?.(p.new))
+    .on('postgres_changes', { event: 'UPDATE', schema, table: t, filter: `recipient_id=eq.${userId}` }, p => onUpdate?.(p.new))
+    .on('postgres_changes', { event: 'UPDATE', schema, table: t, filter: `sender_id=eq.${userId}` },    p => onUpdate?.(p.new))
     .subscribe();
   return () => supabase.removeChannel(channel);
+}
+
+// Lightweight typing indicator over a broadcast channel shared by the two users.
+// Returns { send(typing:boolean), unsub() }.
+export function subscribeTyping(userId, peerId, onTyping) {
+  const key = ['dmtype', ...[userId, peerId].sort()].join('_');
+  const channel = supabase.channel(key, { config: { broadcast: { self: false } } })
+    .on('broadcast', { event: 'typing' }, ({ payload }) => { if (payload?.from === peerId) onTyping(!!payload.typing); })
+    .subscribe();
+  return {
+    send: typing => channel.send({ type: 'broadcast', event: 'typing', payload: { from: userId, typing } }),
+    unsub: () => supabase.removeChannel(channel),
+  };
 }

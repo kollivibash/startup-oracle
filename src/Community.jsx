@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, subscribeToMessages, subscribeTyping, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -641,44 +641,338 @@ function ComposerModal({ me, onClose, onPosted }) {
 }
 
 // ── Chat (Messages view + DM panel) ──────────────────────────────────────────
-function ChatArea({ peer, msgs, me, onSend }) {
-  const [input, setInput] = useState('');
-  const boxRef = useRef(null);
-  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [msgs]);
-  const send = () => { if (!input.trim()) return; onSend(input.trim()); setInput(''); };
+const EMOJI_SET = ['😀','😄','😁','😂','🤣','🙂','😉','😊','😍','😘','😎','🤩','🥳','🤔','🤨','😏','😴','😅','😇','🥹','🥰','😜','🤗','🤭','🫡','😬','🙄','😮','😢','😭','😡','😱','🤯','🥺','💀','👀','🫶','🙏','👍','👎','👏','🙌','💪','🤝','🤞','✌️','👋','🔥','✨','🎉','🚀','💡','💯','✅','❌','⭐','❤️','🧡','💛','💚','💙','💜','💰','📈'];
+const REACT_SET = ['👍','❤️','😂','😮','😢','🙏'];
+const dmType = f => (f.type||'').startsWith('image') ? 'image' : (f.type||'').startsWith('video') ? 'video' : (f.type||'').startsWith('audio') ? 'audio' : 'file';
+const mediaLabel = media => { const t = media?.[0]?.type; return t==='image'?'📷 Photo':t==='video'?'🎬 Video':t==='audio'?'🎙 Voice message':'📄 File'; };
+const msgPreview = m => (m?.text && m.text.trim()) ? m.text : (m?.media?.length ? mediaLabel(m.media) : '');
+
+// Lightweight emoji picker (no dependency) — anchored above its trigger.
+function EmojiPicker({ onPick, onClose }) {
+  useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   return (
     <>
-      <div ref={boxRef} style={{ flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:12 }}>
-        {msgs.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
-        {msgs.map(m => {
-          const mine = m.sender_id === me.id;
-          return (
-            <div key={m.id} style={{ display:'flex', gap:8, maxWidth:'75%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row' }}>
-              {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
-              <div>
-                <div style={{ padding:'8px 13px', fontSize:13, lineHeight:1.5,
-                  background:mine?'rgba(0,0,0,.9)':'rgba(0,0,0,.05)', color:mine?'#fff':'rgba(0,0,0,.85)',
-                  borderRadius:mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>{m.text}</div>
-                <div style={{ fontSize:10, color:'rgba(0,0,0,.4)', marginTop:3, textAlign:'right' }}>
-                  {new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ padding:'13px 22px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:9, alignItems:'center', flexShrink:0 }}>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`}
-          onKeyDown={e=>e.key==='Enter'&&send()}
-          style={{ flex:1, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none' }}/>
-        <button onClick={send} disabled={!input.trim()}
-          style={{ width:34, height:34, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:input.trim()?1:.3, fontSize:13 }}>➤</button>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:320 }}/>
+      <div style={{ position:'absolute', bottom:'calc(100% + 8px)', left:0, width:280, maxHeight:208, overflowY:'auto', background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:12, boxShadow:'0 12px 40px rgba(0,0,0,.16)', padding:8, display:'grid', gridTemplateColumns:'repeat(8, 1fr)', gap:1, zIndex:321 }}>
+        {EMOJI_SET.map((e,i)=>(
+          <button key={i} onClick={()=>onPick(e)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:19, lineHeight:1, padding:5, borderRadius:7 }}
+            onMouseEnter={ev=>ev.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={ev=>ev.currentTarget.style.background='none'}>{e}</button>
+        ))}
       </div>
     </>
   );
 }
 
-function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
+// Record + send a voice note (MediaRecorder). onDone(File) fires when the user sends.
+function VoiceRecorder({ onDone, iconBtn }) {
+  const [rec, setRec] = useState(false);
+  const [secs, setSecs] = useState(0);
+  const mr = useRef(null), chunks = useRef([]), timer = useRef(null);
+  useEffect(() => () => clearInterval(timer.current), []);
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      const m = new MediaRecorder(stream);
+      chunks.current = [];
+      m.ondataavailable = e => e.data.size && chunks.current.push(e.data);
+      m.start(); mr.current = m; setRec(true); setSecs(0);
+      timer.current = setInterval(() => setSecs(s => s + 1), 1000);
+    } catch { alert('Microphone access is needed to record a voice note.'); }
+  };
+  const finish = save => {
+    clearInterval(timer.current);
+    const m = mr.current; if (!m) { setRec(false); return; }
+    m.onstop = () => {
+      m.stream?.getTracks?.().forEach(t => t.stop());
+      if (save && chunks.current.length) {
+        const blob = new Blob(chunks.current, { type:'audio/webm' });
+        onDone(new File([blob], `voice_${Date.now()}.webm`, { type:'audio/webm' }));
+      }
+    };
+    m.stop(); setRec(false); setSecs(0);
+  };
+  if (!rec) return <button title="Record voice note" onClick={start} style={iconBtn}>🎤</button>;
+  const t = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 2px', flexShrink:0 }}>
+      <span style={{ width:8, height:8, borderRadius:'50%', background:'#DC2626', animation:'dmPulse 1s infinite' }}/>
+      <span style={{ fontSize:12.5, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:30 }}>{t}</span>
+      <button title="Cancel" onClick={()=>finish(false)} style={iconBtn}>✕</button>
+      <button title="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', fontSize:12, flexShrink:0 }}>➤</button>
+    </div>
+  );
+}
+
+// Attachments inside a message bubble — photos + videos share one grid; files & voice below.
+function MsgMedia({ media, onImage }) {
+  const visuals = media.filter(m => m.type === 'image' || m.type === 'video');
+  const images  = visuals.filter(m => m.type === 'image');
+  const files   = media.filter(m => m.type === 'file');
+  const audios  = media.filter(m => m.type === 'audio');
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:6, maxWidth:280 }}>
+      {visuals.length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns: visuals.length > 1 ? '1fr 1fr' : '1fr', gap:3, borderRadius:12, overflow:'hidden' }}>
+          {visuals.map((m,i) => m.type === 'image'
+            ? <img key={i} src={m.url} alt={m.name||''} loading="lazy" onClick={()=>onImage(images, images.indexOf(m))}
+                style={{ width:'100%', height: visuals.length > 1 ? 130 : 'auto', maxHeight:260, objectFit:'cover', cursor:'zoom-in', display:'block' }}/>
+            : <video key={i} src={m.url} controls style={{ width:'100%', maxHeight:260, borderRadius:8, display:'block', background:'#000' }}/>
+          )}
+        </div>
+      )}
+      {audios.map((m,i) => <audio key={i} src={m.url} controls preload="metadata" style={{ width:236, height:38 }}/>)}
+      {files.map((m,i) => (
+        <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" download={m.name}
+          style={{ display:'flex', alignItems:'center', gap:9, padding:'9px 11px', border:'1px solid rgba(0,0,0,.14)', borderRadius:9, textDecoration:'none', color:'rgba(0,0,0,.85)', background:'rgba(0,0,0,.02)', minWidth:180 }}>
+          <span style={{ fontSize:18 }}>📄</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:12.5, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name || 'Document'}</div>
+            <div style={{ fontSize:10.5, color:'rgba(0,0,0,.45)' }}>{m.size ? formatSize(m.size) : 'Open'}</div>
+          </div>
+          <span style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>↓</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onReply, onForward, onDeleteForMe, onUnsend }) {
+  const [hover, setHover] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const temp = String(m.id).startsWith('t_');
+  const replied = m.reply_to ? msgs.find(x => x.id === m.reply_to) : null;
+  const reactions = m.reactions ? Object.entries(m.reactions).filter(([, u]) => u?.length) : [];
+  const canUnsend = mine && !m.read;
+  const show = !temp && (hover || menu);
+  const close = () => setMenu(false);
+  const mItem = { display:'flex', alignItems:'center', gap:9, width:'100%', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.82)', fontFamily:F, textAlign:'left' };
+  const hoverBg = e => e.currentTarget.style.background = 'rgba(0,0,0,.05)';
+  const clearBg = e => e.currentTarget.style.background = 'none';
+  return (
+    <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+      style={{ display:'flex', gap:8, maxWidth:'82%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row', alignItems:'flex-end' }}>
+      {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:mine?'flex-end':'flex-start', minWidth:0 }}>
+        {m.forwarded && <div style={{ fontSize:10.5, color:'rgba(0,0,0,.4)', fontStyle:'italic', marginBottom:3 }}>↪ Forwarded</div>}
+        {replied && (
+          <div style={{ borderLeft:'3px solid rgba(0,0,0,.25)', padding:'3px 9px', margin:'0 0 3px', background:'rgba(0,0,0,.04)', borderRadius:6, maxWidth:260 }}>
+            <div style={{ fontSize:10.5, fontWeight:700, color:'rgba(0,0,0,.55)' }}>{replied.sender_id === me.id ? 'You' : (peer.name || 'Founder')}</div>
+            <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:240 }}>{msgPreview(replied)}</div>
+          </div>
+        )}
+        {m.media?.length > 0 && <div style={{ marginBottom: m.text ? 4 : 0 }}><MsgMedia media={m.media} onImage={onImage}/></div>}
+        {m.text && (
+          <div style={{ padding:'8px 13px', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word',
+            background:mine?'rgba(0,0,0,.9)':'rgba(0,0,0,.05)', color:mine?'#fff':'rgba(0,0,0,.85)',
+            borderRadius:mine?'14px 14px 3px 14px':'14px 14px 14px 3px' }}>{m.text}</div>
+        )}
+        {reactions.length > 0 && (
+          <div style={{ display:'flex', gap:4, marginTop:4, flexWrap:'wrap' }}>
+            {reactions.map(([e,u]) => (
+              <button key={e} onClick={()=>onReact(m, e)} title={u.includes(me.id) ? 'Remove reaction' : 'React'}
+                style={{ display:'flex', alignItems:'center', gap:3, padding:'1px 7px', borderRadius:99, fontSize:11.5, cursor:'pointer', fontFamily:F,
+                  border:'1px solid', borderColor: u.includes(me.id) ? 'rgba(0,0,0,.3)' : 'rgba(0,0,0,.12)', background: u.includes(me.id) ? 'rgba(0,0,0,.07)' : '#fff' }}>
+                <span>{e}</span><span style={{ fontWeight:600, color:'rgba(0,0,0,.6)' }}>{u.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize:10, color:'rgba(0,0,0,.4)', marginTop:3 }}>
+          {new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+          {mine && isLastMine && m.read && <span style={{ marginLeft:6, fontWeight:600 }}>· Seen</span>}
+        </div>
+      </div>
+      {/* hover actions */}
+      <div style={{ position:'relative', alignSelf:'center', opacity:show?1:0, pointerEvents:show?'auto':'none', transition:'opacity .12s', flexShrink:0 }}>
+        <button title="More" onClick={()=>setMenu(o=>!o)} style={{ width:26, height:26, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.06)', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.6)' }}>⋯</button>
+        {menu && (
+          <>
+            <div onClick={close} style={{ position:'fixed', inset:0, zIndex:340 }}/>
+            <div style={{ position:'absolute', top:'calc(100% + 4px)', [mine?'right':'left']:0, width:188, background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:12, boxShadow:'0 12px 40px rgba(0,0,0,.16)', zIndex:341, overflow:'hidden', padding:'6px 0' }}>
+              <div style={{ display:'flex', gap:2, justifyContent:'space-between', padding:'2px 8px 6px', borderBottom:'1px solid rgba(0,0,0,.06)', marginBottom:4 }}>
+                {REACT_SET.map(e => (
+                  <button key={e} onClick={()=>{ onReact(m, e); close(); }} style={{ border:'none', background:'none', cursor:'pointer', fontSize:18, padding:3, borderRadius:7 }}
+                    onMouseEnter={ev=>ev.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={ev=>ev.currentTarget.style.background='none'}>{e}</button>
+                ))}
+              </div>
+              <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onReply(m); close(); }}>↩ Reply</button>
+              <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onForward(m); close(); }}>↪ Forward</button>
+              <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onDeleteForMe(m); close(); }}>🗑 Delete for me</button>
+              {canUnsend && <button style={{ ...mItem, color:'#DC2626' }} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onUnsend(m); close(); }}>↺ Unsend for everyone</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatArea({ peer, msgs, chat }) {
+  const { me, onSend, onReact, onDeleteForMe, onUnsend, onForward } = chat;
+  const [input, setInput] = useState('');
+  const [atts, setAtts] = useState([]);          // { file, type, name, size, preview }
+  const [replyTo, setReplyTo] = useState(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [lb, setLb] = useState(null);            // { images, start }
+  const [peerTyping, setPeerTyping] = useState(false);
+  const boxRef = useRef(null), pvInput = useRef(null), docInput = useRef(null);
+  const typingApi = useRef(null), lastTyped = useRef(0), stopTO = useRef(null), peerTO = useRef(null);
+
+  const visible = useMemo(() => msgs.filter(m => !(m.deleted_for || []).includes(me.id)), [msgs, me.id]);
+  const lastMineId = useMemo(() => { for (let i = visible.length - 1; i >= 0; i--) if (visible[i].sender_id === me.id) return visible[i].id; return null; }, [visible, me.id]);
+
+  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [visible, peerTyping]);
+  useEffect(() => () => atts.forEach(a => a.preview && URL.revokeObjectURL(a.preview)), [atts]);
+
+  // Typing indicator: subscribe per-conversation, reset peer flag if their "stop" is missed.
+  useEffect(() => {
+    const api = subscribeTyping(me.id, peer.id, t => {
+      setPeerTyping(t);
+      if (t) { clearTimeout(peerTO.current); peerTO.current = setTimeout(() => setPeerTyping(false), 4500); }
+    });
+    typingApi.current = api;
+    return () => { api.unsub(); setPeerTyping(false); clearTimeout(peerTO.current); clearTimeout(stopTO.current); };
+  }, [me.id, peer.id]);
+
+  const onType = v => {
+    setInput(v);
+    const api = typingApi.current; if (!api) return;
+    const now = Date.now();
+    if (now - lastTyped.current > 1500) { api.send(true); lastTyped.current = now; }
+    clearTimeout(stopTO.current);
+    stopTO.current = setTimeout(() => { api.send(false); lastTyped.current = 0; }, 2000);
+  };
+
+  const addAtts = list => {
+    const picked = Array.from(list).filter(f => { if (f.size > MAX_FILE) { alert(`"${f.name}" is over 25 MB.`); return false; } return true; });
+    const mapped = picked.map(file => { const type = dmType(file); return { file, type, name:file.name, size:file.size, preview:(type==='image'||type==='video') ? URL.createObjectURL(file) : null }; });
+    setAtts(p => [...p, ...mapped].slice(0, 8));
+  };
+
+  const send = async () => {
+    const text = input.trim();
+    if ((!text && atts.length === 0) || sending) return;
+    setSending(true);
+    typingApi.current?.send(false); clearTimeout(stopTO.current); lastTyped.current = 0;
+    try {
+      let media = null;
+      if (atts.length) { media = []; for (const a of atts) { const url = await uploadPostFile(me.id, a.file); media.push({ url, type:a.type, name:a.name, size:a.size }); } }
+      onSend(peer.id, { text, media, replyTo: replyTo?.id || null });
+      setInput(''); setAtts([]); setReplyTo(null);
+    } catch { alert('Could not send. Please try again.'); }
+    setSending(false);
+  };
+
+  const sendVoice = async file => {
+    setSending(true);
+    try { const url = await uploadPostFile(me.id, file); onSend(peer.id, { text:'', media:[{ url, type:'audio', name:file.name, size:file.size }] }); }
+    catch { alert('Could not send voice note.'); }
+    setSending(false);
+  };
+
+  const iconBtn = { width:36, height:36, border:'none', background:'none', cursor:'pointer', fontSize:18, borderRadius:9, flexShrink:0, color:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center' };
+  const hasContent = input.trim() || atts.length > 0;
+
+  return (
+    <>
+      <div ref={boxRef} style={{ flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:10 }}>
+        {visible.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
+        {visible.map(m => (
+          <MsgBubble key={m.id} m={m} mine={m.sender_id === me.id} peer={peer} me={me} msgs={msgs}
+            isLastMine={m.id === lastMineId} onImage={(images, start)=>setLb({ images, start })}
+            onReact={(msg,e)=>onReact(peer.id, msg, e)} onReply={setReplyTo} onForward={onForward}
+            onDeleteForMe={msg=>onDeleteForMe(peer.id, msg)} onUnsend={msg=>onUnsend(peer.id, msg)}/>
+        ))}
+        {peerTyping && (
+          <div style={{ display:'flex', gap:8, alignSelf:'flex-start', alignItems:'flex-end' }}>
+            <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>
+            <div className="dm-typing" style={{ display:'flex', gap:4, padding:'11px 14px', background:'rgba(0,0,0,.05)', borderRadius:'14px 14px 14px 3px' }}><span/><span/><span/></div>
+          </div>
+        )}
+      </div>
+
+      {lb && <Lightbox images={lb.images} start={lb.start} onClose={()=>setLb(null)}/>}
+
+      {replyTo && (
+        <div style={{ padding:'9px 18px', borderTop:'1px solid rgba(0,0,0,.06)', display:'flex', alignItems:'center', gap:10, background:'rgba(0,0,0,.02)', flexShrink:0 }}>
+          <div style={{ width:3, alignSelf:'stretch', background:'rgba(0,0,0,.25)', borderRadius:2 }}/>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'rgba(0,0,0,.6)' }}>Replying to {replyTo.sender_id === me.id ? 'yourself' : (peer.name || 'founder')}</div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{msgPreview(replyTo)}</div>
+          </div>
+          <button onClick={()=>setReplyTo(null)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:15, color:'rgba(0,0,0,.5)' }}>✕</button>
+        </div>
+      )}
+
+      {atts.length > 0 && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, padding:'10px 18px 0', flexShrink:0 }}>
+          {atts.map((a,i) => (
+            <div key={i} style={{ position:'relative', width: (a.type==='image'||a.type==='video') ? 64 : 'auto', border:'1px solid rgba(0,0,0,.12)', borderRadius:8, overflow:'hidden', background:'rgba(0,0,0,.02)' }}>
+              {a.type === 'image' ? <img src={a.preview} alt={a.name} style={{ width:64, height:64, objectFit:'cover', display:'block' }}/>
+                : a.type === 'video' ? <video src={a.preview} style={{ width:64, height:64, objectFit:'cover', display:'block', background:'#000' }}/>
+                : <div style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 10px', maxWidth:180 }}><span style={{ fontSize:16 }}>{a.type==='audio'?'🎙':'📄'}</span><span style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name}</span></div>}
+              <button onClick={()=>setAtts(p=>p.filter((_,n)=>n!==i))} title="Remove" style={{ position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:10, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input ref={pvInput} type="file" accept="image/*,video/*" multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
+      <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
+
+      <div style={{ padding:'10px 14px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:3, alignItems:'flex-end', flexShrink:0 }}>
+        <button title="Photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn}>🖼</button>
+        <button title="Document" onClick={()=>docInput.current?.click()} style={iconBtn}>📎</button>
+        <div style={{ position:'relative' }}>
+          <button title="Emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn}>😊</button>
+          {emojiOpen && <EmojiPicker onPick={e=>setInput(v=>v+e)} onClose={()=>setEmojiOpen(false)}/>}
+        </div>
+        <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending}
+          onKeyDown={e=>{ if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center' }}/>
+        {hasContent
+          ? <button onClick={send} disabled={sending} title="Send" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, fontSize:13 }}>➤</button>
+          : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn}/>}
+      </div>
+    </>
+  );
+}
+
+// Pick conversations to forward a message into.
+function ForwardDialog({ msg, convs, me, onForward, onClose }) {
+  const [sel, setSel] = useState(new Set());
+  const peers = Object.values(convs).map(c => c.peer).filter(p => p && p.id !== me.id);
+  const toggle = id => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:380, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)', display:'flex', flexDirection:'column', maxHeight:'80vh' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:15, fontWeight:700 }}>Forward to…</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18 }}>✕</button>
+        </div>
+        <div style={{ padding:'10px 18px', borderBottom:'1px solid rgba(0,0,0,.06)', fontSize:12.5, color:'rgba(0,0,0,.55)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{msgPreview(msg) || '[attachment]'}</div>
+        <div style={{ flex:1, overflowY:'auto', padding:'6px 0' }}>
+          {peers.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:12.5, padding:'28px 16px' }}>No conversations to forward to yet.</div>}
+          {peers.map(p => (
+            <div key={p.id} onClick={()=>toggle(p.id)} style={{ display:'flex', alignItems:'center', gap:11, padding:'9px 18px', cursor:'pointer', background: sel.has(p.id) ? 'rgba(0,0,0,.04)' : 'transparent' }}>
+              <Av name={p.name} uid={p.id} url={p.avatar_url} sz={36}/>
+              <div style={{ flex:1, fontSize:13.5, fontWeight:600 }}>{p.name || 'Founder'}</div>
+              <div style={{ width:20, height:20, borderRadius:'50%', border:'1.5px solid', borderColor: sel.has(p.id) ? 'rgba(0,0,0,.9)' : 'rgba(0,0,0,.25)', background: sel.has(p.id) ? 'rgba(0,0,0,.9)' : 'transparent', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>{sel.has(p.id) ? '✓' : ''}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', justifyContent:'flex-end', gap:8 }}>
+          <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F }}>Cancel</button>
+          <button onClick={()=>{ onForward([...sel]); }} disabled={sel.size === 0}
+            style={{ padding:'8px 20px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', opacity:sel.size?1:.4, fontFamily:F }}>Send{sel.size ? ` (${sel.size})` : ''}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessagesView({ convs, activePeer, onOpenConv, chat }) {
   const list = Object.values(convs).sort((a,b) => {
     const la = a.messages[a.messages.length-1]?.created_at || 0;
     const lb = b.messages[b.messages.length-1]?.created_at || 0;
@@ -697,7 +991,7 @@ function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
               <Av name={c.peer.name} uid={c.peer.id} url={c.peer.avatar_url} sz={38}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:13, fontWeight:600 }}>{c.peer.name || 'Founder'}</div>
-                <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last?.text || ''}</div>
+                <div style={{ fontSize:11.5, color:'rgba(0,0,0,.45)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last ? msgPreview(last) : ''}</div>
               </div>
               {c.unread > 0 && <div style={{ width:17, height:17, background:'rgba(0,0,0,.9)', color:'#fff', borderRadius:10, fontSize:9.5, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.unread}</div>}
             </div>
@@ -710,7 +1004,7 @@ function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
             <Av name={act.peer.name} uid={act.peer.id} url={act.peer.avatar_url} sz={34}/>
             <div style={{ fontSize:14, fontWeight:700 }}>{act.peer.name || 'Founder'}</div>
           </div>
-          <ChatArea peer={act.peer} msgs={act.messages} me={me} onSend={text=>onSend(act.peer.id, text)}/>
+          <ChatArea peer={act.peer} msgs={act.messages} chat={chat}/>
         </div>
       ) : (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(0,0,0,.4)', fontSize:13 }}>Select a conversation</div>
@@ -719,7 +1013,7 @@ function MessagesView({ me, convs, activePeer, onOpenConv, onSend }) {
   );
 }
 
-function DMPanel({ peer, me, msgs, onSend, onClose }) {
+function DMPanel({ peer, msgs, chat, onClose }) {
   return (
     <>
       <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.2)', zIndex:300, backdropFilter:'blur(2px)' }}/>
@@ -729,7 +1023,7 @@ function DMPanel({ peer, me, msgs, onSend, onClose }) {
           <div style={{ flex:1, fontSize:14, fontWeight:700 }}>{peer.name || 'Founder'}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:16, padding:4 }}>✕</button>
         </div>
-        <ChatArea peer={peer} msgs={msgs} me={me} onSend={text=>onSend(peer.id, text)}/>
+        <ChatArea peer={peer} msgs={msgs} chat={chat}/>
       </div>
     </>
   );
@@ -1379,6 +1673,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [convs, setConvs] = useState({});
   const [activePeer, setActivePeer] = useState(null);
   const [dmUser, setDmUser] = useState(null);
+  const [forwardMsg, setForwardMsg] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [requests, setRequests] = useState([]);
   const [bellOpen, setBellOpen] = useState(false);
@@ -1414,20 +1709,36 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       return () => { on = false; clearTimeout(t); };
     }
     fetchConversations(user.id).then(c => { if (on) setConvs(c); });
-    const unsub = subscribeToMessages(user.id, async row => {
-      const peerId = row.sender_id;
-      const isOpen = activePeerRef.current === peerId || dmUserRef.current === peerId;
-      let isNewConv = false;
-      setConvs(prev => {
-        if (!prev[peerId]) { isNewConv = true; return prev; }
-        if (prev[peerId].messages.some(m => m.id === row.id)) return prev;
-        return { ...prev, [peerId]: { ...prev[peerId], messages:[...prev[peerId].messages, row], unread:isOpen?0:prev[peerId].unread+1 } };
-      });
-      if (isNewConv) {
-        const peer = await fetchProfile(peerId);
-        if (peer) setConvs(prev => prev[peerId] ? prev : { ...prev, [peerId]: { peer, messages:[row], unread:isOpen?0:1 } });
-      }
-      if (isOpen) markConversationRead(user.id, peerId);
+    const unsub = subscribeToMessages(user.id, {
+      onInsert: async row => {
+        const peerId = row.sender_id;
+        const isOpen = activePeerRef.current === peerId || dmUserRef.current === peerId;
+        let isNewConv = false;
+        setConvs(prev => {
+          if (!prev[peerId]) { isNewConv = true; return prev; }
+          if (prev[peerId].messages.some(m => m.id === row.id)) return prev;
+          return { ...prev, [peerId]: { ...prev[peerId], messages:[...prev[peerId].messages, row], unread:isOpen?0:prev[peerId].unread+1 } };
+        });
+        if (isNewConv) {
+          const peer = await fetchProfile(peerId);
+          if (peer) setConvs(prev => prev[peerId] ? prev : { ...prev, [peerId]: { peer, messages:[row], unread:isOpen?0:1 } });
+        }
+        if (isOpen) markConversationRead(user.id, peerId);
+      },
+      // A message I sent or received changed: read receipt, reaction, or unsend/delete.
+      onUpdate: row => {
+        const peerId = row.sender_id === user.id ? row.recipient_id : row.sender_id;
+        setConvs(prev => {
+          const c = prev[peerId]; if (!c) return prev;
+          if (Array.isArray(row.deleted_for) && row.deleted_for.includes(user.id)) {
+            const messages = c.messages.filter(m => m.id !== row.id);
+            const unread = messages.filter(m => m.sender_id === peerId && !m.read).length;
+            return { ...prev, [peerId]: { ...c, messages, unread } };
+          }
+          if (!c.messages.some(m => m.id === row.id)) return prev;
+          return { ...prev, [peerId]: { ...c, messages: c.messages.map(m => m.id === row.id ? { ...m, ...row } : m) } };
+        });
+      },
     });
     return () => { on = false; unsub(); };
   }, [user]);
@@ -1510,15 +1821,43 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     setDmUser(peer);
   }, [user, onSignIn]);
 
-  const handleSend = useCallback(async (peerId, text) => {
+  // payload: string (legacy) or { text, media, replyTo, forwarded }
+  const handleSend = useCallback(async (peerId, payload) => {
     if (!user) return;
-    const temp = { id:`t_${Date.now()}`, sender_id:user.id, recipient_id:peerId, text, created_at:new Date().toISOString() };
-    setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages:[...(prev[peerId]?.messages||[]), temp] } }));
+    const { text = '', media = null, replyTo = null, forwarded = false } =
+      typeof payload === 'string' ? { text: payload } : (payload || {});
+    if (!text.trim() && !(media && media.length)) return;
+    const temp = { id:`t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, sender_id:user.id, recipient_id:peerId, text:text||null, media, reply_to:replyTo, forwarded, reactions:{}, deleted_for:[], read:false, created_at:new Date().toISOString() };
+    setConvs(prev => { const ex = prev[peerId] || { peer:{ id:peerId }, unread:0 }; return { ...prev, [peerId]: { ...ex, messages:[...(ex.messages||[]), temp] } }; });
     try {
-      const row = await sendMessage(user.id, peerId, text);
-      setConvs(prev => ({ ...prev, [peerId]: { ...prev[peerId], messages:prev[peerId].messages.map(m => m.id===temp.id?row:m) } }));
+      const row = await sendMessage(user.id, peerId, { text, media, replyTo, forwarded });
+      setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], messages:prev[peerId].messages.map(m => m.id===temp.id?row:m) } } : prev);
     } catch { /* surfaced in console */ }
   }, [user]);
+
+  const handleReact = useCallback(async (peerId, msg, emoji) => {
+    if (!user || String(msg.id).startsWith('t_')) return;
+    const cur = msg.reactions || {};
+    const next = (() => { const r = { ...cur }; const s = new Set(r[emoji] || []); s.has(user.id) ? s.delete(user.id) : s.add(user.id); if (s.size) r[emoji] = [...s]; else delete r[emoji]; return r; })();
+    setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], messages: prev[peerId].messages.map(m => m.id === msg.id ? { ...m, reactions: next } : m) } } : prev);
+    await toggleMessageReaction(msg.id, emoji, user.id, cur);
+  }, [user]);
+
+  const handleDeleteForMe = useCallback(async (peerId, msg) => {
+    if (!user) return;
+    setConvs(prev => { const c = prev[peerId]; if (!c) return prev; const messages = c.messages.filter(m => m.id !== msg.id); const unread = messages.filter(m => m.sender_id === peerId && !m.read).length; return { ...prev, [peerId]: { ...c, messages, unread } }; });
+    if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, [...new Set([...(msg.deleted_for || []), user.id])]);
+  }, [user]);
+
+  // Unsend for everyone — allowed only on my own message the recipient hasn't read yet.
+  const handleUnsend = useCallback(async (peerId, msg) => {
+    if (!user || msg.sender_id !== user.id || msg.read) return;
+    setConvs(prev => { const c = prev[peerId]; if (!c) return prev; return { ...prev, [peerId]: { ...c, messages: c.messages.filter(m => m.id !== msg.id) } }; });
+    if (!String(msg.id).startsWith('t_')) await setMessageDeletedFor(msg.id, [...new Set([...(msg.deleted_for || []), user.id, peerId])]);
+  }, [user]);
+
+  const chatApi = useMemo(() => ({ me:user, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onForward:setForwardMsg }),
+    [user, handleSend, handleReact, handleDeleteForMe, handleUnsend]);
 
   const openConv = useCallback(peerId => {
     setActivePeer(peerId);
@@ -1595,6 +1934,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:600px}}
         .slide-down{animation:slideDown .2s ease both;overflow:hidden}
         @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+        @keyframes dmPulse{0%,100%{opacity:1}50%{opacity:.25}}
+        @keyframes dmType{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
+        .dm-typing span{width:6px;height:6px;border-radius:50%;background:rgba(0,0,0,.45);display:inline-block;animation:dmType 1.2s infinite}
+        .dm-typing span:nth-child(2){animation-delay:.15s}
+        .dm-typing span:nth-child(3){animation-delay:.3s}
         .act-btn{display:flex;flex:1;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:8px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
         .act-btn:hover{background:${GREEN_SOFT};color:${GREEN}}
         .act-btn.on{color:${GREEN};background:${GREEN_SOFT}}
@@ -1726,7 +2070,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
           {view === 'messages' && (
             user
-              ? <MessagesView me={user} convs={convs} activePeer={activePeer} onOpenConv={openConv} onSend={handleSend}/>
+              ? <MessagesView convs={convs} activePeer={activePeer} onOpenConv={openConv} chat={chatApi}/>
               : <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Sign in to see your messages.</div>
           )}
 
@@ -1751,9 +2095,15 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       )}
 
 
+      {/* Forward a message */}
+      {forwardMsg && user && (
+        <ForwardDialog msg={forwardMsg} convs={convs} me={user} onClose={()=>setForwardMsg(null)}
+          onForward={ids=>{ ids.forEach(pid=>handleSend(pid, { text:forwardMsg.text||'', media:forwardMsg.media||null, forwarded:true })); setForwardMsg(null); }}/>
+      )}
+
       {/* DM slide-over */}
       {dmUser && user && (
-        <DMPanel peer={dmUser} me={user} msgs={convs[dmUser.id]?.messages || []} onSend={handleSend} onClose={()=>setDmUser(null)}/>
+        <DMPanel peer={dmUser} msgs={convs[dmUser.id]?.messages || []} chat={chatApi} onClose={()=>setDmUser(null)}/>
       )}
 
       {/* Mobile bottom nav */}
