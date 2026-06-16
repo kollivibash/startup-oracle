@@ -252,9 +252,8 @@ const Lightbox = ({ images, start, onClose }) => {
       else if (e.key === 'ArrowRight') setI(p => (p + 1) % images.length);
       else if (e.key === 'ArrowLeft') setI(p => (p - 1 + images.length) % images.length);
     };
-    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKey);
-    return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey); };
+    return () => window.removeEventListener('keydown', onKey);
   }, [images.length, onClose]);
   const nav = side => ({ position:'absolute', top:'50%', [side]:'2.5%', transform:'translateY(-50%)', width:48, height:48, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3 });
   return (
