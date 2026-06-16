@@ -647,6 +647,14 @@ const dmType = f => (f.type||'').startsWith('image') ? 'image' : (f.type||'').st
 const mediaLabel = media => { const t = media?.[0]?.type; return t==='image'?'📷 Photo':t==='video'?'🎬 Video':t==='audio'?'🎙 Voice message':'📄 File'; };
 const msgPreview = m => (m?.text && m.text.trim()) ? m.text : (m?.media?.length ? mediaLabel(m.media) : '');
 
+// LinkedIn-style monochrome line icons for the composer (stroke = currentColor).
+const icoBase = { fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
+const IcoPhoto = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>);
+const IcoClip  = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>);
+const IcoEmoji = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>);
+const IcoMic   = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/></svg>);
+const IcoSend  = () => (<svg width="16" height="16" viewBox="0 0 24 24" {...icoBase}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>);
+
 // Lightweight emoji picker (no dependency) — anchored above its trigger.
 function EmojiPicker({ onPick, onClose }) {
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
@@ -691,14 +699,14 @@ function VoiceRecorder({ onDone, iconBtn }) {
     };
     m.stop(); setRec(false); setSecs(0);
   };
-  if (!rec) return <button title="Record voice note" onClick={start} style={iconBtn}>🎤</button>;
+  if (!rec) return <button title="Record voice note" onClick={start} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoMic/></button>;
   const t = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
   return (
     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 2px', flexShrink:0 }}>
       <span style={{ width:8, height:8, borderRadius:'50%', background:'#DC2626', animation:'dmPulse 1s infinite' }}/>
       <span style={{ fontSize:12.5, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:30 }}>{t}</span>
       <button title="Cancel" onClick={()=>finish(false)} style={iconBtn}>✕</button>
-      <button title="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', fontSize:12, flexShrink:0 }}>➤</button>
+      <button title="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
     </div>
   );
 }
@@ -736,13 +744,12 @@ function MsgMedia({ media, onImage }) {
   );
 }
 
-function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onReply, onForward, onDeleteForMe, onUnsend }) {
+function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onReply, onForward, onDelete }) {
   const [hover, setHover] = useState(false);
   const [menu, setMenu] = useState(false);
   const temp = String(m.id).startsWith('t_');
   const replied = m.reply_to ? msgs.find(x => x.id === m.reply_to) : null;
   const reactions = m.reactions ? Object.entries(m.reactions).filter(([, u]) => u?.length) : [];
-  const canUnsend = mine && !m.read;
   const show = !temp && (hover || menu);
   const close = () => setMenu(false);
   const mItem = { display:'flex', alignItems:'center', gap:9, width:'100%', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.82)', fontFamily:F, textAlign:'left' };
@@ -797,11 +804,29 @@ function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onRe
               </div>
               <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onReply(m); close(); }}>↩ Reply</button>
               <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onForward(m); close(); }}>↪ Forward</button>
-              <button style={mItem} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onDeleteForMe(m); close(); }}>🗑 Delete for me</button>
-              {canUnsend && <button style={{ ...mItem, color:'#DC2626' }} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onUnsend(m); close(); }}>↺ Unsend for everyone</button>}
+              <button style={{ ...mItem, color:'#DC2626' }} onMouseEnter={hoverBg} onMouseLeave={clearBg} onClick={()=>{ onDelete(m); close(); }}>🗑 Delete</button>
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// WhatsApp-style delete confirmation: "Delete for everyone" only on your own unread message.
+function DeleteMsgDialog({ msg, me, onForEveryone, onForMe, onClose }) {
+  const canEveryone = msg.sender_id === me.id && !msg.read;
+  const btn = (bg, color) => ({ width:'100%', padding:'12px', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F, border:'none', background:bg, color });
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, boxShadow:'0 20px 60px rgba(0,0,0,.2)', width:'100%', maxWidth:300, padding:20 }}>
+        <p style={{ margin:'0 0 4px', fontSize:16, fontWeight:700, textAlign:'center' }}>Delete message?</p>
+        <p style={{ margin:'0 0 18px', fontSize:12.5, color:'rgba(0,0,0,.5)', textAlign:'center', lineHeight:1.5 }}>{canEveryone ? 'Delete this for everyone, or just remove it from your view.' : 'This will be removed from your view only.'}</p>
+        <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+          {canEveryone && <button onClick={onForEveryone} style={btn('#DC2626', '#fff')}>Delete for everyone</button>}
+          <button onClick={onForMe} style={btn('rgba(0,0,0,.06)', 'rgba(0,0,0,.85)')}>Delete for me</button>
+          <button onClick={onClose} style={btn('rgba(0,0,0,.06)', 'rgba(0,0,0,.55)')}>Cancel</button>
+        </div>
       </div>
     </div>
   );
@@ -816,6 +841,7 @@ function ChatArea({ peer, msgs, chat }) {
   const [sending, setSending] = useState(false);
   const [lb, setLb] = useState(null);            // { images, start }
   const [peerTyping, setPeerTyping] = useState(false);
+  const [delMsg, setDelMsg] = useState(null);    // message pending delete-confirm
   const boxRef = useRef(null), pvInput = useRef(null), docInput = useRef(null);
   const typingApi = useRef(null), lastTyped = useRef(0), stopTO = useRef(null), peerTO = useRef(null);
 
@@ -881,8 +907,7 @@ function ChatArea({ peer, msgs, chat }) {
         {visible.map(m => (
           <MsgBubble key={m.id} m={m} mine={m.sender_id === me.id} peer={peer} me={me} msgs={msgs}
             isLastMine={m.id === lastMineId} onImage={(images, start)=>setLb({ images, start })}
-            onReact={(msg,e)=>onReact(peer.id, msg, e)} onReply={setReplyTo} onForward={onForward}
-            onDeleteForMe={msg=>onDeleteForMe(peer.id, msg)} onUnsend={msg=>onUnsend(peer.id, msg)}/>
+            onReact={(msg,e)=>onReact(peer.id, msg, e)} onReply={setReplyTo} onForward={onForward} onDelete={setDelMsg}/>
         ))}
         {peerTyping && (
           <div style={{ display:'flex', gap:8, alignSelf:'flex-start', alignItems:'flex-end' }}>
@@ -893,6 +918,11 @@ function ChatArea({ peer, msgs, chat }) {
       </div>
 
       {lb && <Lightbox images={lb.images} start={lb.start} onClose={()=>setLb(null)}/>}
+
+      {delMsg && <DeleteMsgDialog msg={delMsg} me={me}
+        onForEveryone={()=>{ onUnsend(peer.id, delMsg); setDelMsg(null); }}
+        onForMe={()=>{ onDeleteForMe(peer.id, delMsg); setDelMsg(null); }}
+        onClose={()=>setDelMsg(null)}/>}
 
       {replyTo && (
         <div style={{ padding:'9px 18px', borderTop:'1px solid rgba(0,0,0,.06)', display:'flex', alignItems:'center', gap:10, background:'rgba(0,0,0,.02)', flexShrink:0 }}>
@@ -922,17 +952,17 @@ function ChatArea({ peer, msgs, chat }) {
       <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
 
       <div style={{ padding:'10px 14px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:3, alignItems:'flex-end', flexShrink:0 }}>
-        <button title="Photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn}>🖼</button>
-        <button title="Document" onClick={()=>docInput.current?.click()} style={iconBtn}>📎</button>
+        <button title="Photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoPhoto/></button>
+        <button title="Document" onClick={()=>docInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoClip/></button>
         <div style={{ position:'relative' }}>
-          <button title="Emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn}>😊</button>
+          <button title="Emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
           {emojiOpen && <EmojiPicker onPick={e=>setInput(v=>v+e)} onClose={()=>setEmojiOpen(false)}/>}
         </div>
         <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending}
           onKeyDown={e=>{ if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center' }}/>
         {hasContent
-          ? <button onClick={send} disabled={sending} title="Send" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, fontSize:13 }}>➤</button>
+          ? <button onClick={send} disabled={sending} title="Send" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
           : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn}/>}
       </div>
     </>
