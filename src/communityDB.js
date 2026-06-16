@@ -220,6 +220,28 @@ export async function fetchMutualFollowers(uid, myFollowingIds, max = 3) {
   return { people: people.slice(0, max), count: people.length };
 }
 
+// Batched version for a list of accounts → { [uid]: { people, count } }. One query.
+export async function fetchMutualFollowersBatch(uids, myFollowingIds, max = 3) {
+  const ids = [...(myFollowingIds || [])].filter(Boolean);
+  const targets = [...new Set((uids || []).filter(Boolean))];
+  const out = {};
+  if (!ids.length || !targets.length) return out;
+  const sel = 'followee_id, person:profiles!follows_follower_id_fkey(id, name, avatar_url)';
+  let { data, error } = await supabase.from('follows').select(sel).in('followee_id', targets).eq('status', 'accepted').in('follower_id', ids);
+  if (error && /status/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('follows').select(sel).in('followee_id', targets).in('follower_id', ids));
+  }
+  if (error) { console.error('fetchMutualFollowersBatch failed', error); return out; }
+  for (const r of data || []) {
+    if (!r.person || r.followee_id === r.person.id) continue;
+    const k = r.followee_id;
+    if (!out[k]) out[k] = { people: [], count: 0 };
+    out[k].count++;
+    if (out[k].people.length < max) out[k].people.push(r.person);
+  }
+  return out;
+}
+
 export async function fetchFollowCounts(userId) {
   if (!userId) return { followers: 0, following: 0 };
   let [a, b] = await Promise.all([

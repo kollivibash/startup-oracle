@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -861,6 +861,13 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
   }, [posts, me]);
   const source = me ? (pymk.length ? pymk : fallback) : fallback;
   const list = source.filter(p => p.id !== me?.id && !followingIds?.has(p.id) && !pendingIds?.has(p.id)).slice(0, 5);
+  const [mutualMap, setMutualMap] = useState({});
+  const listIds = list.map(f => f.id).join(',');
+  useEffect(() => {
+    let on = true;
+    if (me && listIds) fetchMutualFollowersBatch(listIds.split(','), followingIds).then(m => on && setMutualMap(m));
+    return () => { on = false; };
+  }, [listIds, me, followingIds]);
 
   return (
     <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
@@ -877,8 +884,13 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
                     {verifiedIds?.has(f.id) && <VerifiedBadge sz={13}/>}
                   </div>
                   <div style={{ fontSize:12, color:'rgba(0,0,0,.55)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(f)}</div>
+                  {mutualMap[f.id]?.count > 0 && (
+                    <div style={{ fontSize:11, color:'rgba(0,0,0,.45)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      Followed by {(mutualMap[f.id].people[0]?.name || 'Founder').split(' ')[0]}{mutualMap[f.id].count > 1 ? ` +${mutualMap[f.id].count - 1}` : ''}
+                    </div>
+                  )}
                 </div>
-                <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0 }}>Follow</button>
+                <button onClick={requireAuth(()=>onFollow(f.id))} style={{ padding:'5px 16px', borderRadius:99, border:`1.5px solid ${GREEN}`, fontSize:13, fontWeight:700, cursor:'pointer', background:'transparent', color:GREEN, fontFamily:F, flexShrink:0, alignSelf:'flex-start', marginTop:2 }}>Follow</button>
               </div>
             ))}
       </div>
