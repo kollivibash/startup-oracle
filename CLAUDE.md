@@ -1,104 +1,147 @@
 # Startup Oracle
 
-Startup validation platform where founders submit their startup ideas and receive AI-generated deep-dive analysis reports, plus a community for founders to share ideas, follow each other, rate posts, and exchange direct messages.
+Startup validation platform: founders submit ideas and get an AI-generated 6-section deep-dive
+report, plus a LinkedIn-style community to share ideas, follow founders, rate posts, comment,
+repost, DM, and (when billing is switched on) subscribe for a Verified Founder badge.
 
 **Live URL:** https://startup-oracle-seven.vercel.app
-**Hosting:** Vercel (auto-deploys from `main` branch)
-**Backend:** Supabase (auth, database, storage, realtime)
-**AI:** Groq API (llama-3.3-70b-versatile) for report generation
+**Hosting:** Vercel (auto-deploys from `main`)
+**Backend:** Supabase (auth, Postgres + RLS, storage, realtime)
+**AI:** Google **Gemini 2.5-flash** via a serverless proxy (`api/generate.js`) — key is server-side
+**Payments:** Razorpay subscriptions (code complete, **dormant** until the owner finishes setup)
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev          # starts on http://localhost:5173
+npm run dev          # http://localhost:5173  (does NOT serve /api — see note below)
 npm run build        # production build → dist/
+npx eslint src/...   # lint
 ```
 
 ### Environment Variables
 
-Create `.env.local` in project root:
+`.env.local` (gitignored) — server-side only, NO `VITE_` prefix (that would bundle it to the client):
 ```
-VITE_GROQ_API_KEY=<your-groq-api-key>
+GEMINI_API_KEY=<your-gemini-key>
 ```
-Get a key at https://console.groq.com/keys
+On Vercel set `GEMINI_API_KEY` (Production + Preview). Supabase anon key is hardcoded in
+`src/supabaseClient.js` and `api/*.js` (safe — public, protected by RLS).
 
-Supabase credentials are hardcoded in `src/supabaseClient.js` (anon key — safe for client-side, protected by RLS).
+> **`/api/*` only runs on the deployed Vercel site, NOT in `npm run dev`** (Vite doesn't serve
+> serverless functions). So report generation, live news, link previews, and Razorpay don't work
+> locally — every caller degrades gracefully (fails open / shows fallback). Use `npx vercel dev`
+> if you need `/api` locally.
 
 ## Architecture
 
-Single-page React app with view-based routing in `App.jsx`. No React Router — views are switched via `setView()` state. Session view persists across reloads via `sessionStorage`.
+Single-page React (Vite). No React Router — `App.jsx` switches views via `setView()`. Views:
+`oracle` (Home), `submit`, `community`, `account`, `pricing`, `auth`, `report`. `sessionStorage.so_view`
+persists across reloads; the **browser Back button** is wired to the view via History API
+(`pushState`/`popstate`) so Back returns to the previous view.
+
+Styling is **inline styles** everywhere except `MasterReport.jsx`, which uses **Tailwind v4**
+(`@tailwindcss/vite`, `@import "tailwindcss"` in `index.css`).
 
 ### File Map
 
 ```
 src/
-  App.jsx              — Root: auth state, view routing, session persistence, logout
-  Home.jsx             — Landing page (Cormorant Garamond serif + DM Sans)
-  Auth.jsx             — Sign in/up (Google, GitHub, email/password OAuth)
-  SubmitIdea.jsx       — 3-step idea form → triggers AI analysis → shows report
-  MasterReport.jsx     — Renders the 6-section validation report (light theme)
-  Community.jsx        — Feed, posts, ratings, suggestions, follows, DMs, bell notifications (~1100 lines)
-  Account.jsx          — User profile, validated ideas list, click to re-open reports, hard delete
-  reportEngine.js      — Groq API calls: 6 parallel sections, adaptive token management, retry logic
-  communityDB.js       — All Supabase queries for community features (posts, follows, DMs, ratings)
-  ideasDB.js           — Save/load/delete validated ideas (Supabase + localStorage fallback)
-  supabaseClient.js    — Supabase client init (hardcoded anon key)
-  index.css            — Font imports (Cormorant Garamond, DM Sans, Plus Jakarta Sans, DM Mono, Syne)
-  main.jsx             — React entry point
+  App.jsx          — routing, auth state, OAuth hash handling, browser-back history sync
+  Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
+  Auth.jsx         — sign in/up (Google, GitHub, email/password)
+  SubmitIdea.jsx   — 3-step form → quota check (consume_validation) → Gemini report; paywall screen
+  MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community
+  Community.jsx    — the community (~1700 lines): feed, composer (post/poll/article), Rate (1–10),
+                     threaded comments+likes, repost, save, follow (approval), DMs (realtime),
+                     notifications bell, rich profiles, photo carousel + fullscreen lightbox,
+                     link previews, verified badge, "Followed by X" social proof, mobile bottom nav
+  Pricing.jsx      — pricing page (₹50/mo, ₹500/yr) + Razorpay checkout
+  Account.jsx      — account, validated-ideas list, re-open reports, hard delete
+  reportEngine.js  — 6 Gemini section calls via /api/generate (2-worker concurrency, retries/backoff)
+  communityDB.js   — all community Supabase queries
+  billingDB.js     — subscription state, consume/refund validation RPCs, verified ids, start checkout
+  ideasDB.js       — save/load/delete validated ideas (Supabase + localStorage fallback)
+  supabaseClient.js, index.css, main.jsx
 
-Root SQL migrations (run manually in Supabase SQL Editor):
-  supabase_community_tables.sql  — profiles, community_posts, ratings, suggestions, follows, messages + RLS
-  supabase_ideas_table.sql       — ideas table for validated reports
-  supabase_messages_table.sql    — DM messages table + realtime
-  supabase_follow_requests.sql   — adds status column to follows (pending/accepted) + RLS for accept/reject
-  supabase_post_media.sql        — adds media column to posts + post-media storage bucket
+api/ (Vercel serverless — keys live here, never in the client bundle)
+  generate.js          — Gemini proxy (auth-gated, model whitelist, prompt size cap)
+  news.js              — live startup news (server-side TechCrunch RSS fetch)
+  unfurl.js            — link-preview OG scraper (auth-gated, SSRF guards)
+  razorpay-subscribe.js— create a Razorpay subscription (auth-gated)
+  razorpay-webhook.js  — activate/deactivate subscription + verified badge (uses service-role key)
 ```
 
-### Key Patterns
+### SQL migrations — run in Supabase SQL Editor in THIS order
 
-- **Auth flow**: OAuth (Google/GitHub) via Supabase implicit grant. Hash tokens parsed in `App.jsx`, `setSession()` called, then redirect to intended view via `localStorage.afterAuth`.
-- **Hard logout**: `signOut({ scope: 'global' })` revokes all sessions + clears all `sb-*` localStorage keys.
-- **View persistence**: `sessionStorage.so_view` survives reloads. Stale `account` view auto-redirects to `oracle` if user is signed out.
-- **Report generation**: 6 sections × 44 sub-keys analyzed in parallel (2 workers). Each section gets its own Groq API call with role-specific prompt. Adaptive token management: starts at 4000 max_tokens, halves on 413 errors (Groq free tier limit), retries up to 4 times. 429/5xx gets exponential backoff.
-- **Follow requests**: Instagram-style. New follows create `status: 'pending'` row. Recipient sees them in bell notification dropdown (30s polling). Accept flips to `accepted`, reject deletes the row.
-- **Graceful fallbacks**: All community DB functions handle missing `status` column or `media` column gracefully (for environments where SQL migrations haven't been run yet).
-- **PostgREST joins**: Explicit FK hints like `profiles!community_posts_user_id_fkey` to disambiguate when multiple join paths exist.
-
-## Supabase Setup
-
-The SQL migration files must be run in Supabase SQL Editor in this order:
-1. `supabase_community_tables.sql` — base tables
-2. `supabase_ideas_table.sql` — ideas storage
-3. `supabase_messages_table.sql` — DM system
-4. `supabase_follow_requests.sql` — follow request workflow
-5. `supabase_post_media.sql` — media uploads
-
-All tables have Row-Level Security (RLS) enabled. The `messages` table has Supabase Realtime enabled for live DM delivery.
-
-OAuth providers (Google, GitHub) are configured in the Supabase Dashboard under Authentication > Providers.
-
-## Deployment
-
-Deployed on Vercel. Push to `main` triggers auto-deploy.
-
-```bash
-npm run build
-# Or: vercel --prod
 ```
+1.  supabase_community_tables.sql   profiles, posts, ratings, suggestions, follows, + RLS
+2.  supabase_ideas_table.sql        ideas storage
+3.  supabase_messages_table.sql     DMs + realtime
+4.  supabase_follow_requests.sql    follows.status (pending/accepted) + accept/reject RLS
+5.  supabase_post_media.sql         posts.media + post-media storage bucket
+6.  supabase_post_meta.sql          posts.meta (validated-idea score badge)
+7.  supabase_notifications.sql      notifications table
+8.  supabase_engagement.sql         post_reactions*, suggestion likes/replies, repost_of, saved_posts
+9.  supabase_profiles_rich.sql      profile fields (about/skills/experience/…) + avatars bucket
+10. supabase_network.sql            connections* (unused) + profile_views ("who viewed your profile")
+11. supabase_posts_extra.sql        kind/poll/link_preview + poll_votes
+12. supabase_billing.sql            LAST — only when Razorpay is ready (see Billing below)
+```
+\* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
+All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
+app keeps working before each migration is run.
 
-The `VITE_GROQ_API_KEY` env var must be set in Vercel project settings (Settings > Environment Variables) with Production + Preview scopes enabled.
+## Community feature set (current)
+
+Feed with tabs (All / Top Rated / Most Discussed / Following / Saved); composer modes Post / Poll /
+Article; **Rate 1–10** is the only post engagement (post reactions/Like were removed); threaded
+comments with likes + replies; repost with commentary (embedded original); save/bookmark; **follow
+is approval-based** (Instagram-style requests in the bell, 30s polling); realtime DMs; rich profiles
+(headline/About/Experience/Education/Skills, avatar+banner upload, profile-strength meter, "Who
+viewed your profile"); **"Followed by X and Y"** social proof on profiles + sidebar suggestions;
+multi-photo **carousel + fullscreen lightbox** (arrows, dots, Esc/arrow keys); link previews; polls;
+shareable post permalinks (`#/idea/:id`); live Startup News; "Founders to follow"; Openings (placeholder);
+mobile bottom nav; **Verified Founder badge** (Instagram-style blue check) for active subscribers.
+
+**Removed on purpose:** post reactions/Like (Rate replaces them); the whole connections / "My Network"
+feature (followers + following only).
+
+## Billing (DORMANT — do not enable until the domain is bought)
+
+Subscription model via **Razorpay**: ₹50/month, ₹500/year. Free tier = **1 validation total**;
+subscribers get **2 validations/month** + the verified badge. `consume_validation()` /
+`refund_validation()` Postgres RPCs gate it atomically (quota constant is `2` in `supabase_billing.sql`).
+Until `supabase_billing.sql` is run, gating **fails open** (everyone validates freely).
+
+To go live (owner): create Razorpay account + 2 Plans (monthly 5000 paise, yearly 50000 paise);
+add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MONTHLY`,
+`RAZORPAY_PLAN_YEARLY`, `RAZORPAY_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`; run
+`supabase_billing.sql`; configure the Razorpay webhook → `/api/razorpay-webhook`.
+
+## Key Patterns
+
+- **Auth**: OAuth implicit grant; hash tokens parsed in `App.jsx`; `localStorage.afterAuth` carries the
+  intended destination across the redirect. Hard logout revokes all sessions + clears `sb-*` keys.
+- **Report generation**: 6 sections, each its own Gemini call through `/api/generate`
+  (`GEMINI_API_KEY` server-side, model whitelist, prompt cap, retries + backoff). `MasterReport` shows
+  a score dashboard (ring + sub-score bars) from the validation `_meta`.
+- **PostgREST joins**: explicit FK hints, e.g. `profiles!community_posts_user_id_fkey`.
+- **Graceful degradation**: variant-ladder selects + try/catch fallbacks so missing migrations never
+  crash the app.
 
 ## Design System
 
-- **Fonts**: Cormorant Garamond (serif headings on Home), DM Sans (body), Plus Jakarta Sans (forms/buttons)
-- **Theme**: Light/white minimal. No dark mode. CSS variables not used — colors are inline constants per component.
-- **Color constants**: Each component defines its own `C` object with `black`, `white`, `border`, `muted`, `light`, `body` etc.
-- **No component library** — everything is custom inline-styled React components.
+- **Theme**: **black & white minimal** (was briefly green — reverted). The only color accent is the
+  blue Instagram-style verified badge. No dark mode. Colors are inline constants per component
+  (Community uses `GREEN`/`GREEN_SOFT`/`INK` constants — note `GREEN` is now `#0f172a`, i.e. black).
+- **Fonts**: DM Sans (community/body), Plus Jakarta Sans (forms/report), Cormorant Garamond (Home serif).
+- No component library; everything is custom.
 
-## Known Constraints
+## Known Constraints / Gotchas
 
-- Groq free tier has ~6000 tokens/min TPM limit. Reports may take 1-2 minutes on free tier. Paid API would be faster.
-- Report generation uses `llama-3.3-70b-versatile` model. If Groq retires it, update `MODEL` in `reportEngine.js`.
-- No test suite exists. Changes should be verified manually in the browser.
-- Community.jsx is ~1100 lines. If refactoring, consider splitting out the DM panel, profile view, and composer modal.
+- Commit/push to `main` = auto-deploy. End commit messages with the Co-Authored-By line.
+- `/api/*` doesn't run under `npm run dev` — test those on the deployed site or via `npx vercel dev`.
+- Billing + the "Followed by X" social proof can't be verified locally (need real auth + follow graph).
+- No test suite — verify changes in the browser.
+- `Community.jsx` is ~1700 lines; consider splitting (DM panel, ProfileView, composer, media) if refactoring.
