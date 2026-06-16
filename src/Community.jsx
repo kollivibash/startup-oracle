@@ -356,6 +356,20 @@ const MediaGrid = ({ media }) => {
   );
 };
 
+// LinkedIn-style monochrome line icons (stroke = currentColor) used in the composer + post action bar.
+const icoBase = { fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
+const IcoPhoto = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>);
+const IcoClip  = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>);
+const IcoEmoji = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>);
+const IcoMic   = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/></svg>);
+const IcoSend  = ({ s=16 }) => (<svg width={s} height={s} viewBox="0 0 24 24" {...icoBase}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>);
+// Post action-bar icons (20px). `fill` paints them solid when the action is active.
+const IcoStar     = ({ on }) => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase} fill={on?'currentColor':'none'}><path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 18.6 6.1 21.3l1.2-6.6L2.5 9.5l6.6-.9z"/></svg>);
+const IcoComment  = () => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase}><path d="M21 11.5a8.4 8.4 0 0 1-12 7.6L3 21l1.9-5.7A8.4 8.4 0 1 1 21 11.5z"/></svg>);
+const IcoRepost   = () => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase}><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>);
+const IcoBookmark = ({ on }) => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase} fill={on?'currentColor':'none'}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>);
+const IcoShare    = () => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase}><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>);
+
 function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -453,13 +467,13 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
 
       <div style={{ display:'flex', padding:'4px 4px' }}>
         {!isSelf && !isRepost && !isPoll && (
-          <button className={'act-btn'+(uRating?' rated':'')} onClick={requireAuth(onTR)}>★ {uRating?`Rated ${uRating}`:'Rate'}</button>
+          <button className={'act-btn'+(uRating?' rated':'')} onClick={requireAuth(onTR)}><IcoStar on={!!uRating}/><span>{uRating?`Rated ${uRating}`:'Rate'}</span></button>
         )}
-        <button className="act-btn" onClick={onTC}>💬 Suggest</button>
-        <button className="act-btn" onClick={requireAuth(()=>onRepost(post.original || post))}>🔁 Repost</button>
-        <button className={'act-btn'+(saved?' rated':'')} onClick={requireAuth(()=>onSave(post.id))}>{saved?'🔖 Saved':'🔖 Save'}</button>
-        {!isSelf && onDM && <button className="act-btn" onClick={requireAuth(()=>onDM({ id:post.user_id, name:author.name, avatar_url:author.avatar_url }))}>✉ DM</button>}
-        <button className="act-btn" onClick={share}>{copied?'✓ Copied':'↗ Share'}</button>
+        <button className="act-btn" onClick={onTC}><IcoComment/><span>Suggest</span></button>
+        <button className="act-btn" onClick={requireAuth(()=>onRepost(post.original || post))}><IcoRepost/><span>Repost</span></button>
+        <button className={'act-btn'+(saved?' rated':'')} onClick={requireAuth(()=>onSave(post.id))}><IcoBookmark on={saved}/><span>{saved?'Saved':'Save'}</span></button>
+        {!isSelf && onDM && <button className="act-btn" onClick={requireAuth(()=>onDM({ id:post.user_id, name:author.name, avatar_url:author.avatar_url }))}><IcoSend s={20}/><span>DM</span></button>}
+        <button className="act-btn" onClick={share}><IcoShare/><span>{copied?'Copied':'Share'}</span></button>
       </div>
 
       {rOpen && !isSelf && !isRepost && !isPoll && <RatingScale current={uRating} avg={avg10(ratings)} rc={ratings.length} onRate={n=>onRate(post.id, n)}/>}
@@ -680,14 +694,6 @@ async function compressImage(file, maxDim = 1600, quality = 0.82) {
     return new File([blob], base + (outType === 'image/png' ? '.png' : '.jpg'), { type: outType });
   } catch { return file; }
 }
-
-// LinkedIn-style monochrome line icons for the composer (stroke = currentColor).
-const icoBase = { fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
-const IcoPhoto = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>);
-const IcoClip  = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>);
-const IcoEmoji = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>);
-const IcoMic   = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/></svg>);
-const IcoSend  = () => (<svg width="16" height="16" viewBox="0 0 24 24" {...icoBase}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>);
 
 // Lightweight emoji picker (no dependency) — anchored above its trigger.
 function EmojiPicker({ onPick, onClose }) {
@@ -2051,7 +2057,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         .dm-typing span{width:6px;height:6px;border-radius:50%;background:rgba(0,0,0,.45);display:inline-block;animation:dmType 1.2s infinite}
         .dm-typing span:nth-child(2){animation-delay:.15s}
         .dm-typing span:nth-child(3){animation-delay:.3s}
-        .act-btn{display:flex;flex:1;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:8px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
+        .act-btn{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 4px;border:none;background:none;cursor:pointer;font-size:11.5px;font-weight:600;color:rgba(0,0,0,.6);border-radius:8px;transition:all .15s;font-family:'DM Sans',system-ui,sans-serif}
         .act-btn:hover{background:${GREEN_SOFT};color:${GREEN}}
         .act-btn.on{color:${GREEN};background:${GREEN_SOFT}}
         .act-btn.rated{color:${GREEN}}
