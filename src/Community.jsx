@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, subscribeToMessages, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -1063,6 +1063,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
   const [viewers, setViewers] = useState(null); // { count, viewers } — self only
+  const [mutuals, setMutuals] = useState(null); // { people, count } — followed-by social proof
   const [tab, setTab] = useState('ideas');
   const [received, setReceived] = useState(null);
   const [requests, setRequests] = useState(null);
@@ -1088,6 +1089,19 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
     if (tab === 'ratings') fetchRatingsReceived(uid).then(r => on && setReceived(r));
     return () => { on = false; };
   }, [tab, uid, isSelf]);
+  useEffect(() => {
+    if (isSelf || !me) return;
+    let on = true;
+    fetchMutualFollowers(uid, followingIds).then(m => on && setMutuals(m));
+    return () => { on = false; };
+  }, [uid, me, isSelf, followingIds]);
+
+  const mutualText = (people, count) => {
+    const n = people.map(p => (p.name || 'Founder').split(' ')[0]);
+    if (count === 1) return `Followed by ${n[0]}`;
+    if (count === 2) return `Followed by ${n[0]} and ${n[1]}`;
+    return `Followed by ${n[0]}, ${n[1]} and ${count - 2} other${count - 2 !== 1 ? 's' : ''}`;
+  };
 
   const respond = async (followerId, accept) => {
     setRequests(prev => (prev||[]).filter(p => p.id !== followerId));
@@ -1124,6 +1138,18 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', display:'flex', alignItems:'center', gap:7 }}>{name}{verifiedIds?.has(uid) && <VerifiedBadge sz={18}/>}</div>
               <div style={{ fontSize:14, color:'rgba(0,0,0,.6)', marginTop:2 }}>{headlineOf(prof)}</div>
+              {!isSelf && mutuals?.count > 0 && (
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:9 }}>
+                  <div style={{ display:'flex' }}>
+                    {mutuals.people.map((p,idx)=>(
+                      <div key={p.id} style={{ marginLeft: idx ? -8 : 0, borderRadius:'50%', border:'2px solid #fff' }}>
+                        <Av name={p.name} uid={p.id} url={p.avatar_url} sz={24}/>
+                      </div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize:12.5, color:'rgba(0,0,0,.55)' }}>{mutualText(mutuals.people, mutuals.count)}</span>
+                </div>
+              )}
             </div>
             {!isSelf && (
               <div style={{ display:'flex', gap:8, marginTop:8, flexWrap:'wrap' }}>

@@ -205,6 +205,21 @@ export async function fetchFollowList(userId, type) {
   return (data || []).map(r => r.person).filter(Boolean);
 }
 
+// "Followed by X and Y" — people the viewer follows who ALSO follow `uid`.
+// myFollowingIds = the viewer's accepted following set. Returns { people, count }.
+export async function fetchMutualFollowers(uid, myFollowingIds, max = 3) {
+  const ids = [...(myFollowingIds || [])].filter(id => id && id !== uid);
+  if (!uid || !ids.length) return { people: [], count: 0 };
+  const sel = 'person:profiles!follows_follower_id_fkey(id, name, avatar_url)';
+  let { data, error } = await supabase.from('follows').select(sel).eq('followee_id', uid).eq('status', 'accepted').in('follower_id', ids);
+  if (error && /status/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('follows').select(sel).eq('followee_id', uid).in('follower_id', ids));
+  }
+  if (error) { console.error('fetchMutualFollowers failed', error); return { people: [], count: 0 }; }
+  const people = (data || []).map(r => r.person).filter(Boolean);
+  return { people: people.slice(0, max), count: people.length };
+}
+
 export async function fetchFollowCounts(userId) {
   if (!userId) return { followers: 0, following: 0 };
   let [a, b] = await Promise.all([
