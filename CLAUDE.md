@@ -92,7 +92,10 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
 12. supabase_message_media.sql      messages.media/reply_to/reactions/deleted_for/deleted/forwarded +
                                     text nullable + broadened update RLS (rich DMs; reuses post-media
                                     bucket). Idempotent — safe to re-run if you added columns earlier.
-13. supabase_billing.sql            LAST — only when Razorpay is ready (see Billing below)
+13. supabase_realtime_community.sql adds posts/ratings/suggestions/poll_votes/suggestion_likes/
+                                    notifications/follows to the supabase_realtime publication (+ replica
+                                    identity full) so the feed/bell/comments live-update. Idempotent.
+14. supabase_billing.sql            LAST — only when Razorpay is ready (see Billing below)
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
@@ -136,6 +139,11 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   (`GEMINI_API_KEY` server-side, model whitelist, prompt cap, retries + backoff). `MasterReport` shows
   a score dashboard (ring + sub-score bars) from the validation `_meta`.
 - **PostgREST joins**: explicit FK hints, e.g. `profiles!community_posts_user_id_fkey`.
+- **Realtime (websockets)**: Supabase Realtime streams live updates so nothing needs a manual
+  refresh — DMs (`subscribeToMessages`/`subscribeTyping`), the feed (`subscribeToCommunity` →
+  debounced `fetchPosts`), the bell (`subscribeToInbox`, with a 60s safety poll), and open comment
+  threads (`subscribeToThread`). Tables must be in the `supabase_realtime` publication
+  (supabase_realtime_community.sql); degrades to the poll if not run.
 - **Graceful degradation**: variant-ladder selects + try/catch fallbacks so missing migrations never
   crash the app.
 

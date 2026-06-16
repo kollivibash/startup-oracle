@@ -536,6 +536,36 @@ export function subscribeToMessages(userId, handlers) {
   return () => supabase.removeChannel(channel);
 }
 
+// ── Realtime community streams (websockets) ──────────────────────────────────
+// Feed-level changes: any new/edited/deleted post, rating, comment, or poll vote.
+// Fires onChange(payload) so the caller can refresh — needs supabase_realtime_community.sql.
+export function subscribeToCommunity(onChange) {
+  const ch = supabase.channel('community_live');
+  for (const table of ['community_posts', 'community_ratings', 'community_suggestions', 'poll_votes'])
+    ch.on('postgres_changes', { event: '*', schema: 'public', table }, p => onChange(p));
+  ch.subscribe();
+  return () => supabase.removeChannel(ch);
+}
+
+// Bell stream: my new notifications + any follow change (incoming requests / accepts).
+// onChange('notif' | 'follow') tells the caller which to refresh.
+export function subscribeToInbox(userId, onChange) {
+  const ch = supabase.channel(`inbox_${userId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, () => onChange('notif'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, () => onChange('follow'))
+    .subscribe();
+  return () => supabase.removeChannel(ch);
+}
+
+// Live comments for one open thread (new replies + like changes).
+export function subscribeToThread(postId, onChange) {
+  const ch = supabase.channel(`thread_${postId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'community_suggestions', filter: `post_id=eq.${postId}` }, () => onChange())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'suggestion_likes' }, () => onChange())
+    .subscribe();
+  return () => supabase.removeChannel(ch);
+}
+
 // Lightweight typing indicator over a broadcast channel shared by the two users.
 // Returns { send(typing:boolean), unsub() }.
 export function subscribeTyping(userId, peerId, onTyping) {

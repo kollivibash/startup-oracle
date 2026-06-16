@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -97,7 +97,14 @@ const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount,
   const [txt, setTxt] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [replyTxt, setReplyTxt] = useState('');
-  useEffect(() => { let on = true; fetchSuggestions(postId).then(s => on && setItems(s)); return () => { on = false; }; }, [postId]);
+  useEffect(() => {
+    let on = true, timer = null;
+    const load = () => fetchSuggestions(postId).then(s => on && setItems(s));
+    load();
+    // Live thread: refetch when a reply/like lands (debounced).
+    const unsub = subscribeToThread(postId, () => { clearTimeout(timer); timer = setTimeout(load, 500); });
+    return () => { on = false; clearTimeout(timer); unsub(); };
+  }, [postId]);
 
   const addLocal = (row, parentId) => setItems(p => [...(p||[]), { ...row, parent_id:parentId, likes:[], author:{ name:nameOf(me), avatar_url:me.user_metadata?.avatar_url } }]);
 
@@ -1793,20 +1800,31 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
   useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
+
+  // Live feed over websockets — any post/rating/comment/poll change refreshes the feed
+  // (debounced so bursts coalesce). No manual refresh needed.
+  useEffect(() => {
+    let on = true, timer = null;
+    const refresh = () => { clearTimeout(timer); timer = setTimeout(() => { fetchPosts().then(p => { if (on) setPosts(p); }); }, 700); };
+    const unsub = subscribeToCommunity(refresh);
+    return () => { on = false; clearTimeout(timer); unsub(); };
+  }, []);
+
   useEffect(() => {
     let on = true;
     fetchFollowState(user?.id ?? null).then(s => { if (on) setFollowState(s); });
     if (user) {
       fetchFollowCounts(user.id).then(c => { if (on) setFollowerCount(c.followers); });
-      fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
-      fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
       fetchSavedPosts(user.id).then(s => { if (on) setSavedIds(s); });
-      // Keep the bell fresh — poll for new requests + notifications every 30s
-      const iv = setInterval(() => {
+      const loadBell = () => {
         fetchFollowRequests(user.id).then(r => { if (on) setRequests(r); });
         fetchNotifications(user.id).then(n => { if (on) setNotifs(n); });
-      }, 30000);
-      return () => { on = false; clearInterval(iv); };
+      };
+      loadBell();
+      // Instant via websocket; a slow poll stays as a safety net if the socket drops.
+      const unsub = subscribeToInbox(user.id, loadBell);
+      const iv = setInterval(loadBell, 60000);
+      return () => { on = false; clearInterval(iv); unsub(); };
     }
     return () => { on = false; };
   }, [user]);
