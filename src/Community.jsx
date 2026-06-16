@@ -657,6 +657,30 @@ const patchMsg = (convs, peerId, msgId, patch, meId) => {
 // Last message visible to me (skips ones I deleted-for-me) — for the conversation-list preview.
 const lastVisible = (messages, meId) => { for (let i = messages.length - 1; i >= 0; i--) if (!(messages[i].deleted_for || []).includes(meId)) return messages[i]; return null; };
 
+// Voice-note recording cap.
+const MAX_VOICE_SECS = 300; // 5 min
+
+// Downscale a large photo client-side before upload (skips gif/svg; keeps the original if no gain).
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  if (!file.type?.startsWith('image/') || /gif|svg/.test(file.type)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const { width, height } = bitmap;
+    const scale = Math.min(1, maxDim / Math.max(width, height));
+    if (scale === 1 && file.size < 1024 * 1024) { bitmap.close?.(); return file; } // already small
+    const w = Math.round(width * scale), h = Math.round(height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const outType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise(res => canvas.toBlob(res, outType, quality));
+    if (!blob || blob.size >= file.size) return file; // no benefit
+    const base = file.name.replace(/\.[^.]+$/, '');
+    return new File([blob], base + (outType === 'image/png' ? '.png' : '.jpg'), { type: outType });
+  } catch { return file; }
+}
+
 // LinkedIn-style monochrome line icons for the composer (stroke = currentColor).
 const icoBase = { fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
 const IcoPhoto = () => (<svg width="21" height="21" viewBox="0 0 24 24" {...icoBase}><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>);
@@ -681,22 +705,12 @@ function EmojiPicker({ onPick, onClose }) {
   );
 }
 
-// Record + send a voice note (MediaRecorder). onDone(File) fires when the user sends.
+// Record + send a voice note (MediaRecorder). Auto-stops + sends at MAX_VOICE_SECS.
 function VoiceRecorder({ onDone, iconBtn }) {
   const [rec, setRec] = useState(false);
   const [secs, setSecs] = useState(0);
-  const mr = useRef(null), chunks = useRef([]), timer = useRef(null);
+  const mr = useRef(null), chunks = useRef([]), timer = useRef(null), secsRef = useRef(0);
   useEffect(() => () => clearInterval(timer.current), []);
-  const start = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-      const m = new MediaRecorder(stream);
-      chunks.current = [];
-      m.ondataavailable = e => e.data.size && chunks.current.push(e.data);
-      m.start(); mr.current = m; setRec(true); setSecs(0);
-      timer.current = setInterval(() => setSecs(s => s + 1), 1000);
-    } catch { alert('Microphone access is needed to record a voice note.'); }
-  };
   const finish = save => {
     clearInterval(timer.current);
     const m = mr.current; if (!m) { setRec(false); return; }
@@ -707,14 +721,30 @@ function VoiceRecorder({ onDone, iconBtn }) {
         onDone(new File([blob], `voice_${Date.now()}.webm`, { type:'audio/webm' }));
       }
     };
-    m.stop(); setRec(false); setSecs(0);
+    if (m.state !== 'inactive') m.stop();
+    mr.current = null; setRec(false); setSecs(0); secsRef.current = 0;
+  };
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      const m = new MediaRecorder(stream);
+      chunks.current = [];
+      m.ondataavailable = e => e.data.size && chunks.current.push(e.data);
+      m.start(); mr.current = m; setRec(true); setSecs(0); secsRef.current = 0;
+      timer.current = setInterval(() => {
+        secsRef.current += 1; setSecs(secsRef.current);
+        if (secsRef.current >= MAX_VOICE_SECS) finish(true);   // auto-stop + send at the cap
+      }, 1000);
+    } catch { alert('Microphone access is needed to record a voice note.'); }
   };
   if (!rec) return <button title="Record voice note" onClick={start} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoMic/></button>;
   const t = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
+  const max = `${Math.floor(MAX_VOICE_SECS/60)}:${String(MAX_VOICE_SECS%60).padStart(2,'0')}`;
+  const near = secs >= MAX_VOICE_SECS - 30;
   return (
     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 2px', flexShrink:0 }}>
       <span style={{ width:8, height:8, borderRadius:'50%', background:'#DC2626', animation:'dmPulse 1s infinite' }}/>
-      <span style={{ fontSize:12.5, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:30 }}>{t}</span>
+      <span style={{ fontSize:12.5, fontWeight:700, fontVariantNumeric:'tabular-nums', color: near ? '#DC2626' : 'inherit' }}>{t}<span style={{ fontWeight:500, color:'rgba(0,0,0,.4)' }}> / {max}</span></span>
       <button title="Cancel" onClick={()=>finish(false)} style={iconBtn}>✕</button>
       <button title="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
     </div>
@@ -911,7 +941,14 @@ function ChatArea({ peer, msgs, chat }) {
     typingApi.current?.send(false); clearTimeout(stopTO.current); lastTyped.current = 0;
     try {
       let media = null;
-      if (atts.length) { media = []; for (const a of atts) { const url = await uploadPostFile(me.id, a.file); media.push({ url, type:a.type, name:a.name, size:a.size }); } }
+      if (atts.length) {
+        media = [];
+        for (const a of atts) {
+          const f = a.type === 'image' ? await compressImage(a.file) : a.file;
+          const url = await uploadPostFile(me.id, f);
+          media.push({ url, type:a.type, name:a.name, size:f.size });
+        }
+      }
       onSend(peer.id, { text, media, replyTo: replyTo?.id || null });
       setInput(''); setAtts([]); setReplyTo(null);
     } catch { alert('Could not send. Please try again.'); }
