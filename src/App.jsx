@@ -1,14 +1,28 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import Home from './Home'
-import SubmitIdea from './SubmitIdea'
-import Community from './Community'
-import Auth from './Auth'
-import Account from './Account'
-import MasterReport from './MasterReport'
-import Pricing from './Pricing'
 import { supabase } from './supabaseClient'
 
+// Code-split the heavy views so the landing page ships a small initial bundle —
+// each chunk loads on demand when its view is first opened. Home stays eager
+// (it's the default screen, so lazy-loading it would just add a loading flash).
+const SubmitIdea   = lazy(() => import('./SubmitIdea'))
+const Community    = lazy(() => import('./Community'))
+const Auth         = lazy(() => import('./Auth'))
+const Account      = lazy(() => import('./Account'))
+const MasterReport = lazy(() => import('./MasterReport'))
+const Pricing      = lazy(() => import('./Pricing'))
+
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing']
+
+// Minimal full-screen fallback while a lazy view's chunk downloads.
+function Loading() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+      <div style={{ width: 34, height: 34, border: '3px solid rgba(0,0,0,.12)', borderTopColor: 'rgba(0,0,0,.7)', borderRadius: '50%', animation: 'soSpin .7s linear infinite' }} />
+      <style>{`@keyframes soSpin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
 
 export default function App() {
   // Survive page reloads on the same view (e.g. stay in Community on refresh)
@@ -128,43 +142,53 @@ export default function App() {
   // flashes "Sign in" for a logged-in user
   if (!authReady) return null
 
-  if (view === 'report' && activeIdea) return (
-    <MasterReport
-      data={activeIdea.sections}
-      meta={activeIdea.meta}
-      ideaName={activeIdea.title}
-      onBack={() => { setView('account'); setActiveIdea(null); }}
-    />
-  )
-  if (view === 'account')   return user
-    ? <Account
-        user={user}
-        onHome={() => setView('oracle')}
-        onLogout={handleLogout}
-        onSubmitIdea={() => setView('submit')}
-        onViewReport={idea => { setActiveIdea(idea); setView('report'); }}
+  let screen
+  if (view === 'report' && activeIdea) {
+    screen = (
+      <MasterReport
+        data={activeIdea.sections}
+        meta={activeIdea.meta}
+        ideaName={activeIdea.title}
+        onBack={() => { setView('account'); setActiveIdea(null); }}
       />
-    : null
-  if (view === 'pricing')   return <Pricing user={user} onHome={() => setView('oracle')} onSignIn={goSignIn} />
-  if (view === 'submit')    return <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} />
-  if (view === 'community') return <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
-  if (view === 'auth')      return (
-    <Auth
-      onHome={() => setView('oracle')}
-      onSubmitIdea={() => setView('submit')}
-      onCommunity={() => setView('community')}
-      afterAuth={afterAuth}
-    />
-  )
+    )
+  } else if (view === 'account') {
+    screen = user
+      ? <Account
+          user={user}
+          onHome={() => setView('oracle')}
+          onLogout={handleLogout}
+          onSubmitIdea={() => setView('submit')}
+          onViewReport={idea => { setActiveIdea(idea); setView('report'); }}
+        />
+      : null
+  } else if (view === 'pricing') {
+    screen = <Pricing user={user} onHome={() => setView('oracle')} onSignIn={goSignIn} />
+  } else if (view === 'submit') {
+    screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} />
+  } else if (view === 'community') {
+    screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
+  } else if (view === 'auth') {
+    screen = (
+      <Auth
+        onHome={() => setView('oracle')}
+        onSubmitIdea={() => setView('submit')}
+        onCommunity={() => setView('community')}
+        afterAuth={afterAuth}
+      />
+    )
+  } else {
+    screen = (
+      <Home
+        user={user}
+        onCommunity={() => goAuth('community')}
+        onAnalyse={() => goAuth('submit')}
+        onSignIn={goSignIn}
+        onAccount={goAccount}
+        onPricing={() => setView('pricing')}
+      />
+    )
+  }
 
-  return (
-    <Home
-      user={user}
-      onCommunity={() => goAuth('community')}
-      onAnalyse={() => goAuth('submit')}
-      onSignIn={goSignIn}
-      onAccount={goAccount}
-      onPricing={() => setView('pricing')}
-    />
-  )
+  return <Suspense fallback={<Loading />}>{screen}</Suspense>
 }
