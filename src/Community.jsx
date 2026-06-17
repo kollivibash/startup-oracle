@@ -377,6 +377,25 @@ const IcoRepost   = () => (<svg width="20" height="20" viewBox="0 0 24 24" {...i
 const IcoBookmark = ({ on }) => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase} fill={on?'currentColor':'none'}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>);
 const IcoShare    = () => (<svg width="20" height="20" viewBox="0 0 24 24" {...icoBase}><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>);
 
+// #3 Loading skeleton — placeholder cards while the feed fetches.
+const FeedSkeleton = () => (
+  <>{[0,1,2].map(i=>(
+    <div key={i} style={{ ...card, padding:18 }}>
+      <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:14 }}>
+        <div className="skeleton" style={{ width:44, height:44, borderRadius:'50%' }}/>
+        <div style={{ flex:1 }}>
+          <div className="skeleton" style={{ width:'38%', height:12, marginBottom:7 }}/>
+          <div className="skeleton" style={{ width:'22%', height:10 }}/>
+        </div>
+      </div>
+      <div className="skeleton" style={{ width:'65%', height:14, marginBottom:10 }}/>
+      <div className="skeleton" style={{ width:'100%', height:10, marginBottom:6 }}/>
+      <div className="skeleton" style={{ width:'92%', height:10, marginBottom:6 }}/>
+      <div className="skeleton" style={{ width:'50%', height:10 }}/>
+    </div>
+  ))}</>
+);
+
 function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -2188,10 +2207,15 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   </button>
                 ))}
               </div>
-              {loading && <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>Loading ideas…</div>}
+              {loading && <FeedSkeleton/>}
               {!loading && shown.length === 0 && (
-                <div style={{ ...card, padding:48, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>
-                  {search ? `No ideas matching "${search}".` : tab==='following' ? 'Follow some founders to see their ideas here.' : tab==='saved' ? 'No saved ideas yet. Tap Save on any idea to keep it here.' : 'No ideas yet — be the first to share one.'}
+                <div style={{ ...card, padding:'52px 32px', textAlign:'center' }}>
+                  <div style={{ fontSize:30, marginBottom:10 }}>{search?'🔍':tab==='saved'?'🔖':tab==='following'?'👥':'💡'}</div>
+                  <div style={{ fontSize:15, fontWeight:700, marginBottom:5 }}>{search?'No matches':tab==='following'?'Nothing here yet':tab==='saved'?'No saved ideas':'No ideas yet'}</div>
+                  <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.6, maxWidth:300, margin:'0 auto' }}>
+                    {search ? `Nothing matches "${search}".` : tab==='following' ? 'Follow founders to see their ideas here.' : tab==='saved' ? 'Tap Save on any idea to keep it here.' : 'Be the first to share one with the community.'}
+                  </div>
+                  {!search && tab==='all' && <button onClick={()=>setComposerOpen(true)} style={{ marginTop:16, padding:'9px 20px', borderRadius:'var(--r-pill)', background:'var(--ink)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Share an idea</button>}
                 </div>
               )}
               {shown.map(p=>(
