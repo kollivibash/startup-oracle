@@ -3,6 +3,7 @@ import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPost
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
+const FD = "var(--font-display)";   // Plus Jakarta Sans — display headings (unified ramp)
 const BG = '#f1f3f5';
 // Brand palette — black & white minimal (constant names kept to limit churn)
 const GREEN = '#0f172a';            // primary accent (monochrome ink)
@@ -266,10 +267,10 @@ const Lightbox = ({ images, start, onClose }) => {
   const nav = side => ({ position:'absolute', top:'50%', [side]:'2.5%', transform:'translateY(-50%)', width:48, height:48, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3 });
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(0,0,0,.93)', display:'flex', alignItems:'center', justifyContent:'center', animation:'fadeUp .15s ease both' }}>
-      <button onClick={onClose} title="Close (Esc)" style={{ position:'absolute', top:18, right:22, width:42, height:42, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:20, cursor:'pointer', zIndex:3 }}>✕</button>
-      {images.length > 1 && <button onClick={e=>go(-1,e)} title="Previous" style={nav('left')}>‹</button>}
+      <button onClick={onClose} title="Close (Esc)" aria-label="Close" style={{ position:'absolute', top:18, right:22, width:42, height:42, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:20, cursor:'pointer', zIndex:3 }}>✕</button>
+      {images.length > 1 && <button onClick={e=>go(-1,e)} title="Previous" aria-label="Previous image" style={nav('left')}>‹</button>}
       <img src={images[i].url} alt={images[i].name||''} onClick={e=>e.stopPropagation()} style={{ maxWidth:'92vw', maxHeight:'88vh', objectFit:'contain', display:'block', borderRadius:4 }}/>
-      {images.length > 1 && <button onClick={e=>go(1,e)} title="Next" style={nav('right')}>›</button>}
+      {images.length > 1 && <button onClick={e=>go(1,e)} title="Next" aria-label="Next image" style={nav('right')}>›</button>}
       {images.length > 1 && <div style={{ position:'absolute', bottom:22, left:0, right:0, textAlign:'center', color:'#fff', fontSize:13, fontWeight:600 }}>{i+1} / {images.length}</div>}
     </div>
   );
@@ -282,10 +283,10 @@ const Carousel = ({ images, onOpen }) => {
   return (
     <div style={{ position:'relative', borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)', background:'#000' }}>
       <img src={images[i].url} alt={images[i].name||''} loading="lazy" onClick={()=>onOpen?.(i)} style={{ width:'100%', height:380, objectFit:'contain', display:'block', background:'#000', cursor:'zoom-in' }}/>
-      <button onClick={e=>go(-1,e)} title="Previous" style={arrow('left')}>‹</button>
-      <button onClick={e=>go(1,e)} title="Next" style={arrow('right')}>›</button>
+      <button onClick={e=>go(-1,e)} title="Previous" aria-label="Previous image" style={arrow('left')}>‹</button>
+      <button onClick={e=>go(1,e)} title="Next" aria-label="Next image" style={arrow('right')}>›</button>
       <div style={{ position:'absolute', top:8, right:10, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:99 }}>{i+1} / {images.length}</div>
-      <button onClick={()=>onOpen?.(i)} title="View full screen" style={{ position:'absolute', bottom:10, right:10, width:30, height:30, borderRadius:6, border:'none', background:'rgba(0,0,0,.55)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}><ExpandIcon/></button>
+      <button onClick={()=>onOpen?.(i)} title="View full screen" aria-label="View full screen" style={{ position:'absolute', bottom:10, right:10, width:30, height:30, borderRadius:6, border:'none', background:'rgba(0,0,0,.55)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}><ExpandIcon/></button>
       <div style={{ position:'absolute', bottom:12, left:0, right:0, display:'flex', justifyContent:'center', gap:5, pointerEvents:'none' }}>
         {images.map((_,n)=><span key={n} style={{ width:7, height:7, borderRadius:'50%', background:n===i?'#fff':'rgba(255,255,255,.45)' }}/>)}
       </div>
@@ -397,6 +398,37 @@ const FeedSkeleton = () => (
   ))}</>
 );
 
+// #5 First-run onboarding — a dismissible getting-started checklist for new founders.
+const OnboardingCard = ({ steps, doneCount, onDismiss }) => (
+  <div className="fade-up" style={{ ...card, padding:'18px 20px' }}>
+    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
+      <div>
+        <div style={{ fontFamily:FD, fontSize:17, fontWeight:800 }}>Welcome to the community 👋</div>
+        <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:2 }}>A few quick steps to get the most out of Startup Oracle.</div>
+      </div>
+      <button onClick={onDismiss} title="Dismiss" aria-label="Dismiss onboarding" style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-3)', fontSize:18, lineHeight:1, padding:4, flexShrink:0 }}>✕</button>
+    </div>
+    <div style={{ display:'flex', alignItems:'center', gap:10, margin:'14px 0 2px' }}>
+      <div style={{ flex:1, height:6, borderRadius:99, background:'rgba(0,0,0,.07)', overflow:'hidden' }}>
+        <div style={{ width:`${(doneCount/steps.length)*100}%`, height:'100%', background:'var(--accent)', borderRadius:99, transition:'width .35s var(--ease)' }}/>
+      </div>
+      <span style={{ fontSize:12, fontWeight:700, color:'var(--ink-2)' }}>{doneCount}/{steps.length}</span>
+    </div>
+    <div style={{ display:'flex', flexDirection:'column' }}>
+      {steps.map(s=>(
+        <div key={s.key} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderTop:'1px solid var(--line)' }}>
+          <span style={{ width:22, height:22, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, background: s.done?'var(--accent)':'rgba(0,0,0,.06)', color: s.done?'#fff':'var(--ink-3)' }}>{s.done?'✓':''}</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13.5, fontWeight:700, color: s.done?'var(--ink-3)':'var(--ink)', textDecoration: s.done?'line-through':'none' }}>{s.label}</div>
+            <div style={{ fontSize:12, color:'var(--ink-2)', lineHeight:1.4 }}>{s.desc}</div>
+          </div>
+          {!s.done && <button onClick={s.onClick} style={{ flexShrink:0, padding:'7px 14px', borderRadius:99, background:'var(--ink)', color:'#fff', border:'none', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>{s.cta}</button>}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -441,7 +473,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
           </div>
         </div>
         {isSelf && onDelete && (
-          <button onClick={()=>onDelete(post)} title="Delete" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
+          <button onClick={()=>onDelete(post)} title="Delete" aria-label="Delete post" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
         )}
       </div>
 
@@ -649,7 +681,7 @@ function ComposerModal({ me, onClose, onPosted }) {
                           <div style={{ fontSize:11, color:'rgba(0,0,0,.45)' }}>{formatSize(f.size)}</div>
                         </div>
                       </div>}
-                  <button onClick={()=>removeFile(i)} title="Remove"
+                  <button onClick={()=>removeFile(i)} title="Remove" aria-label="Remove attachment"
                     style={{ position:'absolute', top:3, right:3, width:20, height:20, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:11, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
                 </div>
               ))}
@@ -770,7 +802,7 @@ function VoiceRecorder({ onDone, iconBtn }) {
       }, 1000);
     } catch { alert('Microphone access is needed to record a voice note.'); }
   };
-  if (!rec) return <button title="Record voice note" onClick={start} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoMic/></button>;
+  if (!rec) return <button title="Record voice note" aria-label="Record voice note" onClick={start} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoMic/></button>;
   const t = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
   const max = `${Math.floor(MAX_VOICE_SECS/60)}:${String(MAX_VOICE_SECS%60).padStart(2,'0')}`;
   const near = secs >= MAX_VOICE_SECS - 30;
@@ -778,8 +810,8 @@ function VoiceRecorder({ onDone, iconBtn }) {
     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 2px', flexShrink:0 }}>
       <span style={{ width:8, height:8, borderRadius:'50%', background:'#DC2626', animation:'dmPulse 1s infinite' }}/>
       <span style={{ fontSize:12.5, fontWeight:700, fontVariantNumeric:'tabular-nums', color: near ? '#DC2626' : 'inherit' }}>{t}<span style={{ fontWeight:500, color:'rgba(0,0,0,.4)' }}> / {max}</span></span>
-      <button title="Cancel" onClick={()=>finish(false)} style={iconBtn}>✕</button>
-      <button title="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
+      <button title="Cancel" aria-label="Cancel voice note" onClick={()=>finish(false)} style={iconBtn}>✕</button>
+      <button title="Send voice note" aria-label="Send voice note" onClick={()=>finish(true)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.9)', color:'#fff', cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
     </div>
   );
 }
@@ -878,7 +910,7 @@ function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onRe
       </div>
       {/* hover actions */}
       <div style={{ position:'relative', alignSelf:'center', opacity:show?1:0, pointerEvents:show?'auto':'none', transition:'opacity .12s', flexShrink:0 }}>
-        <button title="More" onClick={()=>setMenu(o=>!o)} style={{ width:26, height:26, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.06)', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.6)' }}>⋯</button>
+        <button title="More" aria-label="More message actions" onClick={()=>setMenu(o=>!o)} style={{ width:26, height:26, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.06)', cursor:'pointer', fontSize:13, color:'rgba(0,0,0,.6)' }}>⋯</button>
         {menu && (
           <>
             <div onClick={close} style={{ position:'fixed', inset:0, zIndex:340 }}/>
@@ -1040,7 +1072,7 @@ function ChatArea({ peer, msgs, chat }) {
               {a.type === 'image' ? <img src={a.preview} alt={a.name} style={{ width:64, height:64, objectFit:'cover', display:'block' }}/>
                 : a.type === 'video' ? <video src={a.preview} style={{ width:64, height:64, objectFit:'cover', display:'block', background:'#000' }}/>
                 : <div style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 10px', maxWidth:180 }}><span style={{ fontSize:16 }}>{a.type==='audio'?'🎙':'📄'}</span><span style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name}</span></div>}
-              <button onClick={()=>setAtts(p=>p.filter((_,n)=>n!==i))} title="Remove" style={{ position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:10, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              <button onClick={()=>setAtts(p=>p.filter((_,n)=>n!==i))} title="Remove" aria-label="Remove attachment" style={{ position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.7)', color:'#fff', fontSize:10, cursor:'pointer', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
             </div>
           ))}
         </div>
@@ -1058,17 +1090,17 @@ function ChatArea({ peer, msgs, chat }) {
       <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
 
       <div style={{ padding:'10px 14px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:3, alignItems:'flex-end', flexShrink:0 }}>
-        <button title="Photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoPhoto/></button>
-        <button title="Document" onClick={()=>docInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoClip/></button>
+        <button title="Photo or video" aria-label="Attach photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoPhoto/></button>
+        <button title="Document" aria-label="Attach document" onClick={()=>docInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoClip/></button>
         <div style={{ position:'relative' }}>
-          <button title="Emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
+          <button title="Emoji" aria-label="Insert emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
           {emojiOpen && <EmojiPicker onPick={e=>setInput(v=>v+e)} onClose={()=>setEmojiOpen(false)}/>}
         </div>
         <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending}
           onKeyDown={e=>{ if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center' }}/>
         {hasContent
-          ? <button onClick={send} disabled={sending} title="Send" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
+          ? <button onClick={send} disabled={sending} title="Send" aria-label="Send message" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
           : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn}/>}
       </div>
     </>
@@ -1301,7 +1333,7 @@ function RightBar({ me, posts, followingIds, pendingIds, onFollow, onProfile, re
 
   return (
     <div className="comm-right" style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
-      <div style={{ ...card, padding:'14px 16px' }}>
+      <div id="so-suggestions" style={{ ...card, padding:'14px 16px' }}>
         <div style={{ fontSize:15, fontWeight:700, marginBottom:12 }}>Founders to follow</div>
         {list.length === 0
           ? <div style={{ fontSize:12.5, color:'rgba(0,0,0,.4)' }}>New founders will appear here.</div>
@@ -1578,7 +1610,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
           </div>
           <div style={{ paddingTop:50, display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
             <div>
-              <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', display:'flex', alignItems:'center', gap:7 }}>{name}{verifiedIds?.has(uid) && <VerifiedBadge sz={18}/>}</div>
+              <div style={{ fontFamily:FD, fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', display:'flex', alignItems:'center', gap:7 }}>{name}{verifiedIds?.has(uid) && <VerifiedBadge sz={18}/>}</div>
               <div style={{ fontSize:14, color:'rgba(0,0,0,.6)', marginTop:2 }}>{headlineOf(prof)}</div>
               {!isSelf && mutuals?.count > 0 && (
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:9 }}>
@@ -1777,7 +1809,7 @@ function OpeningsView({ onSubmitIdea }) {
   return (
     <div className="fade-up" style={{ ...card, padding:'56px 32px', textAlign:'center' }}>
       <div style={{ fontSize:40, marginBottom:12 }}>💼</div>
-      <div style={{ fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', marginBottom:8 }}>Openings are coming soon</div>
+      <div style={{ fontFamily:FD, fontSize:20, fontWeight:800, color:'rgba(0,0,0,.9)', marginBottom:8 }}>Openings are coming soon</div>
       <p style={{ fontSize:14, color:'rgba(0,0,0,.55)', lineHeight:1.6, maxWidth:380, margin:'0 auto 20px' }}>
         Soon you'll be able to post co-founder roles, early hires, and gigs — and apply to other founders' openings, right here.
       </p>
@@ -1796,6 +1828,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [savedIds, setSavedIds] = useState(new Set());
   const [repostOf, setRepostOf] = useState(null);
   const [verifiedIds, setVerifiedIds] = useState(new Set());
+  const [myProfile, setMyProfile] = useState(null);
+  const [onbDismissed, setOnbDismissed] = useState(() => { try { return localStorage.getItem('so_onboard_dismissed') === '1'; } catch { return false; } });
+  const dismissOnboarding = () => { setOnbDismissed(true); try { localStorage.setItem('so_onboard_dismissed', '1'); } catch { /* storage unavailable */ } };
   const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -1820,6 +1855,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
   useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
+  useEffect(() => { if (user?.id) fetchProfile(user.id).then(setMyProfile).catch(() => {}); }, [user]);
 
   // Live feed over websockets — any post/rating/comment/poll change refreshes the feed
   // (debounced so bursts coalesce). No manual refresh needed.
@@ -2100,7 +2136,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         .act-btn.on{color:${GREEN};background:${GREEN_SOFT}}
         .act-btn.rated{color:${GREEN}}
         @media (max-width:1100px){ .comm-right{display:none!important} }
-        @media (max-width:840px){ .comm-left{display:none!important} .comm-page{padding-bottom:74px!important} }
+        @media (max-width:840px){ .comm-left{display:none!important} .comm-page{padding-bottom:74px!important} .topnav-mobhide{display:none!important} .comm-header{padding:0 13px!important;gap:11px!important} }
         .comm-mobnav{display:none}
         @media (max-width:840px){ .comm-mobnav{display:flex} }
         .mobnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;font-size:18px;color:rgba(0,0,0,.55);font-family:'DM Sans',system-ui,sans-serif;position:relative}
@@ -2109,8 +2145,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       `}</style>
 
       {/* Top nav */}
-      <header style={{ height:62, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 22px', gap:16, position:'sticky', top:0, zIndex:100 }}>
-        <span onClick={onHome} style={{ fontSize:20, fontWeight:800, letterSpacing:'-0.5px', color:GREEN, whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
+      <header className="comm-header" style={{ height:62, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 22px', gap:16, position:'sticky', top:0, zIndex:100 }}>
+        <span onClick={onHome} style={{ fontFamily:FD, fontSize:20, fontWeight:800, letterSpacing:'-0.5px', color:GREEN, whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
         <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.05)', borderRadius:8, padding:'0 12px', height:38, flex:'0 1 320px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input value={search} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas, people…"
@@ -2118,9 +2154,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </div>
         <div style={{ flex:1 }}/>
         <nav style={{ display:'flex', alignItems:'center', gap:2 }} className="comm-topnav">
-          <NavBtn icon="home" label="Home" active={view==='feed'} onClick={goFeed}/>
-          <NavBtn icon="openings" label="Openings" active={view==='openings'} onClick={goOpenings}/>
-          <NavBtn icon="messages" label="Messages" active={view==='messages'} onClick={goMessages} badge={unread}/>
+          <span className="topnav-mobhide" style={{ display:'flex', alignItems:'center', gap:2 }}>
+            <NavBtn icon="home" label="Home" active={view==='feed'} onClick={goFeed}/>
+            <NavBtn icon="openings" label="Openings" active={view==='openings'} onClick={goOpenings}/>
+            <NavBtn icon="messages" label="Messages" active={view==='messages'} onClick={goMessages} badge={unread}/>
+          </span>
           {/* Alerts (notifications) */}
           <div style={{ position:'relative' }}>
             <NavBtn icon="alerts" label="Alerts" active={bellOpen} badge={bellCount}
@@ -2133,7 +2171,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                 <div style={{ padding:'11px 16px', borderBottom:'1px solid rgba(0,0,0,.08)', fontSize:14, fontWeight:700 }}>Notifications</div>
                 <div style={{ maxHeight:360, overflowY:'auto', padding:'4px 16px 8px' }}>
                   {bellItems.length === 0 && (
-                    <div style={{ padding:'26px 0', textAlign:'center', fontSize:13, color:'rgba(0,0,0,.4)' }}>No new notifications.</div>
+                    <div style={{ padding:'30px 12px', textAlign:'center' }}>
+                      <div style={{ fontSize:24, marginBottom:6 }}>🔔</div>
+                      <div style={{ fontSize:13, fontWeight:700, marginBottom:2 }}>You're all caught up</div>
+                      <div style={{ fontSize:12, color:'var(--ink-2)', lineHeight:1.5 }}>Follows, ratings and comments on your ideas show up here.</div>
+                    </div>
                   )}
                   {bellItems.map((it,i)=> it.kind === 'request' ? (
                     <div key={it.key} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:i===bellItems.length-1?'none':'1px solid rgba(0,0,0,.06)' }}>
@@ -2182,6 +2224,19 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
           {view === 'feed' && (
             <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {(() => {
+                if (!user || onbDismissed) return null;
+                const hasPosted = posts.some(p => p.user_id === user.id);
+                const profileDone = !!(myProfile && ((myProfile.about && myProfile.about.trim()) || (myProfile.headline && myProfile.headline.trim()) || (myProfile.bio && myProfile.bio.trim()) || (myProfile.skills && myProfile.skills.length)));
+                const steps = [
+                  { key:'profile', label:'Complete your profile', desc:'Add a headline, bio and skills so founders know who you are.', done:profileDone, cta:'Edit', onClick:()=>goProfile(user.id) },
+                  { key:'post', label:'Share your first idea', desc:'Post an idea or update and get real feedback.', done:hasPosted, cta:'Post', onClick:()=>setComposerOpen(true) },
+                  { key:'follow', label:'Follow founders', desc:'Follow founders to fill your feed with their ideas.', done:followingIds.size>=1, cta:'See suggestions', onClick:()=>document.getElementById('so-suggestions')?.scrollIntoView({ behavior:'smooth', block:'center' }) },
+                ];
+                const doneCount = steps.filter(s=>s.done).length;
+                if (doneCount >= steps.length) return null;
+                return <OnboardingCard steps={steps} doneCount={doneCount} onDismiss={dismissOnboarding}/>;
+              })()}
               {/* Composer trigger */}
               <div style={{ ...card, padding:'14px 16px' }}>
                 <div style={{ display:'flex', gap:12, alignItems:'center' }}>
