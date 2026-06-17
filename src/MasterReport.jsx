@@ -9,7 +9,8 @@ const REPORT = [
   { id: "marketing", label: "Marketing Suite", icon: "▲", subs: ["Overview", "Ad Copy", "Visual Ads", "Channels", "UGC", "Funnel", "SEO", "Launch"] },
 ];
 
-const F = { fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" };
+const F = { fontFamily: "var(--font)" };          // DM Sans — unified body ramp
+const FD = { fontFamily: "var(--font-display)" }; // Plus Jakarta Sans — headings/display
 
 const Bars = ({ d }) => {
   const items = (d.items || []).filter((i) => i && i.label != null);
@@ -59,7 +60,7 @@ const Table = ({ d }) => (
 const Block = ({ b }) => {
   if (typeof b === "string") return <p className="my-4 text-[15px] leading-7 text-neutral-600">{b}</p>;
   if (!b || typeof b !== "object") return null;
-  if (b.h) return <h3 className="mt-10 mb-3 text-lg font-bold tracking-tight text-neutral-900 first:mt-0">{b.h}</h3>;
+  if (b.h) return <h3 style={FD} className="mt-10 mb-3 text-lg font-bold tracking-tight text-neutral-900 first:mt-0">{b.h}</h3>;
   if (b.p) return <p className="my-4 text-[15px] leading-7 text-neutral-600">{b.p}</p>;
   if (b.list)
     return (
@@ -78,7 +79,7 @@ const Block = ({ b }) => {
         {b.stats.map((s, i) => (
           <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{s.label}</p>
-            <p className="mt-1.5 text-xl font-extrabold tracking-tight text-neutral-900">{s.value}</p>
+            <p style={FD} className="mt-1.5 text-xl font-extrabold tracking-tight text-neutral-900">{s.value}</p>
             {s.sub && <p className="mt-1 text-[11px] leading-4 text-neutral-500">{s.sub}</p>}
           </div>
         ))}
@@ -107,7 +108,7 @@ const ScoreRing = ({ score = 0 }) => {
         <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round" className="stroke-neutral-900 transition-all duration-700" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[34px] font-extrabold leading-none tracking-tight">{score ?? 0}</span>
+        <span style={FD} className="text-[34px] font-extrabold leading-none tracking-tight">{score ?? 0}</span>
         <span className="mt-0.5 text-[11px] font-medium text-neutral-400">/ 100</span>
       </div>
     </div>
@@ -124,7 +125,7 @@ function ScoreOverview({ meta }) {
           <ScoreRing score={meta.overallScore} />
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Overall verdict</p>
-            <p className="mt-1.5 text-2xl font-extrabold tracking-tight">{meta.badge || "Validation Score"}</p>
+            <p style={FD} className="mt-1.5 text-2xl font-extrabold tracking-tight">{meta.badge || "Validation Score"}</p>
             <p className="mt-1 text-[13px] leading-5 text-neutral-500">AI assessment across {fields.length || 4} dimensions</p>
           </div>
         </div>
@@ -144,6 +145,42 @@ function ScoreOverview({ meta }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Full-report layout used only for print / "Save as PDF" — renders every section
+// (the on-screen view only renders the active sub-section).
+function PrintReport({ data, meta, ideaName }) {
+  return (
+    <div className="mx-auto max-w-3xl px-8 py-6 text-neutral-900">
+      <div className="mb-8 border-b border-neutral-300 pb-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Startup Oracle · Validation Report</p>
+        <h1 style={FD} className="mt-2 text-3xl font-extrabold tracking-tight">{ideaName || "Master Report"}</h1>
+        {meta && <p className="mt-1.5 text-sm text-neutral-500">Overall score {meta.overallScore}/100 · {meta.badge}</p>}
+      </div>
+      {meta && <div className="mb-8"><ScoreOverview meta={meta} /></div>}
+      {REPORT.map((s) => {
+        const subs = s.subs.filter((t) => data?.[s.id]?.[t] != null);
+        if (subs.length === 0) return null;
+        return (
+          <section key={s.id} style={{ breakBefore: "page" }} className="mt-8">
+            <h2 style={FD} className="mb-1 text-2xl font-extrabold tracking-tight">{s.label}</h2>
+            <div className="mb-2 h-px bg-neutral-300" />
+            {subs.map((t) => {
+              const c = data[s.id][t];
+              return (
+                <div key={t} className="mt-6">
+                  <h3 style={FD} className="mb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">{t}</h3>
+                  {Array.isArray(c)
+                    ? c.map((b, i) => <Block key={i} b={b} />)
+                    : <p className="my-2 whitespace-pre-wrap text-[13px] leading-6 text-neutral-700">{String(c)}</p>}
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -171,11 +208,12 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
   const shareLabel = { idle: "↗ Share to Community", busy: "Sharing…", done: "✓ Shared to Community", error: "Retry share" }[shared];
 
   return (
-    <div className="flex min-h-screen bg-white text-neutral-900" style={F}>
+    <>
+    <div className="flex min-h-screen bg-white text-neutral-900 print:hidden" style={F}>
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-neutral-200 bg-white md:flex">
         <div className="border-b border-neutral-200 px-5 py-6">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Startup Oracle · Report</p>
-          <h1 className="mt-1.5 truncate text-lg font-extrabold tracking-tight" title={ideaName}>{ideaName || "Master Report"}</h1>
+          <h1 style={FD} className="mt-1.5 truncate text-lg font-extrabold tracking-tight" title={ideaName}>{ideaName || "Master Report"}</h1>
           {meta && (
             <div className="mt-3 flex items-center gap-2">
               <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-xs font-bold text-white">{meta.overallScore}/100</span>
@@ -218,6 +256,9 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
             {shareLabel}
           </button>
         )}
+        <button onClick={() => window.print()} className="mx-3 mt-1.5 rounded-lg border border-neutral-300 px-3 py-2.5 text-center text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50">
+          ⤓ Download PDF
+        </button>
         {onBack && (
           <button onClick={onBack} className="m-3 rounded-lg px-3 py-2 text-left text-sm text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-900">
             ← Validate another idea
@@ -251,6 +292,9 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
                 {shareLabel}
               </button>
             )}
+            <button onClick={() => window.print()} className="col-span-2 rounded-lg border border-neutral-300 px-3 py-2 text-center text-sm font-semibold text-neutral-700">
+              ⤓ Download PDF
+            </button>
             {onBack && (
               <button onClick={onBack} className="col-span-2 rounded-lg bg-neutral-100 px-3 py-2 text-left text-sm text-neutral-500">
                 ← Validate another idea
@@ -277,7 +321,7 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">
               {section.label} <span className="mx-2 text-neutral-300">/</span> {sub}
             </p>
-            <h2 className="mt-2 text-3xl font-extrabold tracking-tight">{sub}</h2>
+            <h2 style={FD} className="mt-2 text-3xl font-extrabold tracking-tight">{sub}</h2>
             <div className="mt-5 h-px bg-neutral-200" />
           </div>
 
@@ -297,5 +341,9 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
         </main>
       </div>
     </div>
+    <div className="hidden print:block" style={F}>
+      <PrintReport data={data} meta={meta} ideaName={ideaName} />
+    </div>
+    </>
   );
 }
