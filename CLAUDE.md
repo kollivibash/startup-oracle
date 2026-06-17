@@ -51,7 +51,9 @@ src/
   Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
   Auth.jsx         — sign in/up (Google, GitHub, email/password)
   SubmitIdea.jsx   — 3-step form → quota check (consume_validation) → Gemini report; paywall screen
-  MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community
+  MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community,
+                     **PDF/print export** (a print-only `PrintReport` renders ALL sections; on-screen
+                     UI is `print:hidden`; "Download PDF" buttons call `window.print()`)
   Community.jsx    — the community (~1900 lines): feed, composer (post/poll/article), Rate (1–10),
                      threaded comments+likes, repost, save, follow (approval), notifications bell,
                      rich profiles, photo carousel + fullscreen lightbox, link previews, verified
@@ -114,7 +116,9 @@ delete-for-everyone leaving a "This message was deleted" tombstone, with a 5s Un
 viewed your profile"); **"Followed by X and Y"** social proof on profiles + sidebar suggestions;
 multi-photo **carousel + fullscreen lightbox** (arrows, dots, Esc/arrow keys); link previews; polls;
 shareable post permalinks (`#/idea/:id`); live Startup News; "Founders to follow"; Openings (placeholder);
-mobile bottom nav; **Verified Founder badge** (Instagram-style blue check) for active subscribers.
+mobile bottom nav; **Verified Founder badge** (Instagram-style blue check) for active subscribers;
+**first-run onboarding checklist** (dismissible `OnboardingCard` at the top of the feed — complete
+profile / post first idea / follow founders, persisted via `localStorage.so_onboard_dismissed`).
 
 **Removed on purpose:** post reactions/Like (Rate replaces them); the whole connections / "My Network"
 feature (followers + following only).
@@ -153,12 +157,19 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   `--accent` `#2563eb` (matches the verified badge) is used for focus rings + active states (e.g. the
   feed tab indicator, `ACCENT` const in Community); Home stays pure editorial B&W on purpose. No dark mode yet.
 - **Design tokens** live in `src/index.css` `:root` (`--ink/--ink-2/--ink-3`, `--line`, `--bg`,
-  `--surface`, `--accent`, `--r*` radii, `--sh-*` shadows, `--ease`, `--font`/`--font-display`).
-  index.css also holds global polish: `:focus-visible` rings, button transitions/active-press,
-  quiet scrollbars, `.skeleton` shimmer, and `prefers-reduced-motion`. Most components still use
-  inline styles (legacy) with hardcoded values — migrate them to `var(--token)` as you touch them.
-- **Fonts**: DM Sans (community/body, the global default), Plus Jakarta Sans (forms/report),
-  Cormorant Garamond (Home serif hero).
+  `--surface`, `--accent`, `--r*` radii, `--sh-*` shadows, `--ease`, `--font`/`--font-display`/
+  `--font-serif`, a **type scale** `--t-xs … --t-3xl` + `--lh-*` line-heights, and a **4px spacing
+  scale** `--s-1 … --s-9`). index.css also holds global polish: `:focus-visible` rings, button
+  transitions/active-press, quiet scrollbars, `.skeleton` shimmer, `prefers-reduced-motion`, and a
+  `@media print` block (Save-as-PDF), plus `input,textarea,select,button{font-family:inherit}` so
+  controls stay on the ramp. Most components still use inline styles (legacy) with hardcoded values —
+  migrate them to `var(--token)` as you touch them.
+- **Fonts (UNIFIED type ramp)**: one ramp everywhere — **DM Sans** (`var(--font)`) for body/UI,
+  **Plus Jakarta Sans** (`var(--font-display)`) for headings/display/numbers. Forms (Auth/SubmitIdea/
+  Account/Pricing) and the report (MasterReport) were migrated off Jakarta-for-everything onto this
+  ramp; each defines `F = var(--font)` + `FD = var(--font-display)`. **Cormorant Garamond is kept
+  deliberately for the Home editorial hero + wordmark only** (the one allowed exception). Unused
+  Syne / DM Mono were dropped from the font import.
 - No component library; everything is custom.
 
 ## Known Constraints / Gotchas
