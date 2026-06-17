@@ -149,10 +149,16 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
 
 ## Design System
 
-- **Theme**: **black & white minimal** (was briefly green — reverted). The only color accent is the
-  blue Instagram-style verified badge. No dark mode. Colors are inline constants per component
-  (Community uses `GREEN`/`GREEN_SOFT`/`INK` constants — note `GREEN` is now `#0f172a`, i.e. black).
-- **Fonts**: DM Sans (community/body), Plus Jakarta Sans (forms/report), Cormorant Garamond (Home serif).
+- **Theme**: **black & white minimal** (was briefly green — reverted). One **restrained accent**
+  `--accent` `#2563eb` (matches the verified badge) is used for focus rings + active states (e.g. the
+  feed tab indicator, `ACCENT` const in Community); Home stays pure editorial B&W on purpose. No dark mode yet.
+- **Design tokens** live in `src/index.css` `:root` (`--ink/--ink-2/--ink-3`, `--line`, `--bg`,
+  `--surface`, `--accent`, `--r*` radii, `--sh-*` shadows, `--ease`, `--font`/`--font-display`).
+  index.css also holds global polish: `:focus-visible` rings, button transitions/active-press,
+  quiet scrollbars, `.skeleton` shimmer, and `prefers-reduced-motion`. Most components still use
+  inline styles (legacy) with hardcoded values — migrate them to `var(--token)` as you touch them.
+- **Fonts**: DM Sans (community/body, the global default), Plus Jakarta Sans (forms/report),
+  Cormorant Garamond (Home serif hero).
 - No component library; everything is custom.
 
 ## Known Constraints / Gotchas
