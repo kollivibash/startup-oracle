@@ -8,6 +8,7 @@ const BG = '#f1f3f5';
 const GREEN = '#0f172a';            // primary accent (monochrome ink)
 const GREEN_SOFT = 'rgba(0,0,0,.06)';
 const INK = '#0f172a';
+const ACCENT = '#2563eb';           // restrained accent for active states (matches verified badge)
 const AV_COLORS = ['#0f172a','#1f2937','#334155','#374151','#475569','#111827','#1e293b','#0a0a0a','#3f3f46'];
 const avColor = id => AV_COLORS[(String(id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % AV_COLORS.length];
 const coverOf = () => `linear-gradient(135deg, #1f2937 0%, #0f172a 100%)`;
@@ -2202,7 +2203,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               </div>
               <div style={{ ...card, display:'flex' }}>
                 {[['all','All'],['top-rated','Top Rated'],['most-discussed','Most Discussed'],['following','Following'],['saved','Saved']].map(([id,label])=>(
-                  <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'13px 4px', border:'none', borderBottom:tab===id?`2.5px solid ${GREEN}`:'2.5px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?GREEN:'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
+                  <button key={id} onClick={()=>setTab(id)} style={{ flex:1, padding:'13px 4px', border:'none', borderBottom:tab===id?`2.5px solid ${ACCENT}`:'2.5px solid transparent', background:'transparent', fontSize:13, fontWeight:tab===id?700:500, cursor:'pointer', color:tab===id?ACCENT:'rgba(0,0,0,.55)', fontFamily:F, transition:'all .15s' }}>
                     {label}
                   </button>
                 ))}

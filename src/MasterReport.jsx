@@ -214,7 +214,7 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
           ))}
         </nav>
         {onShareCommunity && (
-          <button onClick={doShare} disabled={shared === "busy"} className={`mx-3 mt-1 rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition ${shared === "done" ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white hover:bg-neutral-700"}`}>
+          <button onClick={doShare} disabled={shared === "busy"} className={`mx-3 mt-1 rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition ${shared === "done" ? "bg-[#2563eb] text-white" : "bg-neutral-900 text-white hover:bg-neutral-700"}`}>
             {shareLabel}
           </button>
         )}
@@ -247,7 +247,7 @@ export default function MasterReport({ data, meta, ideaName, onBack, onShareComm
               </button>
             ))}
             {onShareCommunity && (
-              <button onClick={doShare} disabled={shared === "busy"} className={`col-span-2 rounded-lg px-3 py-2 text-center text-sm font-semibold ${shared === "done" ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white"}`}>
+              <button onClick={doShare} disabled={shared === "busy"} className={`col-span-2 rounded-lg px-3 py-2 text-center text-sm font-semibold ${shared === "done" ? "bg-[#2563eb] text-white" : "bg-neutral-900 text-white"}`}>
                 {shareLabel}
               </button>
             )}
