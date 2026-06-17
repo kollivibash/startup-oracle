@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { supabase } from "./supabaseClient";
 
-const F = "'Plus Jakarta Sans', system-ui, sans-serif";
+const F = "var(--font)";           // DM Sans — unified body/UI ramp
+const FD = "var(--font-display)";  // Plus Jakarta Sans — headings/display
 const C = {
   black:'#0a0a0a', white:'#ffffff', border:'#e0e0e0',
   surface:'#f5f5f5', muted:'#999999', body:'#555555',
@@ -141,7 +142,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
   return (
     <div>
       <div style={{ marginBottom:36 }}>
-        <h1 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
+        <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your Startup Oracle account</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
@@ -211,7 +212,7 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth }) => {
   return (
     <div>
       <div style={{ marginBottom:32 }}>
-        <h1 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Create your account</h1>
+        <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Create your account</h1>
         <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:4 }}>
@@ -265,7 +266,7 @@ const Success = ({ isNew, onSubmitIdea, onCommunity, afterAuth }) => (
     <div style={{ width:64, height:64, borderRadius:'50%', background:C.black, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 28px', fontSize:26 }}>
       <span style={{ color:C.white, fontWeight:900 }}>✓</span>
     </div>
-    <h2 style={{ fontSize:26, fontWeight:800, color:C.black, letterSpacing:'-0.8px', marginBottom:10 }}>
+    <h2 style={{ fontFamily:FD, fontSize:26, fontWeight:800, color:C.black, letterSpacing:'-0.8px', marginBottom:10 }}>
       {isNew?'Account created!':'Welcome back!'}
     </h2>
     <p style={{ fontSize:15, color:C.muted, lineHeight:1.65, marginBottom:36 }}>
@@ -314,7 +315,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
 
       {/* Navbar */}
       <div style={{ borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
+        <span onClick={onHome} style={{ fontFamily:FD, fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
         <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
       </div>
 

@@ -6,7 +6,8 @@ import { createPost } from "./communityDB";
 import { consumeValidation, refundValidation } from "./billingDB";
 
 const C = { black:'#0a0a0a', white:'#ffffff', surface:'#f5f5f5', border:'#e0e0e0', body:'#555555', muted:'#999999', light:'#f9f9f9' };
-const F = "'Plus Jakarta Sans', system-ui, sans-serif";
+const F = "var(--font)";           // DM Sans — unified body/UI ramp
+const FD = "var(--font-display)";  // Plus Jakarta Sans — headings/display
 const BR = 4;
 const CATS = ['FinTech','SaaS','ClimaTech','Health & Wellness','EdTech','E-commerce','Logistics','HR Tech','Developer Tools','Consumer','Web3','Other'];
 const MSGS = [
@@ -90,7 +91,7 @@ const Btn = ({ children, onClick, disabled, secondary, style:s={} }) => (
 const StepHeader = ({ label, title, subtitle }) => (
   <div style={{ marginBottom:44 }}>
     <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:'2px', textTransform:'uppercase', marginBottom:12 }}>{label}</div>
-    <h1 style={{ fontSize:36, fontWeight:800, color:C.black, letterSpacing:'-1.5px', marginBottom:10, lineHeight:1.1, fontFamily:F }}>{title}</h1>
+    <h1 style={{ fontSize:36, fontWeight:800, color:C.black, letterSpacing:'-1.5px', marginBottom:10, lineHeight:1.1, fontFamily:FD }}>{title}</h1>
     <p style={{ fontSize:16, color:C.muted, lineHeight:1.6 }}>{subtitle}</p>
   </div>
 );
@@ -196,7 +197,7 @@ const Loading = ({ form, onDone }) => {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'calc(100vh - 68px)', padding:'64px 48px', textAlign:'center', animation:'fadeIn 0.4s ease', fontFamily:F }}>
       <div style={{ width:56, height:56, border:`4px solid ${C.border}`, borderTop:`4px solid ${C.black}`, borderRadius:'50%', animation:'spin 0.75s linear infinite', marginBottom:44 }}/>
-      <h2 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:10, fontFamily:F }}>Analysing your idea</h2>
+      <h2 style={{ fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:10, fontFamily:FD }}>Analysing your idea</h2>
       <p style={{ fontSize:16, color:C.muted, minHeight:26, marginBottom:52 }}>{MSGS[msgIdx]}</p>
       <div style={{ width:340, height:3, background:C.border, overflow:'hidden', marginBottom:14 }}>
         <div style={{ height:'100%', background:C.black, width:`${pct}%`, transition:'width 0.072s linear' }}/>
@@ -244,7 +245,7 @@ export default function SubmitIdea({ onHome, user, onAccount, onPricing }) {
         @keyframes fadeUp  { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
         @keyframes fadeIn  { from { opacity:0; } to { opacity:1; } }
         input::placeholder, textarea::placeholder { color:#aaaaaa; }
-        button { font-family:'Plus Jakarta Sans',system-ui,sans-serif; }
+        button { font-family:var(--font); }
         textarea { resize:none; }
         * { box-sizing:border-box; }
       `}</style>
@@ -252,7 +253,7 @@ export default function SubmitIdea({ onHome, user, onAccount, onPricing }) {
       {/* Nav — MasterReport brings its own chrome on the results step */}
       {isForm && (
         <div style={{ position:'sticky', top:0, zIndex:100, background:C.white, borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span onClick={onHome} style={{ fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
+          <span onClick={onHome} style={{ fontFamily:FD, fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
           {isForm && (
             <div style={{ display:'flex', gap:6 }}>
               {[1,2,3].map(i=>(
@@ -283,7 +284,7 @@ export default function SubmitIdea({ onHome, user, onAccount, onPricing }) {
       {step==='paywall' && (
         <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center', animation:'fadeIn 0.4s ease' }}>
           <div style={{ fontSize:42, marginBottom:16 }}>🔒</div>
-          <h2 style={{ fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>
+          <h2 style={{ fontFamily:FD, fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>
             {blockReason==='month_limit' ? "You've used this month's validations" : "You've used your free validation"}
           </h2>
           <p style={{ fontSize:15, color:C.muted, lineHeight:1.7, marginBottom:28 }}>
@@ -318,7 +319,7 @@ export default function SubmitIdea({ onHome, user, onAccount, onPricing }) {
             />
           : (
             <div style={{ maxWidth:560, margin:'0 auto', padding:'120px 40px', textAlign:'center' }}>
-              <h2 style={{ fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>Analysis failed</h2>
+              <h2 style={{ fontFamily:FD, fontSize:28, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:12 }}>Analysis failed</h2>
               <p style={{ fontSize:15, color:C.muted, lineHeight:1.6, marginBottom:28 }}>We couldn't generate your report. Your answers are saved; try again in a moment.</p>
               {results?.error && (
                 <p style={{ fontSize:12, color:'#B91C1C', fontFamily:'monospace', background:C.light, border:`1px solid ${C.border}`, borderRadius:BR, padding:'12px 16px', marginBottom:28, wordBreak:'break-word', textAlign:'left' }}>{results.error}</p>

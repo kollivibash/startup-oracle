@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { startSubscription, fetchMyBilling } from "./billingDB";
 
-const F = "'DM Sans', system-ui, sans-serif";
+const F = "var(--font)";           // DM Sans — unified body/UI ramp
+const FD = "var(--font-display)";  // Plus Jakarta Sans — headings/display
 const INK = "#0f172a";
 
 function loadRazorpay() {
@@ -21,7 +22,7 @@ function PlanCard({ plan, price, per, sub, highlight, busy, isSubscribed, onSubs
       {highlight && <div style={{ position: "absolute", top: -12, left: 26, background: INK, color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 99, letterSpacing: ".3px" }}>BEST VALUE · SAVE ₹100</div>}
       <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(0,0,0,.6)", marginBottom: 8 }}>{plan === "monthly" ? "Monthly" : "Yearly"}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-        <span style={{ fontSize: 40, fontWeight: 800, color: INK, letterSpacing: "-1px" }}>{price}</span>
+        <span style={{ fontFamily: FD, fontSize: 40, fontWeight: 800, color: INK, letterSpacing: "-1px" }}>{price}</span>
         <span style={{ fontSize: 14, color: "rgba(0,0,0,.45)" }}>{per}</span>
       </div>
       <div style={{ fontSize: 13, color: "rgba(0,0,0,.5)", marginTop: 4, minHeight: 18 }}>{sub}</div>
@@ -75,14 +76,14 @@ export default function Pricing({ user, onHome, onSignIn }) {
   return (
     <div style={{ minHeight: "100vh", background: "#f1f3f5", fontFamily: F }}>
       <header style={{ height: 60, background: "#fff", borderBottom: "1px solid rgba(0,0,0,.08)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 22px" }}>
-        <span onClick={onHome} style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px", color: INK, cursor: "pointer" }}>startup oracle</span>
+        <span onClick={onHome} style={{ fontFamily: FD, fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px", color: INK, cursor: "pointer" }}>startup oracle</span>
         {user ? <span style={{ fontSize: 13, color: "rgba(0,0,0,.6)" }}>{user.user_metadata?.full_name || user.email}</span>
               : <span onClick={onSignIn} style={{ fontSize: 13, fontWeight: 600, color: INK, cursor: "pointer" }}>Sign in</span>}
       </header>
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "56px 20px 80px", textAlign: "center" }}>
         <div style={{ fontSize: 11, letterSpacing: "2px", textTransform: "uppercase", color: "rgba(0,0,0,.4)", marginBottom: 14 }}>Pricing</div>
-        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", fontWeight: 800, letterSpacing: "-1.5px", color: INK, margin: "0 0 12px", lineHeight: 1.1 }}>Validate more. Get verified.</h1>
+        <h1 style={{ fontFamily: FD, fontSize: "clamp(32px,5vw,46px)", fontWeight: 800, letterSpacing: "-1.5px", color: INK, margin: "0 0 12px", lineHeight: 1.1 }}>Validate more. Get verified.</h1>
         <p style={{ fontSize: 15, color: "rgba(0,0,0,.55)", lineHeight: 1.7, maxWidth: 480, margin: "0 auto 36px" }}>
           Your first validation is free. Subscribe to keep validating ideas and earn the Verified Founder badge.
         </p>

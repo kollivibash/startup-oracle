@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { loadIdeas, deleteIdea } from './ideasDB'
 
-const F = "'Plus Jakarta Sans', system-ui, sans-serif"
+const F = "var(--font)"            // DM Sans — unified body/UI ramp
+const FD = "var(--font-display)"   // Plus Jakarta Sans — headings/display
 
 // ── Helpers to read real user data ───────────────────────────────────────────
 
@@ -30,7 +31,7 @@ function SectionHeader({ title, subtitle, action }) {
   return (
     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24 }}>
       <div>
-        <h2 style={{ margin:0, fontSize:17, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{title}</h2>
+        <h2 style={{ margin:0, fontFamily:FD, fontSize:17, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{title}</h2>
         {subtitle && <p style={{ margin:'4px 0 0', fontSize:13, color:'#9CA3AF' }}>{subtitle}</p>}
       </div>
       {action}
@@ -609,7 +610,7 @@ export default function Account({ user, onHome, onLogout, onSubmitIdea, onViewRe
 
       {/* Site nav */}
       <div style={{ position:'sticky', top:0, zIndex:100, background:'#fff', borderBottom:'1px solid #F3F4F6', height:60, padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span onClick={onHome} style={{ fontWeight:800, fontSize:18, letterSpacing:'-0.5px', color:'#111827', cursor:'pointer' }}>startup oracle</span>
+        <span onClick={onHome} style={{ fontFamily:FD, fontWeight:800, fontSize:18, letterSpacing:'-0.5px', color:'#111827', cursor:'pointer' }}>startup oracle</span>
         <span onClick={onHome} style={{ fontSize:14, color:'#9CA3AF', fontWeight:500, cursor:'pointer' }}>← Home</span>
       </div>
 
