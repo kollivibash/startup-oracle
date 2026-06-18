@@ -16,19 +16,27 @@ function loadRazorpay() {
   });
 }
 
-function PlanCard({ plan, price, per, sub, highlight, busy, isSubscribed, onSubscribe }) {
+function PlanCard({ plan, price, per, sub, recommended, selected, busy, isSubscribed, onSelect, onSubscribe }) {
+  const isSel = selected === plan;
   return (
-    <div style={{ flex: 1, minWidth: 240, background: "#fff", borderRadius: 14, border: `1.5px solid ${highlight ? INK : "rgba(0,0,0,.12)"}`, padding: "28px 26px", position: "relative", boxShadow: highlight ? "0 12px 40px rgba(0,0,0,.10)" : "none" }}>
-      {highlight && <div style={{ position: "absolute", top: -12, left: 26, background: INK, color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 99, letterSpacing: ".3px" }}>BEST VALUE · SAVE ₹100</div>}
+    <div onClick={() => onSelect(plan)}
+      style={{ flex: 1, minWidth: 240, background: "#fff", borderRadius: 14, cursor: "pointer",
+        border: `${isSel ? 2 : 1.5}px solid ${isSel ? INK : "rgba(0,0,0,.12)"}`,
+        padding: "28px 26px", position: "relative", boxShadow: isSel ? "0 12px 40px rgba(0,0,0,.12)" : "none",
+        transition: "border-color .15s var(--ease), box-shadow .15s var(--ease)" }}>
+      {recommended && <div style={{ position: "absolute", top: -12, left: 26, background: INK, color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 99, letterSpacing: ".3px" }}>BEST VALUE · SAVE ₹100</div>}
+      <div aria-hidden="true" style={{ position: "absolute", top: 18, right: 18, width: 20, height: 20, borderRadius: "50%", border: `2px solid ${isSel ? INK : "rgba(0,0,0,.22)"}`, background: isSel ? INK : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s var(--ease)" }}>
+        {isSel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+      </div>
       <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(0,0,0,.6)", marginBottom: 8 }}>{plan === "monthly" ? "Monthly" : "Yearly"}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ fontFamily: FD, fontSize: 40, fontWeight: 800, color: INK, letterSpacing: "-1px" }}>{price}</span>
         <span style={{ fontSize: 14, color: "rgba(0,0,0,.45)" }}>{per}</span>
       </div>
       <div style={{ fontSize: 13, color: "rgba(0,0,0,.5)", marginTop: 4, minHeight: 18 }}>{sub}</div>
-      <button onClick={() => onSubscribe(plan)} disabled={!!busy || isSubscribed}
-        style={{ width: "100%", marginTop: 18, padding: "13px", borderRadius: 10, border: highlight ? "none" : `1.5px solid ${INK}`, background: highlight ? INK : "transparent", color: highlight ? "#fff" : INK, fontSize: 14.5, fontWeight: 700, cursor: busy || isSubscribed ? "default" : "pointer", opacity: busy && busy !== plan ? 0.5 : 1, fontFamily: F }}>
-        {isSubscribed ? "You're subscribed" : busy === plan ? "Opening checkout…" : "Subscribe"}
+      <button onClick={(e) => { e.stopPropagation(); if (isSel) onSubscribe(plan); else onSelect(plan); }} disabled={!!busy || isSubscribed}
+        style={{ width: "100%", marginTop: 18, padding: "13px", borderRadius: 10, border: isSel ? "none" : `1.5px solid ${INK}`, background: isSel ? INK : "transparent", color: isSel ? "#fff" : INK, fontSize: 14.5, fontWeight: 700, cursor: busy || isSubscribed ? "default" : "pointer", opacity: busy && busy !== plan ? 0.5 : 1, fontFamily: F, transition: "all .15s var(--ease)" }}>
+        {isSubscribed ? "You're subscribed" : busy === plan ? "Opening checkout…" : isSel ? "Subscribe" : "Choose this plan"}
       </button>
     </div>
   );
@@ -47,6 +55,7 @@ export default function Pricing({ user, onHome, onSignIn }) {
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
   const [billing, setBilling] = useState(null);
+  const [selected, setSelected] = useState(null); // no plan pre-selected — user picks
 
   useEffect(() => { if (user) fetchMyBilling(user.id).then(setBilling); }, [user, done]);
   const isSubscribed = billing?.sub_status === "active";
@@ -101,8 +110,8 @@ export default function Pricing({ user, onHome, onSignIn }) {
         {err && <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 20 }}>{err}</div>}
 
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", justifyContent: "center", marginBottom: 36 }}>
-          <PlanCard plan="monthly" price="₹50" per="/ month" sub="Billed monthly · cancel anytime" busy={busy} isSubscribed={isSubscribed} onSubscribe={subscribe} />
-          <PlanCard plan="yearly" price="₹500" per="/ year" sub="₹41/mo · 2 months free" highlight busy={busy} isSubscribed={isSubscribed} onSubscribe={subscribe} />
+          <PlanCard plan="monthly" price="₹50" per="/ month" sub="Billed monthly · cancel anytime" selected={selected} busy={busy} isSubscribed={isSubscribed} onSelect={setSelected} onSubscribe={subscribe} />
+          <PlanCard plan="yearly" price="₹500" per="/ year" sub="₹41/mo · 2 months free" recommended selected={selected} busy={busy} isSubscribed={isSubscribed} onSelect={setSelected} onSubscribe={subscribe} />
         </div>
 
         <div style={{ background: "#fff", borderRadius: 14, border: "1px solid rgba(0,0,0,.1)", padding: "24px 28px", textAlign: "left", maxWidth: 460, margin: "0 auto" }}>
