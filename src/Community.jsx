@@ -1532,7 +1532,7 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
+function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
@@ -1586,7 +1586,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
 
   const fps = posts.filter(p=>p.user_id===uid);
   const name = isSelf ? nameOf(me) : (prof?.name || fps[0]?.author?.name || 'Founder');
-  const avatar = isSelf ? me.user_metadata?.avatar_url : prof?.avatar_url;
+  const avatar = prof?.avatar_url || (isSelf ? me.user_metadata?.avatar_url : null);
   const isF = followingIds.has(uid);
   const isP = pendingIds?.has(uid);
   const reqCount = requests?.length || 0;
@@ -1797,7 +1797,7 @@ function ProfileView({ uid, me, posts, followingIds, pendingIds, onFollow, onPro
       )}
       {editing && (
         <EditProfileModal me={me} prof={prof} onClose={()=>setEditing(false)}
-          onSaved={f=>setProf(prev=>({ ...(prev||{ id:uid }), ...f }))}/>
+          onSaved={f=>{ setProf(prev=>({ ...(prev||{ id:uid }), ...f })); onProfileSaved?.(f); }}/>
       )}
     </div>
   );
@@ -1831,6 +1831,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [myProfile, setMyProfile] = useState(null);
   const [onbDismissed, setOnbDismissed] = useState(() => { try { return localStorage.getItem('so_onboard_dismissed') === '1'; } catch { return false; } });
   const dismissOnboarding = () => { setOnbDismissed(true); try { localStorage.setItem('so_onboard_dismissed', '1'); } catch { /* storage unavailable */ } };
+  // Prefer the uploaded profile avatar/name over (possibly stale) Google auth metadata,
+  // so a freshly changed profile photo shows everywhere without a full re-auth.
+  const meUser = useMemo(() => (user ? { ...user, user_metadata: { ...user.user_metadata, avatar_url: myProfile?.avatar_url || user.user_metadata?.avatar_url, full_name: myProfile?.name || user.user_metadata?.full_name } } : user), [user, myProfile]);
   const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -2114,7 +2117,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds, savedIds]);
 
-  const cardProps = { me:user, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
+  const cardProps = { me:meUser, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -2206,7 +2209,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </nav>
         {user ? (
           <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer', paddingLeft:8, borderLeft:'1px solid rgba(0,0,0,.1)' }}>
-            <Av name={nameOf(user)} uid={user.id} url={user.user_metadata?.avatar_url} sz={34}/>
+            <Av name={nameOf(meUser)} uid={user.id} url={meUser.user_metadata?.avatar_url} sz={34}/>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </div>
         ) : (
@@ -2218,7 +2221,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={user} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
+          <LeftBar me={meUser} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
@@ -2240,7 +2243,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               {/* Composer trigger */}
               <div style={{ ...card, padding:'14px 16px' }}>
                 <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-                  <Av name={nameOf(user)} uid={user?.id||'me'} url={user?.user_metadata?.avatar_url} sz={44} onClick={user?()=>goProfile(user.id):undefined}/>
+                  <Av name={nameOf(meUser)} uid={user?.id||'me'} url={meUser?.user_metadata?.avatar_url} sz={44} onClick={user?()=>goProfile(user.id):undefined}/>
                   <button onClick={user ? ()=>setComposerOpen(true) : requireAuth(()=>{})}
                     style={{ flex:1, textAlign:'left', height:48, borderRadius:99, border:'1px solid rgba(0,0,0,.15)', background:'#fff', color:'rgba(0,0,0,.5)', padding:'0 20px', fontSize:14.5, cursor:'pointer', fontFamily:F }}>
                     Share your idea or startup update…
@@ -2281,7 +2284,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
+            <ProfileView uid={pid} me={meUser} onProfileSaved={f=>setMyProfile(prev=>({ ...(prev||{}), ...f }))} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
           )}
 
           {view === 'messages' && (
@@ -2296,24 +2299,24 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </div>
 
         {view !== 'messages' && (
-          <RightBar me={user} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
+          <RightBar me={meUser} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         )}
       </div>
 
       {/* Composer modal */}
       {composerOpen && user && (
-        <ComposerModal me={user} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
+        <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
       )}
 
       {/* Repost modal */}
       {repostOf && user && (
-        <RepostModal original={repostOf} me={user} onClose={()=>setRepostOf(null)} onDone={txt=>handleRepost(repostOf, txt)}/>
+        <RepostModal original={repostOf} me={meUser} onClose={()=>setRepostOf(null)} onDone={txt=>handleRepost(repostOf, txt)}/>
       )}
 
 
       {/* Forward a message */}
       {forwardMsg && user && (
-        <ForwardDialog msg={forwardMsg} convs={convs} me={user} onClose={()=>setForwardMsg(null)}
+        <ForwardDialog msg={forwardMsg} convs={convs} me={meUser} onClose={()=>setForwardMsg(null)}
           onForward={ids=>{ ids.forEach(pid=>handleSend(pid, { text:forwardMsg.text||'', media:forwardMsg.media||null, forwarded:true })); setForwardMsg(null); }}/>
       )}
 
