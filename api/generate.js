@@ -10,8 +10,9 @@
 //
 // The frontend (reportEngine.js) calls /api/generate instead of Google directly.
 
-/* global process */
+/* global process, Buffer */
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 // anon key — safe to keep here (same as the client uses; protected by RLS)
 const SUPABASE_URL = "https://jdqizltpalpefzvckinq.supabase.co";
@@ -20,6 +21,25 @@ const SUPABASE_ANON_KEY =
 
 // Only these models may ever be called — an attacker can't request an expensive one.
 const ALLOWED_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+
+// Verify a report grant issued by /api/start-report (RPT-003). Returns the
+// payload when valid, else null. Constant-time signature compare; checks expiry.
+function verifyGrant(grant, secret) {
+  if (typeof grant !== "string" || !grant.includes(".")) return null;
+  const [payload, sig] = grant.split(".");
+  if (!payload || !sig) return null;
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const obj = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!obj.exp || Date.now() > obj.exp) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -40,6 +60,16 @@ export default async function handler(req, res) {
     }
   } catch {
     return res.status(401).json({ error: "Auth verification failed" });
+  }
+
+  // 1b. Require a valid report grant — but only once REPORT_GRANT_SECRET is set,
+  // so the endpoint keeps working before the owner enables enforcement (RPT-003).
+  const grantSecret = process.env.REPORT_GRANT_SECRET;
+  if (grantSecret) {
+    const grant = verifyGrant(req.headers["x-report-grant"], grantSecret);
+    if (!grant || grant.uid !== user.id) {
+      return res.status(403).json({ error: "Missing or invalid report grant" });
+    }
   }
 
   // 2. Validate the request body.

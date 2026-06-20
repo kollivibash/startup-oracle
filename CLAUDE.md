@@ -28,6 +28,11 @@ GEMINI_API_KEY=<your-gemini-key>
 On Vercel set `GEMINI_API_KEY` (Production + Preview). Supabase anon key is hardcoded in
 `src/supabaseClient.js` and `api/*.js` (safe — public, protected by RLS).
 
+**Optional** `REPORT_GRANT_SECRET` (any random string) — when set, `/api/generate` requires a signed
+report grant from `/api/start-report`, which closes the client-only-paywall bypass (a signed-in user
+calling `/api/generate` directly to burn the Gemini bill). Until it's set, generate works ungated
+(degrades gracefully, like dormant billing). Set it alongside enabling billing.
+
 > **`/api/*` only runs on the deployed Vercel site, NOT in `npm run dev`** (Vite doesn't serve
 > serverless functions). So report generation, live news, link previews, and Razorpay don't work
 > locally — every caller degrades gracefully (fails open / shows fallback). Use `npx vercel dev`
@@ -76,7 +81,12 @@ src/
   supabaseClient.js, index.css, main.jsx
 
 api/ (Vercel serverless — keys live here, never in the client bundle)
-  generate.js          — Gemini proxy (auth-gated, model whitelist, prompt size cap)
+  generate.js          — Gemini proxy (auth-gated, model whitelist, prompt size cap; also requires a
+                         valid report **grant** once REPORT_GRANT_SECRET is set — see start-report.js)
+  start-report.js      — server-authoritative start of a report: consumes ONE validation
+                         (consume_validation) and returns a short-lived HMAC grant authorizing that
+                         report's generate calls, so the paywall can't be bypassed by hitting
+                         /api/generate directly. Fails open until billing + REPORT_GRANT_SECRET exist.
   news.js              — live startup news (server-side TechCrunch RSS fetch)
   unfurl.js            — link-preview OG scraper (auth-gated, SSRF guards)
   razorpay-subscribe.js— create a Razorpay subscription (auth-gated)
@@ -155,7 +165,13 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   blank screen); OAuth errors render inline (no native `alert`).
 - **Report generation**: 6 sections, each its own Gemini call through `/api/generate`
   (`GEMINI_API_KEY` server-side, model whitelist, prompt cap, retries + backoff). `MasterReport` shows
-  a score dashboard (ring + sub-score bars) from the validation `_meta`.
+  a score dashboard (ring + sub-score bars) from the validation `_meta`. **Quota is server-authoritative**:
+  `SubmitIdea` calls `/api/start-report` (one `consume_validation` + a grant) before generating, not the
+  old client `consumeValidation`. **Resilience**: per-call 45s timeout + AbortController, a **Cancel**
+  button, malformed-JSON is non-retryable, and a refresh mid-generation **resumes** the same consumed
+  validation via `sessionStorage.so_pendingReport` (no double-charge). A validation is only spent when a
+  **scored** report (sections + `_meta`) is delivered — otherwise the user can retry on the same credit
+  or is refunded on abandon.
 - **PostgREST joins**: explicit FK hints, e.g. `profiles!community_posts_user_id_fkey`.
 - **Realtime (websockets)**: Supabase Realtime streams live updates so nothing needs a manual
   refresh — DMs (`subscribeToMessages`/`subscribeTyping`), the feed (`subscribeToCommunity` →

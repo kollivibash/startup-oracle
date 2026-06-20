@@ -22,6 +22,28 @@ export async function consumeValidation() {
   return data || { allowed: true };
 }
 
+// Server-authoritative start of a report: /api/start-report consumes one validation
+// AND returns a short-lived grant that authorizes the report's /api/generate calls
+// (RPT-003). Fails OPEN (e.g. /api absent under `vite dev`) so local/pre-config still
+// works — generation just won't carry a grant, which /api/generate also ignores until
+// REPORT_GRANT_SECRET is set. Returns { allowed, reason, grant }.
+export async function startReport() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { allowed: false, reason: "signin", grant: null };
+  try {
+    const r = await fetch("/api/start-report", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return { allowed: true, reason: "billing_off", grant: null }; // fail open
+    const data = await r.json();
+    return { allowed: true, reason: null, grant: null, ...data };
+  } catch {
+    return { allowed: true, reason: "billing_off", grant: null }; // fail open
+  }
+}
+
 export async function refundValidation() {
   const { error } = await supabase.rpc("refund_validation");
   if (error && !billingMissing(error)) console.error("refundValidation failed", error);

@@ -175,7 +175,7 @@ export default function App() {
   } else if (view === 'pricing') {
     screen = <Pricing user={user} onHome={() => setView('oracle')} onSignIn={goSignIn} />
   } else if (view === 'submit') {
-    screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} />
+    screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} onSignIn={() => goAuth('submit')} />
   } else if (view === 'community') {
     screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
   } else if (view === 'auth') {

@@ -1,15 +1,18 @@
 import { supabase } from './supabaseClient';
 
+// Persists a generated report. Returns { ok, id }. For signed-in users a DB write
+// is retried once on transient failure; the caller can warn + offer the PDF if it
+// still fails so a paid-for report is never silently lost (RPT-005).
 export async function saveIdea(userId, { form, meta, sections }) {
   if (!userId) {
     try {
       const prev = JSON.parse(localStorage.getItem('myIdeas') || '[]');
       prev.unshift({ id: `local_${Date.now()}`, title: form.name, category: form.category, date: new Date().toISOString(), score: meta?.overallScore ?? null, meta, sections, form });
       localStorage.setItem('myIdeas', JSON.stringify(prev.slice(0, 20)));
-    } catch { /* ignore */ }
-    return null;
+      return { ok: true, id: null };
+    } catch { return { ok: false, id: null }; }
   }
-  const { data, error } = await supabase.from('ideas').insert({
+  const row = {
     user_id: userId,
     title: form.name,
     category: form.category,
@@ -17,9 +20,14 @@ export async function saveIdea(userId, { form, meta, sections }) {
     meta,
     sections,
     form,
-  }).select('id').single();
-  if (error) console.error('saveIdea failed', error);
-  return data?.id ?? null;
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await supabase.from('ideas').insert(row).select('id').single();
+    if (!error) return { ok: true, id: data?.id ?? null };
+    console.error('saveIdea failed', error);
+    if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+  }
+  return { ok: false, id: null };
 }
 
 export async function loadIdeas(userId) {

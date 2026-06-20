@@ -135,17 +135,27 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 // Calls our own secure serverless endpoint (/api/generate), which holds the
 // Gemini key server-side. The key is never present in the browser. The signed-in
 // user's session token authorizes the call.
-async function geminiJSON(prompt, model, token) {
+const FETCH_TIMEOUT_MS = 45000; // per-attempt ceiling so a hung socket can't stall forever (RPT-002)
+
+async function geminiJSON(prompt, model, token, { grant, signal } = {}) {
   let lastErr;
   for (let attempt = 0; attempt < 6; attempt++) {
+    if (signal?.aborted) throw new DOMException("Report cancelled", "AbortError");
+    // Per-attempt abort: fires on our timeout OR the caller's cancel signal.
+    const ctl = new AbortController();
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
     try {
       const r = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          ...(grant ? { "x-report-grant": grant } : {}),
         },
         body: JSON.stringify({ prompt, model }),
+        signal: ctl.signal,
       });
       if (r.status === 429 || r.status >= 500) {
         // Honor Google's suggested retryDelay if present, else exponential backoff.
@@ -163,11 +173,25 @@ async function geminiJSON(prompt, model, token) {
       const data = await r.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error("Gemini returned empty response");
-      return JSON.parse(text);
+      try {
+        return JSON.parse(text);
+      } catch {
+        // Malformed/truncated JSON is deterministic — retrying the identical prompt
+        // won't help, so fail this section fast instead of burning all 6 attempts (RPT-007).
+        const e = new Error("Gemini returned malformed JSON (likely truncated)");
+        e.noRetry = true;
+        throw e;
+      }
     } catch (e) {
+      // A caller-initiated cancel propagates immediately; a timeout-only abort is retryable.
+      if (signal?.aborted) throw new DOMException("Report cancelled", "AbortError");
       lastErr = e;
+      if (e.noRetry) throw e;
       if (/^Gemini 4\d\d/.test(e.message) && !e.message.startsWith("Gemini 429")) throw e;
       await sleep(3000 * (attempt + 1));
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
     }
   }
   throw lastErr || new Error("Gemini failed");
@@ -191,7 +215,9 @@ ${FORMAT_RULES}`;
 
 // Runs all 6 section analyses with limited concurrency (2 workers).
 // onProgress(done, total) fires as each section completes.
-export async function generateMasterReport(form, onProgress) {
+// opts: { grant } authorizes the /api/generate calls; { signal } cancels them.
+export async function generateMasterReport(form, onProgress, opts = {}) {
+  const { grant, signal } = opts;
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error("Please sign in to generate a report.");
@@ -204,12 +230,14 @@ export async function generateMasterReport(form, onProgress) {
 
   const worker = async () => {
     while (queue.length) {
+      if (signal?.aborted) return;
       const s = queue.shift();
       try {
-        const out = await geminiJSON(buildPrompt(s, form), s.model, token);
+        const out = await geminiJSON(buildPrompt(s, form), s.model, token, { grant, signal });
         if (out._meta) { meta = out._meta; delete out._meta; }
         sections[s.id] = out;
       } catch (e) {
+        if (e?.name === "AbortError") throw e; // user cancelled — stop the whole run
         console.error(`section ${s.id} failed (${s.model})`, e);
         errors.push(`${s.id}: ${e.message}`);
       }
