@@ -18,6 +18,25 @@ const strength = pw => {
   return s;
 };
 
+// Enforce the advertised policy on signup + reset: ≥8 chars, an uppercase letter,
+// a number. Returns a specific error message, or '' when valid. (AUTH-005)
+const PASSWORD_HINT = 'At least 8 characters, with an uppercase letter and a number';
+const validatePassword = pw => {
+  if (pw.length < 8)     return 'Use at least 8 characters';
+  if (!/[A-Z]/.test(pw)) return 'Add an uppercase letter';
+  if (!/[0-9]/.test(pw)) return 'Add a number';
+  return '';
+};
+
+// Guard auth network calls so a dropped/flaky connection can't hang the UI
+// forever — they reject after TIMEOUT_MS instead of leaving the button stuck. (AUTH-007)
+const TIMEOUT_MS  = 15000;
+const TIMEOUT_MSG = 'Network is slow or unavailable. Check your connection and try again.';
+const withTimeout = (promise, ms = TIMEOUT_MS) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error('__timeout__')), ms)),
+]);
+
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
     <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -54,10 +73,17 @@ const SocialBtn = ({ icon, label, onClick }) => {
   );
 };
 
-const signInWithOAuth = async (provider, afterAuth) => {
+const signInWithOAuth = async (provider, afterAuth, onError) => {
   localStorage.setItem('afterAuth', afterAuth || 'oracle');
-  const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
-  if (error) alert(error.message);
+  // Surface failures inline (AUTH-008) instead of a native alert(); falls back
+  // to alert only if no handler was passed.
+  const fail = msg => (onError ? onError(msg) : alert(msg));
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+    if (error) fail(error.message);
+  } catch (e) {
+    fail(e?.message || 'Could not start sign-in. Please try again.');
+  }
 };
 
 // Google blocks OAuth inside embedded webviews (WhatsApp/Instagram/Facebook
@@ -149,6 +175,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
   const [errors,setErrors] = useState({});
   const [loading,setLoading] = useState(false);
   const [shake,setShake]   = useState(false);
+  const [oauthErr,setOauthErr] = useState('');
 
   const validate = () => {
     const e = {};
@@ -161,10 +188,15 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); setShake(true); setTimeout(()=>setShake(false),500); return; }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    setLoading(false);
-    if (error) { setErrors({ pass: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
-    onSuccess();
+    try {
+      const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password: pass }));
+      if (error) { setErrors({ pass: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
+      onSuccess();
+    } catch {
+      setErrors({ pass: TIMEOUT_MSG }); setShake(true); setTimeout(()=>setShake(false),500);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -175,9 +207,10 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
       </div>
       {!webview && (<>
         <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
-          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
+          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
+          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
         </div>
+        {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
         <Divider label="or continue with email"/>
       </>)}
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
@@ -208,6 +241,7 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
   const [errors,setErrors] = useState({});
   const [loading,setLoading] = useState(false);
   const [shake,setShake]   = useState(false);
+  const [oauthErr,setOauthErr] = useState('');
 
   const ROLES = ['First-time founder','Serial entrepreneur','Student / Hackathon','Investor','Just curious'];
 
@@ -215,7 +249,8 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
     const e = {};
     if (!name.trim())         e.name  = 'Enter your name';
     if (!email.includes('@')) e.email = 'Enter a valid email address';
-    if (strength(pass) < 2)   e.pass  = 'Choose a stronger password';
+    const pwErr = validatePassword(pass);
+    if (pwErr)                e.pass  = pwErr;
     if (!role)                e.role  = 'Select how you describe yourself';
     if (!agreed)              e.agree = 'Please accept the terms to continue';
     return e;
@@ -225,18 +260,23 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); setShake(true); setTimeout(()=>setShake(false),500); return; }
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email, password: pass,
-      options: { data: { full_name: name, role } }
-    });
-    setLoading(false);
-    if (error) { setErrors({ email: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
-    // If email confirmation required, data.user exists but session is null
-    if (data?.user && !data?.session) {
-      setErrors({ email: 'Check your email to confirm your account, then sign in.' });
-      return;
+    try {
+      const { data, error } = await withTimeout(supabase.auth.signUp({
+        email, password: pass,
+        options: { data: { full_name: name, role } }
+      }));
+      if (error) { setErrors({ email: error.message }); setShake(true); setTimeout(()=>setShake(false),500); return; }
+      // If email confirmation required, data.user exists but session is null
+      if (data?.user && !data?.session) {
+        setErrors({ email: 'Check your email to confirm your account, then sign in.' });
+        return;
+      }
+      onSuccess(true);
+    } catch {
+      setErrors({ email: TIMEOUT_MSG }); setShake(true); setTimeout(()=>setShake(false),500);
+    } finally {
+      setLoading(false);
     }
-    onSuccess(true);
   };
 
   return (
@@ -247,16 +287,17 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
       </div>
       {!webview && (<>
         <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
-          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
+          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
+          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
         </div>
+        {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
         <Divider label="or sign up with email"/>
       </>)}
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
         <Field label="Full name" value={name} onChange={v=>{setName(v);setErrors(e=>({...e,name:''}));}} placeholder="Jane Smith" error={errors.name}/>
         <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}} placeholder="you@example.com" error={errors.email}/>
         <Field label="Password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
-          placeholder="Choose a strong password" error={errors.pass} hint="Min. 8 chars, uppercase, number recommended"/>
+          placeholder="Choose a strong password" error={errors.pass} hint={PASSWORD_HINT}/>
         <StrengthBar password={pass}/>
         <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:13, fontWeight:700, color:C.black, marginBottom:8 }}>I am a…</div>
@@ -330,10 +371,15 @@ const ForgotPassword = ({ onBack }) => {
   const submit = async () => {
     if (!email.includes('@')) { setError('Enter a valid email address'); return; }
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    setLoading(false);
-    if (error) { setError(error.message); return; }
-    setSent(true);
+    try {
+      const { error } = await withTimeout(supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin }));
+      if (error) { setError(error.message); return; }
+      setSent(true);
+    } catch {
+      setError(TIMEOUT_MSG);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (sent) return (
@@ -380,15 +426,21 @@ const ResetPassword = ({ onDone }) => {
 
   const submit = async () => {
     const e = {};
-    if (strength(pass) < 2) e.pass = 'Choose a stronger password';
-    if (pass !== confirm)   e.confirm = 'Passwords do not match';
+    const pwErr = validatePassword(pass);
+    if (pwErr)            e.pass = pwErr;
+    if (pass !== confirm) e.confirm = 'Passwords do not match';
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: pass });
-    setLoading(false);
-    if (error) { setErrors({ pass: error.message }); return; }
-    setDone(true);
-    setTimeout(onDone, 1400);
+    try {
+      const { error } = await withTimeout(supabase.auth.updateUser({ password: pass }));
+      if (error) { setErrors({ pass: error.message }); return; }
+      setDone(true);
+      setTimeout(onDone, 1400);
+    } catch {
+      setErrors({ pass: TIMEOUT_MSG });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (done) return (
@@ -408,7 +460,7 @@ const ResetPassword = ({ onDone }) => {
         <p style={{ fontSize:15, color:C.muted }}>Choose a strong password for your account</p>
       </div>
       <Field label="New password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
-        placeholder="Choose a strong password" error={errors.pass} hint="Min. 8 chars, uppercase, number recommended"/>
+        placeholder="Choose a strong password" error={errors.pass} hint={PASSWORD_HINT}/>
       <StrengthBar password={pass}/>
       <Field label="Confirm password" type="password" value={confirm} onChange={v=>{setConfirm(v);setErrors(e=>({...e,confirm:''}));}}
         placeholder="Re-enter your password" error={errors.confirm}/>

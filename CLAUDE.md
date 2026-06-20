@@ -149,6 +149,10 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   it, calls `setSession`, sets `recovery` state, and renders the set-new-password screen (the
   "never show auth to a logged-in user" guard is skipped while `recovery` is true). **In-app webviews**
   (Instagram/WhatsApp/FB, where Google blocks OAuth) are detected by UA and shown email/password first.
+  **Resilience**: signup/reset enforce the advertised password policy (≥8 chars + uppercase + number via
+  `validatePassword`); all auth network calls are wrapped in a 15s `withTimeout` race so a flaky connection
+  shows an inline error instead of a stuck button; the boot gate renders the `<Loading/>` spinner (never a
+  blank screen); OAuth errors render inline (no native `alert`).
 - **Report generation**: 6 sections, each its own Gemini call through `/api/generate`
   (`GEMINI_API_KEY` server-side, model whitelist, prompt cap, retries + backoff). `MasterReport` shows
   a score dashboard (ring + sub-score bars) from the validation `_meta`.

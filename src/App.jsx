@@ -148,8 +148,9 @@ export default function App() {
   const goAccount = () => { if (user) setView('account'); else { setAfterAuth('account'); setView('auth') } }
 
   // Wait for the stored session before rendering, so the header never
-  // flashes "Sign in" for a logged-in user
-  if (!authReady) return null
+  // flashes "Sign in" for a logged-in user. Show the spinner (not a blank
+  // screen) so a slow getSession() round-trip doesn't look like a broken site. (AUTH-006)
+  if (!authReady) return <Loading />
 
   let screen
   if (view === 'report' && activeIdea) {
