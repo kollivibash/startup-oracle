@@ -59,14 +59,15 @@ const Spinner = () => (
   </svg>
 );
 
-const SocialBtn = ({ icon, label, onClick }) => {
+const SocialBtn = ({ icon, label, onClick, variant='primary' }) => {
   const [hov, setHov] = useState(false);
+  const secondary = variant === 'secondary';   // GitHub is de-emphasized vs Google (AUTH-009)
   return (
     <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+      style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:10,
         border:`1.5px solid ${hov?'#aaa':C.border}`, borderRadius:4,
-        background:hov?C.light:C.white, padding:'12px 16px',
-        fontSize:14, fontWeight:600, color:C.black, cursor:'pointer',
+        background:hov?C.light:C.white, padding:secondary?'10px 16px':'12px 16px',
+        fontSize:secondary?13:14, fontWeight:600, color:secondary?C.body:C.black, cursor:'pointer',
         transition:'all 0.15s', fontFamily:F }}>
       {icon}<span>{label}</span>
     </button>
@@ -206,9 +207,9 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your Startup Oracle account</p>
       </div>
       {!webview && (<>
-        <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
-          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:4 }}>
+          <SocialBtn icon={<GoogleIcon/>} label="Continue with Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
+          <SocialBtn icon={<GitHubIcon/>} label="Continue with GitHub" variant="secondary" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
         </div>
         {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
         <Divider label="or continue with email"/>
@@ -286,9 +287,9 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
         <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
       </div>
       {!webview && (<>
-        <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
-          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:4 }}>
+          <SocialBtn icon={<GoogleIcon/>} label="Continue with Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
+          <SocialBtn icon={<GitHubIcon/>} label="Continue with GitHub" variant="secondary" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
         </div>
         {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
         <Divider label="or sign up with email"/>
@@ -500,13 +501,13 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth, rec
       `}</style>
 
       {/* Navbar */}
-      <div style={{ borderBottom:`1px solid ${C.border}`, height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ borderBottom:`1px solid ${C.border}`, height:68, padding:'0 clamp(20px,5vw,48px)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <span onClick={onHome} style={{ fontFamily:FD, fontWeight:800, fontSize:20, letterSpacing:'-0.5px', color:C.black, cursor:'pointer' }}>startup oracle</span>
         <span onClick={onHome} style={{ fontSize:14, color:C.muted, fontWeight:500, cursor:'pointer' }}>← Home</span>
       </div>
 
       <div style={{ display:'flex', minHeight:'calc(100vh - 68px)' }}>
-        <div style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'64px 48px', overflowY:'auto' }}>
+        <div style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'clamp(32px,6vw,64px) clamp(20px,5vw,48px)', overflowY:'auto' }}>
           <div style={{ width:'100%', maxWidth:420 }}>
             {webview && !success && !recovery && <WebviewBanner/>}
             {!success && !recovery && mode!=='forgot' && (
