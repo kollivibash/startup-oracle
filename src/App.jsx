@@ -11,8 +11,9 @@ const Auth         = lazy(() => import('./Auth'))
 const Account      = lazy(() => import('./Account'))
 const MasterReport = lazy(() => import('./MasterReport'))
 const Pricing      = lazy(() => import('./Pricing'))
+const Legal        = lazy(() => import('./Legal'))
 
-const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing']
+const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy']
 
 // Minimal full-screen fallback while a lazy view's chunk downloads.
 function Loading() {
@@ -29,12 +30,15 @@ export default function App() {
   const [view, setView]           = useState(() => {
     try {
       if (/^#\/idea\/([\w-]+)/.test(window.location.hash)) return 'community'
+      const lm = window.location.hash.match(/^#\/legal\/(terms|privacy)/)
+      if (lm) return lm[1]
       const v = sessionStorage.getItem('so_view'); return PERSISTED_VIEWS.includes(v) ? v : 'oracle'
     } catch { return 'oracle' }
   })
   const [afterAuth, setAfterAuth] = useState('oracle')
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
+  const [recovery, setRecovery]   = useState(false)  // password-reset landing (AUTH-002)
   const [activeIdea, setActiveIdea] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
@@ -60,16 +64,20 @@ export default function App() {
       setView(dest)
     }
     const hash = window.location.hash
-    if (/^#\/idea\/([\w-]+)/.test(hash)) {
+    if (/^#\/idea\/([\w-]+)/.test(hash) || /^#\/legal\/(terms|privacy)/.test(hash)) {
       window.history.replaceState(null, '', window.location.pathname)
     }
     if (hash.includes('access_token')) {
       const p = new URLSearchParams(hash.slice(1))
       const access_token = p.get('access_token')
       const refresh_token = p.get('refresh_token')
+      const isRecovery = p.get('type') === 'recovery'
       if (access_token && refresh_token) {
         supabase.auth.setSession({ access_token, refresh_token }).then(({ data, error }) => {
           if (error || !data?.session) { console.error('setSession failed', error); window.history.replaceState(null, '', window.location.pathname); return }
+          // A recovery link authenticates the user but must land on the
+          // "set a new password" screen instead of the normal destination.
+          if (isRecovery) { window.history.replaceState(null, '', window.location.pathname); setRecovery(true); setView('auth'); return }
           navTo()
         })
       }
@@ -107,12 +115,13 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  // Never show the auth screen to someone who is already logged in
+  // Never show the auth screen to someone who is already logged in —
+  // except during password recovery, which intentionally has a session.
   useEffect(() => {
-    if (view !== 'auth' || !user) return
+    if (view !== 'auth' || !user || recovery) return
     const t = setTimeout(() => setView(afterAuth || 'submit'), 0)
     return () => clearTimeout(t)
-  }, [view, user, afterAuth])
+  }, [view, user, afterAuth, recovery])
 
   // Check the session directly so navigation never relies on stale state
   const goAuth = async (dest) => {
@@ -175,6 +184,16 @@ export default function App() {
         onSubmitIdea={() => setView('submit')}
         onCommunity={() => setView('community')}
         afterAuth={afterAuth}
+        recovery={recovery}
+        onRecoveryDone={() => { setRecovery(false); setView('oracle') }}
+      />
+    )
+  } else if (view === 'terms' || view === 'privacy') {
+    screen = (
+      <Legal
+        doc={view}
+        onHome={() => setView('oracle')}
+        onDoc={(d) => setView(d)}
       />
     )
   } else {

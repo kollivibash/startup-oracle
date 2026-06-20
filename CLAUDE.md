@@ -36,7 +36,7 @@ On Vercel set `GEMINI_API_KEY` (Production + Preview). Supabase anon key is hard
 ## Architecture
 
 Single-page React (Vite). No React Router — `App.jsx` switches views via `setView()`. Views:
-`oracle` (Home), `submit`, `community`, `account`, `pricing`, `auth`, `report`. `sessionStorage.so_view`
+`oracle` (Home), `submit`, `community`, `account`, `pricing`, `auth`, `report`, `terms`, `privacy`. `sessionStorage.so_view`
 persists across reloads; the **browser Back button** is wired to the view via History API
 (`pushState`/`popstate`) so Back returns to the previous view.
 
@@ -49,7 +49,13 @@ Styling is **inline styles** everywhere except `MasterReport.jsx`, which uses **
 src/
   App.jsx          — routing, auth state, OAuth hash handling, browser-back history sync
   Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
-  Auth.jsx         — sign in/up (Google, GitHub, email/password)
+  Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
+                     resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
+                     `type=recovery`); **in-app-webview detection** (hides OAuth + shows email-first
+                     fallback in WhatsApp/Instagram/FB browsers); Terms/Privacy links in consent + footer
+  Legal.jsx        — Terms of Service + Privacy Policy pages (DPDP-aware **template** w/ [BRACKET]
+                     placeholders the owner must fill in); reachable as `terms`/`privacy` views and via
+                     `#/legal/terms` · `#/legal/privacy` shareable hash routes
   SubmitIdea.jsx   — 3-step form → quota check (consume_validation) → Gemini report; paywall screen
   MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community,
                      **PDF/print export** (a print-only `PrintReport` renders ALL sections; on-screen
@@ -139,6 +145,10 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
 
 - **Auth**: OAuth implicit grant; hash tokens parsed in `App.jsx`; `localStorage.afterAuth` carries the
   intended destination across the redirect. Hard logout revokes all sessions + clears `sb-*` keys.
+  **Password reset**: a recovery email link returns to the origin with `#…&type=recovery`; App.jsx detects
+  it, calls `setSession`, sets `recovery` state, and renders the set-new-password screen (the
+  "never show auth to a logged-in user" guard is skipped while `recovery` is true). **In-app webviews**
+  (Instagram/WhatsApp/FB, where Google blocks OAuth) are detected by UA and shown email/password first.
 - **Report generation**: 6 sections, each its own Gemini call through `/api/generate`
   (`GEMINI_API_KEY` server-side, model whitelist, prompt cap, retries + backoff). `MasterReport` shows
   a score dashboard (ring + sub-score bars) from the validation `_meta`.

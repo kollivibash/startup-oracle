@@ -60,6 +60,34 @@ const signInWithOAuth = async (provider, afterAuth) => {
   if (error) alert(error.message);
 };
 
+// Google blocks OAuth inside embedded webviews (WhatsApp/Instagram/Facebook
+// in-app browsers, very common entry points in India) — so we detect them and
+// surface email/password as the primary path instead of a dead-end. (AUTH-003)
+const isInAppWebview = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|FB_IAB|Instagram|Line\/|WhatsApp|Twitter|Snapchat|Pinterest|MicroMessenger|; ?wv\)/i.test(ua);
+};
+
+const WebviewBanner = () => {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(()=>setCopied(false), 2000); }
+    catch { /* clipboard unavailable */ }
+  };
+  return (
+    <div style={{ border:`1.5px solid ${C.border}`, background:C.surface, borderRadius:6, padding:'14px 16px', marginBottom:28, fontSize:13, color:C.body, lineHeight:1.6 }}>
+      <strong style={{ color:C.black }}>You're in an in-app browser.</strong> Google &amp; GitHub sign-in
+      are blocked here — use <strong style={{ color:C.black }}>email &amp; password</strong> below, or open
+      this page in your browser (tap the ⋯ menu → “Open in browser”).
+      <button onClick={copy}
+        style={{ display:'inline-block', marginTop:10, background:C.white, border:`1.5px solid ${C.border}`, borderRadius:4, padding:'7px 12px', fontSize:12, fontWeight:700, color:C.black, cursor:'pointer', fontFamily:F }}>
+        {copied ? 'Link copied ✓' : 'Copy link'}
+      </button>
+    </div>
+  );
+};
+
 const Field = ({ label, type='text', value, onChange, placeholder, error, hint, right }) => {
   const [focused, setFocused] = useState(false);
   const [show, setShow]       = useState(false);
@@ -115,7 +143,7 @@ const StrengthBar = ({ password }) => {
   );
 };
 
-const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
+const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
   const [errors,setErrors] = useState({});
@@ -145,17 +173,19 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
         <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your Startup Oracle account</p>
       </div>
-      <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
-        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
-      </div>
-      <Divider label="or continue with email"/>
+      {!webview && (<>
+        <div style={{ display:'flex', gap:10, marginBottom:4 }}>
+          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
+          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
+        </div>
+        <Divider label="or continue with email"/>
+      </>)}
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
         <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}}
           placeholder="you@example.com" error={errors.email}/>
         <Field label="Password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
           placeholder="Your password" error={errors.pass}
-          right={<a href="#" style={{ fontSize:12, color:C.body, fontWeight:600, textDecoration:'none' }}>Forgot password?</a>}/>
+          right={<button type="button" onClick={onForgot} style={{ background:'none', border:'none', padding:0, fontSize:12, color:C.body, fontWeight:600, cursor:'pointer', fontFamily:F }}>Forgot password?</button>}/>
       </div>
       <button onClick={submit} disabled={loading}
         style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
@@ -169,7 +199,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth }) => {
   );
 };
 
-const SignUp = ({ onSwitch, onSuccess, afterAuth }) => {
+const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
   const [name,setName]     = useState('');
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
@@ -215,11 +245,13 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth }) => {
         <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Create your account</h1>
         <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
       </div>
-      <div style={{ display:'flex', gap:10, marginBottom:4 }}>
-        <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
-        <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
-      </div>
-      <Divider label="or sign up with email"/>
+      {!webview && (<>
+        <div style={{ display:'flex', gap:10, marginBottom:4 }}>
+          <SocialBtn icon={<GoogleIcon/>} label="Google" onClick={()=>signInWithOAuth('google',afterAuth)}/>
+          <SocialBtn icon={<GitHubIcon/>} label="GitHub" onClick={()=>signInWithOAuth('github',afterAuth)}/>
+        </div>
+        <Divider label="or sign up with email"/>
+      </>)}
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
         <Field label="Full name" value={name} onChange={v=>{setName(v);setErrors(e=>({...e,name:''}));}} placeholder="Jane Smith" error={errors.name}/>
         <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}} placeholder="you@example.com" error={errors.email}/>
@@ -244,7 +276,7 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth }) => {
             {agreed && <span style={{ color:C.white, fontSize:10, fontWeight:900 }}>✓</span>}
           </div>
           <p style={{ fontSize:13, color:C.body, lineHeight:1.55 }}>
-            I agree to the <span style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Terms of Service</span> and <span style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Privacy Policy</span>
+            I agree to the <a href="#/legal/terms" target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Terms of Service</a> and <a href="#/legal/privacy" target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ color:C.black, fontWeight:600, textDecoration:'underline', textUnderlineOffset:2 }}>Privacy Policy</a>
           </p>
         </div>
         {errors.agree && <div style={{ fontSize:12, color:C.error, marginTop:-16, marginBottom:16, fontWeight:500 }}>{errors.agree}</div>}
@@ -287,10 +319,112 @@ const Success = ({ isNew, onSubmitIdea, onCommunity, afterAuth }) => (
   </div>
 );
 
-export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
+// Request a reset link (AUTH-002). Supabase emails a recovery link back to the
+// site origin; App.jsx detects `type=recovery` in the hash and shows ResetPassword.
+const ForgotPassword = ({ onBack }) => {
+  const [email,setEmail]     = useState('');
+  const [error,setError]     = useState('');
+  const [loading,setLoading] = useState(false);
+  const [sent,setSent]       = useState(false);
+
+  const submit = async () => {
+    if (!email.includes('@')) { setError('Enter a valid email address'); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setSent(true);
+  };
+
+  if (sent) return (
+    <div style={{ textAlign:'center', padding:'12px 0' }}>
+      <div style={{ width:60, height:60, borderRadius:'50%', background:C.surface, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px', fontSize:26 }}>📧</div>
+      <h1 style={{ fontFamily:FD, fontSize:26, fontWeight:800, color:C.black, letterSpacing:'-0.8px', marginBottom:10 }}>Check your email</h1>
+      <p style={{ fontSize:15, color:C.muted, lineHeight:1.65, marginBottom:32 }}>
+        If an account exists for <strong style={{ color:C.body }}>{email}</strong>, we've sent a link to reset your password. The link expires in 1 hour.
+      </p>
+      <button onClick={onBack}
+        style={{ width:'100%', background:C.black, color:C.white, border:'none', borderRadius:4, padding:'14px 24px', fontSize:15, fontWeight:700, cursor:'pointer', fontFamily:F }}>
+        Back to sign in
+      </button>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom:32 }}>
+        <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Reset password</h1>
+        <p style={{ fontSize:15, color:C.muted }}>Enter your email and we'll send you a reset link</p>
+      </div>
+      <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setError('');}}
+        placeholder="you@example.com" error={error}/>
+      <button onClick={submit} disabled={loading}
+        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
+        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Sending…</span>:'Send reset link →'}
+      </button>
+      <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
+        Remembered it?{' '}
+        <span onClick={onBack} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Back to sign in</span>
+      </p>
+    </div>
+  );
+};
+
+// Landing screen after clicking the recovery link — set a new password (AUTH-002).
+const ResetPassword = ({ onDone }) => {
+  const [pass,setPass]       = useState('');
+  const [confirm,setConfirm] = useState('');
+  const [errors,setErrors]   = useState({});
+  const [loading,setLoading] = useState(false);
+  const [done,setDone]       = useState(false);
+
+  const submit = async () => {
+    const e = {};
+    if (strength(pass) < 2) e.pass = 'Choose a stronger password';
+    if (pass !== confirm)   e.confirm = 'Passwords do not match';
+    if (Object.keys(e).length) { setErrors(e); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: pass });
+    setLoading(false);
+    if (error) { setErrors({ pass: error.message }); return; }
+    setDone(true);
+    setTimeout(onDone, 1400);
+  };
+
+  if (done) return (
+    <div style={{ textAlign:'center', padding:'24px 0' }}>
+      <div style={{ width:64, height:64, borderRadius:'50%', background:C.black, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 28px' }}>
+        <span style={{ color:C.white, fontSize:26, fontWeight:900 }}>✓</span>
+      </div>
+      <h2 style={{ fontFamily:FD, fontSize:26, fontWeight:800, color:C.black, letterSpacing:'-0.8px', marginBottom:10 }}>Password updated</h2>
+      <p style={{ fontSize:15, color:C.muted }}>You're signed in. Redirecting…</p>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom:32 }}>
+        <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Set a new password</h1>
+        <p style={{ fontSize:15, color:C.muted }}>Choose a strong password for your account</p>
+      </div>
+      <Field label="New password" type="password" value={pass} onChange={v=>{setPass(v);setErrors(e=>({...e,pass:''}));}}
+        placeholder="Choose a strong password" error={errors.pass} hint="Min. 8 chars, uppercase, number recommended"/>
+      <StrengthBar password={pass}/>
+      <Field label="Confirm password" type="password" value={confirm} onChange={v=>{setConfirm(v);setErrors(e=>({...e,confirm:''}));}}
+        placeholder="Re-enter your password" error={errors.confirm}/>
+      <button onClick={submit} disabled={loading}
+        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
+        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Updating…</span>:'Update password →'}
+      </button>
+    </div>
+  );
+};
+
+export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth, recovery, onRecoveryDone }) {
   const [mode, setMode]       = useState('signin');
   const [success, setSuccess] = useState(false);
   const [isNew, setIsNew]     = useState(false);
+  const webview = isInAppWebview();
 
   const handleSuccess = (newUser=false) => {
     setIsNew(newUser);
@@ -322,7 +456,8 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
       <div style={{ display:'flex', minHeight:'calc(100vh - 68px)' }}>
         <div style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'64px 48px', overflowY:'auto' }}>
           <div style={{ width:'100%', maxWidth:420 }}>
-            {!success && (
+            {webview && !success && !recovery && <WebviewBanner/>}
+            {!success && !recovery && mode!=='forgot' && (
               <div style={{ display:'flex', background:C.surface, borderRadius:6, padding:4, marginBottom:44, gap:4 }}>
                 {[['signin','Sign In'],['signup','Sign Up']].map(([id,label])=>(
                   <button key={id} onClick={()=>{setMode(id);setSuccess(false);}}
@@ -331,12 +466,20 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth }) {
                 ))}
               </div>
             )}
-            {success
-              ? <Success isNew={isNew} onSubmitIdea={onSubmitIdea} onCommunity={onCommunity} afterAuth={afterAuth}/>
-              : mode==='signin'
-                ? <SignIn  onSwitch={()=>setMode('signup')} onSuccess={handleSuccess} afterAuth={afterAuth}/>
-                : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess} afterAuth={afterAuth}/>
+            {recovery
+              ? <ResetPassword onDone={onRecoveryDone}/>
+              : success
+                ? <Success isNew={isNew} onSubmitIdea={onSubmitIdea} onCommunity={onCommunity} afterAuth={afterAuth}/>
+                : mode==='forgot'
+                  ? <ForgotPassword onBack={()=>setMode('signin')}/>
+                  : mode==='signin'
+                    ? <SignIn  onSwitch={()=>setMode('signup')} onForgot={()=>setMode('forgot')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
+                    : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
             }
+            <div style={{ marginTop:40, paddingTop:20, borderTop:`1px solid ${C.border}`, display:'flex', justifyContent:'center', gap:20, fontSize:12, color:C.muted }}>
+              <a href="#/legal/terms" target="_blank" rel="noopener noreferrer" style={{ color:C.muted, textDecoration:'none', fontWeight:600 }}>Terms</a>
+              <a href="#/legal/privacy" target="_blank" rel="noopener noreferrer" style={{ color:C.muted, textDecoration:'none', fontWeight:600 }}>Privacy</a>
+            </div>
           </div>
         </div>
       </div>
