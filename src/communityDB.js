@@ -19,10 +19,13 @@ const linkReposts = list => {
   return list;
 };
 
-export async function fetchPosts() {
+export const FEED_PAGE = 30;
+// Paginated feed (COM-007): pass { before: <created_at of last loaded post> } to load older.
+export async function fetchPosts({ before = null, limit = FEED_PAGE } = {}) {
   for (const cols of POST_VARIANTS) {
-    const { data, error } = await supabase
-      .from('community_posts').select(cols).order('created_at', { ascending: false }).limit(100);
+    let q = supabase.from('community_posts').select(cols).order('created_at', { ascending: false }).limit(limit);
+    if (before) q = q.lt('created_at', before);
+    const { data, error } = await q;
     if (!error) return linkReposts((data || []).map(shapePost));
     if (!POST_DEGRADE.test(error.message || '')) { console.error('fetchPosts failed', error.message || error); return []; }
   }
@@ -58,11 +61,12 @@ export async function fetchSavedPosts(userId) {
 export async function setSavedPost(userId, postId, saved) {
   if (saved) {
     const { error } = await supabase.from('saved_posts').insert({ user_id: userId, post_id: postId });
-    if (error && error.code !== '23505') console.error('savePost failed', error);
+    if (error && error.code !== '23505') { console.error('savePost failed', error); return { error }; }
   } else {
     const { error } = await supabase.from('saved_posts').delete().eq('user_id', userId).eq('post_id', postId);
-    if (error) console.error('unsavePost failed', error);
+    if (error) { console.error('unsavePost failed', error); return { error }; }
   }
+  return {};
 }
 
 export async function repost(userId, originalId, commentary = '') {
@@ -88,6 +92,7 @@ export async function createPost(userId, { title, body, tags, media = [], meta =
 export async function votePoll(userId, postId, optionIdx) {
   const { error } = await supabase.from('poll_votes').upsert({ post_id: postId, user_id: userId, option_idx: optionIdx }, { onConflict: 'post_id,user_id' });
   if (error) console.error('votePoll failed', error);
+  return { error };
 }
 
 // Calls the serverless /api/unfurl to get a link preview (server-side fetch).
@@ -104,7 +109,12 @@ export async function unfurlLink(url) {
 }
 
 // Uploads one photo/document to the post-media bucket, returns its public URL.
+// Client-side validation (COM-003); the bucket also caps size/type server-side.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const POST_MIME_RE = /^(image\/(png|jpe?g|webp|gif)|video\/(mp4|quicktime)|audio\/(webm|mpeg|mp4)|application\/pdf)$/i;
 export async function uploadPostFile(userId, file) {
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error('File is over 25 MB.');
+  if (file.type && !POST_MIME_RE.test(file.type)) throw new Error('That file type is not supported.');
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
   const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabase.storage.from('post-media').upload(path, file, { cacheControl: '3600', upsert: false });
@@ -116,6 +126,7 @@ export async function uploadPostFile(userId, file) {
 export async function deletePost(userId, postId) {
   const { error } = await supabase.from('community_posts').delete().eq('id', postId).eq('user_id', userId);
   if (error) console.error('deletePost failed', error);
+  return { error };
 }
 
 export async function ratePost(userId, postId, value) {
@@ -123,6 +134,7 @@ export async function ratePost(userId, postId, value) {
     .from('community_ratings')
     .upsert({ post_id: postId, user_id: userId, value }, { onConflict: 'post_id,user_id' });
   if (error) console.error('ratePost failed', error);
+  return { error };
 }
 
 export async function fetchSuggestions(postId) {
@@ -186,11 +198,12 @@ export async function setFollow(userId, targetId, follow) {
     if (error && /status/i.test(error.message || '')) {
       ({ error } = await supabase.from('follows').insert({ follower_id: userId, followee_id: targetId }));
     }
-    if (error && error.code !== '23505') console.error('follow failed', error);
+    if (error && error.code !== '23505') { console.error('follow failed', error); return { error }; }
   } else {
     const { error } = await supabase.from('follows').delete().eq('follower_id', userId).eq('followee_id', targetId);
-    if (error) console.error('unfollow failed', error);
+    if (error) { console.error('unfollow failed', error); return { error }; }
   }
+  return {};
 }
 
 export async function fetchFollowList(userId, type) {
@@ -316,6 +329,8 @@ export async function syncAuthMeta(meta) {
 }
 
 export async function uploadProfileImage(userId, file, kind) {
+  if (file.size > 5 * 1024 * 1024) throw new Error('Image is over 5 MB.');
+  if (file.type && !/^image\/(png|jpe?g|webp)$/i.test(file.type)) throw new Error('Please use a PNG, JPG, or WebP image.');
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
   const path = `${userId}/${kind}_${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from('avatars').upload(path, file, { cacheControl: '3600', upsert: true });
@@ -333,15 +348,18 @@ const MSG_ROW   = 'id, sender_id, recipient_id, text, media, reply_to, reactions
 const msgColMissing = e => /column|schema cache|does not exist/i.test(e?.message || '');
 
 // Returns { [peerId]: { peer:{id,name,avatar_url}, messages:[...], unread:n } }
-export async function fetchConversations(userId) {
+// Loads the most-recent `limit` messages (COM-008); older ones load on demand via
+// fetchOlderMessages. Fetched descending then reversed for ascending display.
+export const DM_PAGE = 50;
+export async function fetchConversations(userId, limit = 200) {
   const q = sel => supabase.from('messages').select(sel)
     .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
-    .order('created_at', { ascending: true }).limit(500);
+    .order('created_at', { ascending: false }).limit(limit);
   let { data, error } = await q(MSG_FULL);
   if (error && msgColMissing(error)) ({ data, error } = await q(MSG_BASE));
   if (error) { console.error('fetchConversations failed', error); return {}; }
   const convs = {};
-  for (const m of data || []) {
+  for (const m of (data || []).reverse()) {
     if (Array.isArray(m.deleted_for) && m.deleted_for.includes(userId)) continue; // hidden for me
     const mine   = m.sender_id === userId;
     const peer   = mine ? m.recipient : m.sender;
@@ -351,6 +369,17 @@ export async function fetchConversations(userId) {
     if (!mine && !m.read) convs[peer.id].unread++;
   }
   return convs;
+}
+
+// Older messages for one conversation, before `beforeIso` (COM-008).
+export async function fetchOlderMessages(userId, peerId, beforeIso, limit = DM_PAGE) {
+  const pair = `and(sender_id.eq.${userId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${userId})`;
+  const q = sel => supabase.from('messages').select(sel).or(pair)
+    .lt('created_at', beforeIso).order('created_at', { ascending: false }).limit(limit);
+  let { data, error } = await q(MSG_FULL);
+  if (error && msgColMissing(error)) ({ data, error } = await q(MSG_BASE));
+  if (error) { console.error('fetchOlderMessages failed', error); return []; }
+  return (data || []).reverse().filter(m => !(Array.isArray(m.deleted_for) && m.deleted_for.includes(userId)));
 }
 
 // opts: { text, media, replyTo, forwarded }
@@ -371,13 +400,18 @@ export async function sendMessage(senderId, recipientId, opts = {}) {
 }
 
 // Toggle the current user's reaction emoji on a message; returns the new reactions map.
+// Prefers the atomic, identity-checked RPC (COM-005 — no lost concurrent reactions, no
+// cross-user tampering); falls back to the client read-modify-write until the SQL is run.
 export async function toggleMessageReaction(messageId, emoji, userId, reactions = {}) {
+  const { data, error } = await supabase.rpc('toggle_message_reaction', { p_message_id: messageId, p_emoji: emoji });
+  if (!error) return data || {};
+  if (!/function|does not exist|schema cache/i.test(error.message || '')) console.error('toggleMessageReaction failed', error);
   const next = { ...(reactions || {}) };
   const set = new Set(next[emoji] || []);
   set.has(userId) ? set.delete(userId) : set.add(userId);
   if (set.size) next[emoji] = [...set]; else delete next[emoji];
-  const { error } = await supabase.from('messages').update({ reactions: next }).eq('id', messageId);
-  if (error && !msgColMissing(error)) console.error('toggleMessageReaction failed', error);
+  const { error: e2 } = await supabase.from('messages').update({ reactions: next }).eq('id', messageId);
+  if (e2 && !msgColMissing(e2)) console.error('toggleMessageReaction fallback failed', e2);
   return next;
 }
 
@@ -388,8 +422,12 @@ export async function setMessageDeletedFor(messageId, deletedFor) {
 }
 
 // Delete-for-everyone: flip the tombstone flag (both parties then see "This message was deleted").
-export async function setMessageDeleted(messageId, deleted) {
-  const { error } = await supabase.from('messages').update({ deleted }).eq('id', messageId);
+// Scoped to the sender (COM-002) so a recipient can't tombstone the other party's message;
+// the DB trigger enforces the same, this is defense-in-depth.
+export async function setMessageDeleted(messageId, deleted, senderId = null) {
+  let q = supabase.from('messages').update({ deleted }).eq('id', messageId);
+  if (senderId) q = q.eq('sender_id', senderId);
+  const { error } = await q;
   if (error && !msgColMissing(error)) console.error('setMessageDeleted failed', error);
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -159,7 +159,7 @@ const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount,
           {replyTo === c.id && (
             <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:8 }}>
               {me && <Av name={nameOf(me)} uid={me.id} url={me.user_metadata?.avatar_url} sz={26}/>}
-              <input autoFocus value={replyTxt} onChange={e=>setReplyTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply(c)} placeholder="Write a reply…"
+              <input autoFocus value={replyTxt} onChange={e=>setReplyTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply(c)} placeholder="Write a reply…" maxLength={600}
                 style={{ flex:1, height:32, borderRadius:99, padding:'0 14px', fontSize:13, border:'1px solid rgba(0,0,0,.2)', background:'#fff', outline:'none', fontFamily:F }}/>
               <button onClick={()=>submitReply(c)} style={{ height:32, padding:'0 12px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:F }}>Reply</button>
             </div>
@@ -178,7 +178,7 @@ const Suggestions = ({ postId, postOwnerId, postTitle, me, requireAuth, onCount,
       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
         {me && <Av name={nameOf(me)} uid={me.id} url={me.user_metadata?.avatar_url} sz={32}/>}
         <div style={{ flex:1, display:'flex', gap:8 }}>
-          <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()} disabled={!me}
+          <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()} disabled={!me} maxLength={600}
             placeholder={me?'Add a suggestion…':'Sign in to add a suggestion'}
             style={{ flex:1, height:36, borderRadius:99, padding:'0 14px', fontSize:13, border:'1px solid rgba(0,0,0,.2)', background:'#fff', outline:'none', fontFamily:F }}/>
           <button onClick={me?submit:requireAuth(()=>{})} style={{ height:36, padding:'0 14px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F }}>
@@ -230,7 +230,7 @@ function RepostModal({ original, me, onClose, onDone }) {
             <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={40}/>
             <div style={{ fontSize:14, fontWeight:700 }}>{nameOf(me)}</div>
           </div>
-          <textarea autoFocus value={txt} onChange={e=>setTxt(e.target.value)} rows={3} placeholder="Add your thoughts (optional)…"
+          <textarea autoFocus value={txt} onChange={e=>setTxt(e.target.value)} rows={3} placeholder="Add your thoughts (optional)…" maxLength={600}
             style={{ width:'100%', border:'none', outline:'none', fontSize:15, lineHeight:1.6, resize:'none', fontFamily:F, boxSizing:'border-box' }}/>
           <EmbeddedPost post={original}/>
         </div>
@@ -650,10 +650,10 @@ function ComposerModal({ me, onClose, onPosted }) {
         <div style={{ padding:'0 18px' }}>
           {mode === 'poll' ? (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <input autoFocus value={pollQ} onChange={e=>setPollQ(e.target.value)} placeholder="Ask a question…" style={fin}/>
+              <input autoFocus value={pollQ} onChange={e=>setPollQ(e.target.value)} placeholder="Ask a question…" maxLength={140} style={fin}/>
               {pollOpts.map((o,i)=>(
                 <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
-                  <input value={o} onChange={e=>setOpt(i, e.target.value)} placeholder={`Option ${i+1}`} style={{ ...fin, flex:1 }}/>
+                  <input value={o} onChange={e=>setOpt(i, e.target.value)} placeholder={`Option ${i+1}`} maxLength={80} style={{ ...fin, flex:1 }}/>
                   {pollOpts.length > 2 && <button onClick={()=>setPollOpts(p=>p.filter((_,n)=>n!==i))} style={{ background:'none', border:'none', color:'#DC2626', fontSize:14, cursor:'pointer' }}>✕</button>}
                 </div>
               ))}
@@ -661,8 +661,8 @@ function ComposerModal({ me, onClose, onPosted }) {
             </div>
           ) : (
             <>
-              {mode === 'article' && <input autoFocus value={artTitle} onChange={e=>setArtTitle(e.target.value)} placeholder="Article title" style={{ ...fin, fontSize:18, fontWeight:700, border:'none', padding:'0 0 6px' }}/>}
-              <textarea autoFocus={mode!=='article'} value={body} onChange={e=>setBody(e.target.value)} rows={mode==='article'?7:5}
+              {mode === 'article' && <input autoFocus value={artTitle} onChange={e=>setArtTitle(e.target.value)} placeholder="Article title" maxLength={120} style={{ ...fin, fontSize:18, fontWeight:700, border:'none', padding:'0 0 6px' }}/>}
+              <textarea autoFocus={mode!=='article'} value={body} onChange={e=>setBody(e.target.value)} rows={mode==='article'?7:5} maxLength={mode==='article'?20000:5000}
                 placeholder={mode==='article' ? "Write your article…" : "Idea title on the first line…\nThen describe the problem, your solution, and what feedback you need."}
                 style={{ width:'100%', border:'none', outline:'none', fontSize:15, color:'rgba(0,0,0,.9)', lineHeight:1.65, background:'transparent', padding:0, fontFamily:F, resize:'none', boxSizing:'border-box' }}/>
             </>
@@ -688,7 +688,7 @@ function ComposerModal({ me, onClose, onPosted }) {
             </div>
           )}
 
-          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…"
+          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…" maxLength={120}
             style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', margin:'12px 0 0', fontFamily:F, boxSizing:'border-box' }}/>
           {err && <div style={{ fontSize:12.5, color:'#DC2626', marginTop:8 }}>{err}</div>}
         </div>
@@ -771,7 +771,7 @@ function EmojiPicker({ onPick, onClose }) {
 }
 
 // Record + send a voice note (MediaRecorder). Auto-stops + sends at MAX_VOICE_SECS.
-function VoiceRecorder({ onDone, iconBtn }) {
+function VoiceRecorder({ onDone, iconBtn, onError }) {
   const [rec, setRec] = useState(false);
   const [secs, setSecs] = useState(0);
   const mr = useRef(null), chunks = useRef([]), timer = useRef(null), secsRef = useRef(0);
@@ -800,7 +800,7 @@ function VoiceRecorder({ onDone, iconBtn }) {
         secsRef.current += 1; setSecs(secsRef.current);
         if (secsRef.current >= MAX_VOICE_SECS) finish(true);   // auto-stop + send at the cap
       }, 1000);
-    } catch { alert('Microphone access is needed to record a voice note.'); }
+    } catch { onError?.('Microphone access is needed to record a voice note.'); }
   };
   if (!rec) return <button title="Record voice note" aria-label="Record voice note" onClick={start} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoMic/></button>;
   const t = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
@@ -905,7 +905,8 @@ function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onRe
         )}
         <div style={{ fontSize:10, color:'rgba(0,0,0,.4)', marginTop:3 }}>
           {new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
-          {mine && isLastMine && m.read && <span style={{ marginLeft:6, fontWeight:600 }}>· Seen</span>}
+          {mine && m.failed && <span style={{ marginLeft:6, fontWeight:600, color:'#DC2626' }}>· Not delivered</span>}
+          {mine && isLastMine && m.read && !m.failed && <span style={{ marginLeft:6, fontWeight:600 }}>· Seen</span>}
         </div>
       </div>
       {/* hover actions */}
@@ -952,7 +953,7 @@ function DeleteMsgDialog({ msg, me, onForEveryone, onForMe, onClose }) {
 }
 
 function ChatArea({ peer, msgs, chat }) {
-  const { me, onSend, onReact, onDeleteForMe, onUnsend, onUndoDelete, onForward } = chat;
+  const { me, onSend, onReact, onDeleteForMe, onUnsend, onUndoDelete, onForward, onLoadOlder } = chat;
   const [input, setInput] = useState('');
   const [atts, setAtts] = useState([]);          // { file, type, name, size, preview }
   const [replyTo, setReplyTo] = useState(null);
@@ -970,8 +971,13 @@ function ChatArea({ peer, msgs, chat }) {
 
   const visible = useMemo(() => msgs.filter(m => !(m.deleted_for || []).includes(me.id)), [msgs, me.id]);
   const lastMineId = useMemo(() => { for (let i = visible.length - 1; i >= 0; i--) if (visible[i].sender_id === me.id) return visible[i].id; return null; }, [visible, me.id]);
+  const lastVisibleId = visible.length ? visible[visible.length - 1].id : null;
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [noMore, setNoMore] = useState(false);
 
-  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [visible, peerTyping]);
+  // Scroll to bottom only when a NEW message lands or the peer is typing — NOT when
+  // older messages are prepended (COM-008), so the view doesn't jump away from them.
+  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [lastVisibleId, peerTyping]);
   useEffect(() => () => atts.forEach(a => a.preview && URL.revokeObjectURL(a.preview)), [atts]);
 
   // Typing indicator: subscribe per-conversation, reset peer flag if their "stop" is missed.
@@ -994,7 +1000,7 @@ function ChatArea({ peer, msgs, chat }) {
   };
 
   const addAtts = list => {
-    const picked = Array.from(list).filter(f => { if (f.size > MAX_FILE) { alert(`"${f.name}" is over 25 MB.`); return false; } return true; });
+    const picked = Array.from(list).filter(f => { if (f.size > MAX_FILE) { chat.notify?.(`"${f.name}" is over 25 MB.`); return false; } return true; });
     const mapped = picked.map(file => { const type = dmType(file); return { file, type, name:file.name, size:file.size, preview:(type==='image'||type==='video') ? URL.createObjectURL(file) : null }; });
     setAtts(p => [...p, ...mapped].slice(0, 8));
   };
@@ -1016,14 +1022,14 @@ function ChatArea({ peer, msgs, chat }) {
       }
       onSend(peer.id, { text, media, replyTo: replyTo?.id || null });
       setInput(''); setAtts([]); setReplyTo(null);
-    } catch { alert('Could not send. Please try again.'); }
+    } catch { chat.notify?.('Could not send. Please try again.'); }
     setSending(false);
   };
 
   const sendVoice = async file => {
     setSending(true);
     try { const url = await uploadPostFile(me.id, file); onSend(peer.id, { text:'', media:[{ url, type:'audio', name:file.name, size:file.size }] }); }
-    catch { alert('Could not send voice note.'); }
+    catch { chat.notify?.('Could not send voice note.'); }
     setSending(false);
   };
 
@@ -1033,6 +1039,12 @@ function ChatArea({ peer, msgs, chat }) {
   return (
     <>
       <div ref={boxRef} style={{ flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:10 }}>
+        {visible.length >= DM_PAGE && !noMore && (
+          <button onClick={async()=>{ setLoadingOlder(true); const n = await onLoadOlder?.(peer.id); if(!n) setNoMore(true); setLoadingOlder(false); }} disabled={loadingOlder}
+            style={{ alignSelf:'center', background:'rgba(0,0,0,.05)', border:'none', borderRadius:99, padding:'6px 14px', fontSize:12, fontWeight:600, color:'rgba(0,0,0,.55)', cursor:loadingOlder?'default':'pointer', fontFamily:F }}>
+            {loadingOlder ? 'Loading…' : 'Load older messages'}
+          </button>
+        )}
         {visible.length === 0 && <div style={{ textAlign:'center', color:'rgba(0,0,0,.4)', fontSize:13, paddingTop:60 }}>Start a conversation with {peer.name || 'this founder'}</div>}
         {visible.map(m => (
           <MsgBubble key={m.id} m={m} mine={m.sender_id === me.id} peer={peer} me={me} msgs={msgs}
@@ -1096,12 +1108,12 @@ function ChatArea({ peer, msgs, chat }) {
           <button title="Emoji" aria-label="Insert emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
           {emojiOpen && <EmojiPicker onPick={e=>setInput(v=>v+e)} onClose={()=>setEmojiOpen(false)}/>}
         </div>
-        <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending}
+        <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending} maxLength={2000}
           onKeyDown={e=>{ if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center' }}/>
         {hasContent
           ? <button onClick={send} disabled={sending} title="Send" aria-label="Send message" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
-          : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn}/>}
+          : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn} onError={chat.notify}/>}
       </div>
     </>
   );
@@ -1482,11 +1494,11 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
         <input ref={bnInput} type="file" accept="image/*" hidden onChange={e=>{ const f=e.target.files[0]; if(f){ setBannerFile(f); setBannerPrev(URL.createObjectURL(f)); } e.target.value=''; }}/>
 
         <div style={{ padding:'40px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
-          <div><label style={lbl}>Name</label><input value={name} onChange={e=>setName(e.target.value)} style={inp}/></div>
-          <div><label style={lbl}>Headline</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="e.g. Founder · Building X for Y" style={inp}/></div>
-          <div><label style={lbl}>Location</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Hyderabad, India" style={inp}/></div>
-          <div><label style={lbl}>About</label><textarea value={about} onChange={e=>setAbout(e.target.value)} rows={4} placeholder="Tell founders about yourself, what you're building, and what you're looking for." style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/></div>
-          <div><label style={lbl}>Skills (comma-separated)</label><input value={skills} onChange={e=>setSkills(e.target.value)} placeholder="Product, Growth, Fundraising" style={inp}/></div>
+          <div><label style={lbl}>Name</label><input value={name} onChange={e=>setName(e.target.value)} maxLength={60} style={inp}/></div>
+          <div><label style={lbl}>Headline</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="e.g. Founder · Building X for Y" maxLength={120} style={inp}/></div>
+          <div><label style={lbl}>Location</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Hyderabad, India" maxLength={80} style={inp}/></div>
+          <div><label style={lbl}>About</label><textarea value={about} onChange={e=>setAbout(e.target.value)} rows={4} maxLength={1200} placeholder="Tell founders about yourself, what you're building, and what you're looking for." style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/></div>
+          <div><label style={lbl}>Skills (comma-separated)</label><input value={skills} onChange={e=>setSkills(e.target.value)} placeholder="Product, Growth, Fundraising" maxLength={200} style={inp}/></div>
 
           <div>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -1853,10 +1865,15 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [bellOpen, setBellOpen] = useState(false);
   const activePeerRef = useRef(null);
   const dmUserRef = useRef(null);
+  const [toast, setToast] = useState('');
+  const toastTO = useRef(null);
+  const notify = useCallback(msg => { setToast(msg); clearTimeout(toastTO.current); toastTO.current = setTimeout(() => setToast(''), 3500); }, []);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
   useEffect(() => { dmUserRef.current = dmUser?.id ?? null; }, [dmUser]);
 
-  useEffect(() => { fetchPosts().then(p => { setPosts(p); setLoading(false); }); }, []);
+  useEffect(() => { fetchPosts().then(p => { setPosts(p); setHasMore(p.length >= FEED_PAGE); setLoading(false); }); }, []);
   useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
   useEffect(() => { if (user?.id) fetchProfile(user.id).then(setMyProfile).catch(() => {}); }, [user]);
 
@@ -1864,10 +1881,29 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   // (debounced so bursts coalesce). No manual refresh needed.
   useEffect(() => {
     let on = true, timer = null;
-    const refresh = () => { clearTimeout(timer); timer = setTimeout(() => { fetchPosts().then(p => { if (on) setPosts(p); }); }, 700); };
+    // Refetch only the first page and merge — replaces the top page (so edits/deletes there
+    // reflect) while keeping any older pages the user already loaded (COM-007).
+    const refresh = () => { clearTimeout(timer); timer = setTimeout(() => { fetchPosts().then(fresh => {
+      if (!on) return;
+      setPosts(prev => {
+        const freshIds = new Set(fresh.map(p => p.id));
+        const oldest = fresh.length ? new Date(fresh[fresh.length - 1].created_at).getTime() : Infinity;
+        const older = prev.filter(p => !freshIds.has(p.id) && new Date(p.created_at).getTime() < oldest);
+        return [...fresh, ...older];
+      });
+    }); }, 700); };
     const unsub = subscribeToCommunity(refresh);
     return () => { on = false; clearTimeout(timer); unsub(); };
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !posts.length) return;
+    setLoadingMore(true);
+    const older = await fetchPosts({ before: posts[posts.length - 1].created_at });
+    setPosts(prev => { const ids = new Set(prev.map(p => p.id)); return [...prev, ...older.filter(p => !ids.has(p.id))]; });
+    setHasMore(older.length >= FEED_PAGE);
+    setLoadingMore(false);
+  }, [loadingMore, posts]);
 
   useEffect(() => {
     let on = true;
@@ -1929,14 +1965,16 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (!user) return;
     // following or requested → cancel; otherwise → send a follow request
     const had = followingIds.has(uid) || pendingIds.has(uid);
+    const prevState = followState;
     setFollowState(prev => {
       const accepted = new Set(prev.accepted), pending = new Set(prev.pending);
       if (had) { accepted.delete(uid); pending.delete(uid); }
       else pending.add(uid);
       return { accepted, pending };
     });
-    await setFollow(user.id, uid, !had);
-  }, [user, followingIds, pendingIds]);
+    const { error } = (await setFollow(user.id, uid, !had)) || {};
+    if (error) { setFollowState(prevState); notify("Couldn't update follow — please try again."); }
+  }, [user, followingIds, pendingIds, followState, notify]);
 
   const respondRequest = useCallback(async (followerId, accept) => {
     if (!user) return;
@@ -1950,45 +1988,54 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (!user) return;
     const value = n10 / 2;
     const target = posts.find(p => p.id === postId);
+    const prevPosts = posts;
     setPosts(prev => prev.map(p => {
       if (p.id !== postId) return p;
       const others = (p.ratings||[]).filter(r => r.user_id !== user.id);
       return { ...p, ratings:[...others, { user_id:user.id, value }] };
     }));
     setTimeout(() => setROpen(null), 700);
-    await ratePost(user.id, postId, value);
+    const { error } = (await ratePost(user.id, postId, value)) || {};
+    if (error) { setPosts(prevPosts); notify("Couldn't save your rating."); return; }
     if (target) createNotification({ actorId:user.id, userId:target.user_id, type:'rating', postId, data:{ value:n10, title:target.title } });
-  }, [user, posts]);
+  }, [user, posts, notify]);
 
   const handleSave = useCallback(async postId => {
     if (!user) return onSignIn?.();
     const has = savedIds.has(postId);
     setSavedIds(prev => { const n = new Set(prev); has ? n.delete(postId) : n.add(postId); return n; });
-    await setSavedPost(user.id, postId, !has);
-  }, [user, savedIds, onSignIn]);
+    const { error } = (await setSavedPost(user.id, postId, !has)) || {};
+    if (error) { setSavedIds(prev => { const n = new Set(prev); has ? n.add(postId) : n.delete(postId); return n; }); notify("Couldn't update saved."); }
+  }, [user, savedIds, onSignIn, notify]);
 
   const handleVote = useCallback(async (postId, idx) => {
     if (!user) return onSignIn?.();
+    const prevPosts = posts;
     setPosts(prev => prev.map(p => {
       if (p.id !== postId) return p;
       const others = (p.pollVotes||[]).filter(v => v.user_id !== user.id);
       return { ...p, pollVotes: [...others, { user_id:user.id, option_idx:idx }] };
     }));
-    await votePoll(user.id, postId, idx);
-  }, [user, onSignIn]);
+    const { error } = (await votePoll(user.id, postId, idx)) || {};
+    if (error) { setPosts(prevPosts); notify("Couldn't record your vote."); }
+  }, [user, onSignIn, posts, notify]);
 
   const handleRepost = useCallback(async (original, commentary) => {
     if (!user) return;
-    const row = await repostPost(user.id, original.id, commentary);
-    setPosts(prev => [{ id:row.id, created_at:row.created_at, user_id:user.id, title:'', body:commentary||'', tags:[], media:[], meta:null, repost_of:original.id, original, reactions:[], ratings:[], sugCount:0, author:{ id:user.id, name:nameOf(user), avatar_url:user.user_metadata?.avatar_url } }, ...prev]);
-    if (original.user_id !== user.id) createNotification({ actorId:user.id, userId:original.user_id, type:'repost', postId:original.id, data:{ title:original.title } });
-  }, [user]);
+    try {
+      const row = await repostPost(user.id, original.id, commentary);
+      setPosts(prev => [{ id:row.id, created_at:row.created_at, user_id:user.id, title:'', body:commentary||'', tags:[], media:[], meta:null, repost_of:original.id, original, reactions:[], ratings:[], sugCount:0, author:{ id:user.id, name:nameOf(user), avatar_url:user.user_metadata?.avatar_url } }, ...prev]);
+      if (original.user_id !== user.id) createNotification({ actorId:user.id, userId:original.user_id, type:'repost', postId:original.id, data:{ title:original.title } });
+    } catch { notify("Couldn't repost — please try again."); }
+  }, [user, notify]);
 
   const handleDelete = useCallback(async post => {
+    const prevPosts = posts;
     setPosts(prev => prev.filter(p => p.id !== post.id));
     setConfirmDel(null);
-    await deletePost(user.id, post.id);
-  }, [user]);
+    const { error } = (await deletePost(user.id, post.id)) || {};
+    if (error) { setPosts(prevPosts); notify("Couldn't delete the post."); }
+  }, [user, posts, notify]);
 
   const openDM = useCallback(peer => {
     if (!user) return onSignIn?.();
@@ -2012,8 +2059,12 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     try {
       const row = await sendMessage(user.id, peerId, { text, media, replyTo, forwarded });
       setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], messages:prev[peerId].messages.map(m => m.id===temp.id?row:m) } } : prev);
-    } catch { /* surfaced in console */ }
-  }, [user]);
+    } catch {
+      // Mark the optimistic bubble as failed instead of leaving it looking sent (COM-006).
+      setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], messages:prev[peerId].messages.map(m => m.id===temp.id?{ ...m, failed:true }:m) } } : prev);
+      notify('Message not delivered — check your connection.');
+    }
+  }, [user, notify]);
 
   const handleReact = useCallback(async (peerId, msg, emoji) => {
     if (!user || String(msg.id).startsWith('t_')) return;
@@ -2035,7 +2086,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const handleUnsend = useCallback(async (peerId, msg) => {
     if (!user || msg.sender_id !== user.id || msg.read) return;
     setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted: true }, user.id));
-    if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, true);
+    if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, true, user.id);
   }, [user]);
 
   // Roll back a delete within the 5s window.
@@ -2043,7 +2094,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (!user) return;
     if (mode === 'everyone') {
       setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted: false }, user.id));
-      if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, false);
+      if (!String(msg.id).startsWith('t_')) await setMessageDeleted(msg.id, false, user.id);
     } else {
       const nextDF = (msg.deleted_for || []).filter(id => id !== user.id);
       setConvs(prev => patchMsg(prev, peerId, msg.id, { deleted_for: nextDF }, user.id));
@@ -2051,8 +2102,22 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     }
   }, [user]);
 
-  const chatApi = useMemo(() => ({ me:user, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg }),
-    [user, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete]);
+  // Prepend an older page of messages for one conversation (COM-008). Returns the count added.
+  const loadOlder = useCallback(async peerId => {
+    if (!user) return 0;
+    const c = convs[peerId];
+    const first = c?.messages?.find(m => !String(m.id).startsWith('t_'));
+    if (!first) return 0;
+    const older = await fetchOlderMessages(user.id, peerId, first.created_at);
+    const ids = new Set((c.messages || []).map(m => m.id));
+    const add = older.filter(m => !ids.has(m.id));
+    if (!add.length) return 0;
+    setConvs(prev => { const cc = prev[peerId]; return cc ? { ...prev, [peerId]: { ...cc, messages: [...add, ...cc.messages] } } : prev; });
+    return add.length;
+  }, [user, convs]);
+
+  const chatApi = useMemo(() => ({ me:user, notify, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg, onLoadOlder:loadOlder }),
+    [user, notify, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete, loadOlder]);
 
   const openConv = useCallback(peerId => {
     setActivePeer(peerId);
@@ -2121,6 +2186,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
+      {toast && (
+        <div role="status" style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:1200, maxWidth:'90vw', background:'#1f2937', color:'#fff', borderRadius:10, padding:'11px 18px', fontSize:13.5, fontWeight:600, boxShadow:'0 8px 28px rgba(0,0,0,.28)' }}>{toast}</div>
+      )}
       <style>{`
         *{box-sizing:border-box}
         ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#c0bfbc;border-radius:3px}
@@ -2280,6 +2348,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
               {shown.map(p=>(
                 <PostCard key={p.id} post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id} highlight={focusId===p.id} saved={savedIds.has(p.id)}/>
               ))}
+              {!loading && hasMore && shown.length > 0 && (
+                <button onClick={loadMore} disabled={loadingMore} style={{ ...card, padding:'14px', textAlign:'center', fontSize:13.5, fontWeight:700, color:'rgba(0,0,0,.6)', cursor:loadingMore?'default':'pointer', border:'none', fontFamily:F }}>
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              )}
             </div>
           )}
 

@@ -120,6 +120,10 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     notifications/follows to the supabase_realtime publication (+ replica
                                     identity full) so the feed/bell/comments live-update. Idempotent.
 14. supabase_billing.sql            LAST — only when Razorpay is ready (see Billing below)
+15. supabase_community_hardening.sql  DM authorization + integrity (QA Phase 4): trigger so only the
+                                    SENDER can tombstone a message, a `toggle_message_reaction` RPC
+                                    (atomic, identity-checked), and post-media/avatars bucket size+mime
+                                    limits. Idempotent; client degrades gracefully until it's run.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
