@@ -10,6 +10,7 @@ alter table profiles add column if not exists val_month           text;         
 alter table profiles add column if not exists val_count           int default 0;
 alter table profiles add column if not exists rzp_customer_id     text;
 alter table profiles add column if not exists rzp_subscription_id text;
+alter table profiles add column if not exists rzp_event_at        timestamptz;         -- last applied webhook event time (out-of-order guard)
 
 -- Atomically check the caller's quota and consume one validation.
 -- Returns { allowed: bool, reason: text, remaining: int }

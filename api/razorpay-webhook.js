@@ -10,7 +10,7 @@
 //   Events: subscription.activated, subscription.charged, subscription.completed,
 //           subscription.cancelled, subscription.halted, subscription.pending
 
-/* global process */
+/* global process, Buffer */
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
@@ -35,9 +35,13 @@ export default async function handler(req, res) {
   if (!secret || !serviceKey) return res.status(500).json({ error: "Webhook not configured" });
 
   const raw = await readRaw(req);
-  const signature = req.headers["x-razorpay-signature"];
+  const signature = req.headers["x-razorpay-signature"] || "";
   const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-  if (!signature || signature !== expected) return res.status(400).json({ error: "Invalid signature" });
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return res.status(400).json({ error: "Invalid signature" });
+  }
 
   let event;
   try { event = JSON.parse(raw); } catch { return res.status(400).json({ error: "Bad payload" }); }
@@ -45,6 +49,7 @@ export default async function handler(req, res) {
   const sub = event?.payload?.subscription?.entity;
   const userId = sub?.notes?.user_id;
   const type = event?.event || "";
+  const eventAt = event?.created_at ? new Date(event.created_at * 1000).toISOString() : new Date().toISOString();
   if (!sub || !userId) return res.status(200).json({ ok: true }); // nothing to do
 
   // Active states keep the badge + quota; ended states revoke them.
@@ -63,7 +68,19 @@ export default async function handler(req, res) {
 
   try {
     const supabase = createClient(SUPABASE_URL, serviceKey);
-    await supabase.from("profiles").update(patch).eq("id", userId);
-  } catch { /* swallow — Razorpay retries on non-2xx, but we don't want loops */ }
+    // Out-of-order guard: ignore an event older than the last one we applied, so a
+    // reordered cancelled/charged can't wrongly flip status (PAY-003).
+    const { data: prof } = await supabase.from("profiles").select("rzp_event_at").eq("id", userId).single();
+    if (prof?.rzp_event_at && new Date(eventAt) <= new Date(prof.rzp_event_at)) {
+      return res.status(200).json({ ok: true, skipped: "stale" });
+    }
+    patch.rzp_event_at = eventAt;
+    const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
+    // On a write failure return non-2xx so Razorpay RETRIES — never silently lose an
+    // activation by returning 200 after a failed update (PAY-001).
+    if (error) return res.status(500).json({ error: "Profile update failed" });
+  } catch {
+    return res.status(500).json({ error: "Profile update failed" });
+  }
   return res.status(200).json({ ok: true });
 }

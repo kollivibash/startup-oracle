@@ -473,7 +473,7 @@ const ResetPassword = ({ onDone }) => {
   );
 };
 
-export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth, recovery, onRecoveryDone }) {
+export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, afterAuth, recovery, onRecoveryDone }) {
   const [mode, setMode]       = useState('signin');
   const [success, setSuccess] = useState(false);
   const [isNew, setIsNew]     = useState(false);
@@ -485,6 +485,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, afterAuth, rec
     // Auto-redirect after 1.2s to the destination they came from
     setTimeout(() => {
       if (afterAuth === 'community') onCommunity();
+      else if (afterAuth === 'pricing') onPricing?.();
       else if (afterAuth === 'oracle') onHome();
       else onSubmitIdea();
     }, 1200);

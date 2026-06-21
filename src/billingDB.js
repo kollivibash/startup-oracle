@@ -57,16 +57,51 @@ export async function fetchVerifiedIds() {
 }
 
 // Kicks off a Razorpay subscription; returns { subscription_id, key_id, plan }.
+// Wrapped in a 15s timeout so a flaky connection can't hang the checkout button (PAY-005).
 export async function startSubscription(plan) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error("Please sign in first.");
-  const r = await fetch("/api/razorpay-subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ plan }),
-  });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch("/api/razorpay-subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan }),
+      signal: ctl.signal,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || "Could not start checkout. Is billing configured?");
+    return data;
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("Checkout is taking too long — check your connection and try again.", { cause: e });
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Reconcile subscription state against Razorpay (fallback for webhook lag/miss).
+// Returns { synced, reason?, billing? }; degrades to { synced:false } off-Vercel.
+export async function syncSubscription() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { synced: false };
+  try {
+    const r = await fetch("/api/razorpay-sync", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return { synced: false };
+    return await r.json();
+  } catch { return { synced: false }; }
+}
+
+// Cancel the user's subscription at the end of the current cycle (PAY-006).
+export async function cancelSubscription() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error("Please sign in first.");
+  const r = await fetch("/api/razorpay-cancel", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   const data = await r.json();
-  if (!r.ok) throw new Error(data?.error || "Could not start checkout. Is billing configured?");
+  if (!r.ok) throw new Error(data?.error || "Could not cancel subscription.");
   return data;
 }

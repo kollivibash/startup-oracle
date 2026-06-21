@@ -35,6 +35,18 @@ export default async function handler(req, res) {
   const planId = plan === "monthly" ? process.env.RAZORPAY_PLAN_MONTHLY : process.env.RAZORPAY_PLAN_YEARLY;
   if (!keyId || !keySecret || !planId) return res.status(500).json({ error: "Billing not configured" });
 
+  // Authoritative profile access (bypasses RLS) for the duplicate guard + storing
+  // the subscription id at creation, so reconciliation has a handle (PAY-001/002).
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const admin = serviceKey ? createClient(SUPABASE_URL, serviceKey) : null;
+
+  // Don't let a user create a second subscription while one is already active (PAY-002).
+  if (admin) {
+    const { data: prof } = await admin.from("profiles").select("sub_status, sub_until").eq("id", user.id).single();
+    const active = prof?.sub_status === "active" && (!prof.sub_until || new Date(prof.sub_until) > new Date());
+    if (active) return res.status(409).json({ error: "You already have an active subscription." });
+  }
+
   try {
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
     const r = await fetch("https://api.razorpay.com/v1/subscriptions", {
@@ -49,6 +61,11 @@ export default async function handler(req, res) {
     });
     const data = await r.json();
     if (!r.ok) return res.status(502).json({ error: data?.error?.description || "Razorpay error" });
+    // Record the subscription id now (state "created") so /api/razorpay-sync can
+    // reconcile even if the webhook never fires (PAY-001).
+    if (admin) {
+      try { await admin.from("profiles").update({ rzp_subscription_id: data.id, sub_status: "created" }).eq("id", user.id); } catch { /* best effort */ }
+    }
     return res.status(200).json({ subscription_id: data.id, key_id: keyId, plan });
   } catch {
     return res.status(502).json({ error: "Could not create subscription" });

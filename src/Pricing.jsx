@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { startSubscription, fetchMyBilling } from "./billingDB";
+import { startSubscription, fetchMyBilling, syncSubscription, cancelSubscription } from "./billingDB";
 
 const F = "var(--font)";           // DM Sans — unified body/UI ramp
 const FD = "var(--font-display)";  // Plus Jakarta Sans — headings/display
@@ -10,8 +10,11 @@ function loadRazorpay() {
     if (window.Razorpay) return resolve(true);
     const s = document.createElement("script");
     s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
+    let settled = false;
+    const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+    s.onload = () => finish(true);
+    s.onerror = () => finish(false);
+    setTimeout(() => finish(false), 15000); // don't hang on a stalled script load (PAY-005)
     document.body.appendChild(s);
   });
 }
@@ -19,7 +22,9 @@ function loadRazorpay() {
 function PlanCard({ plan, price, per, sub, recommended, selected, busy, isSubscribed, onSelect, onSubscribe }) {
   const isSel = selected === plan;
   return (
-    <div onClick={() => onSelect(plan)}
+    <div onClick={() => onSelect(plan)} role="radio" aria-checked={isSel} tabIndex={0}
+      aria-label={`${plan === "monthly" ? "Monthly" : "Yearly"} plan, ${price} ${per}`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(plan); } }}
       style={{ flex: 1, minWidth: 240, background: "#fff", borderRadius: 14, cursor: "pointer",
         border: `${isSel ? 2 : 1.5}px solid ${isSel ? INK : "rgba(0,0,0,.12)"}`,
         padding: "28px 26px", position: "relative", boxShadow: isSel ? "0 12px 40px rgba(0,0,0,.12)" : "none",
@@ -46,7 +51,7 @@ const PERKS = [
   "2 idea validations every month",
   "Full 6-section deep-dive reports",
   "Verified Founder badge on your profile & posts",
-  "Priority report generation",
+  "Save, re-open & PDF-export every report",
   "Everything in the community — post, rate, suggest, DM",
 ];
 
@@ -56,8 +61,47 @@ export default function Pricing({ user, onHome, onSignIn }) {
   const [done, setDone] = useState(false);
   const [billing, setBilling] = useState(null);
   const [selected, setSelected] = useState(null); // no plan pre-selected — user picks
+  const [reconciling, setReconciling] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelInfo, setCancelInfo] = useState("");
 
-  useEffect(() => { if (user) fetchMyBilling(user.id).then(setBilling); }, [user, done]);
+  // Initial load — and if a prior checkout left the sub mid-flight, reconcile once.
+  useEffect(() => {
+    if (!user) return undefined;
+    let stop = false;
+    (async () => {
+      let b = await fetchMyBilling(user.id);
+      if (stop) return;
+      setBilling(b);
+      if (b?.sub_status === "created" || b?.sub_status === "pending") {
+        await syncSubscription();
+        b = await fetchMyBilling(user.id);
+        if (!stop) setBilling(b);
+      }
+    })();
+    return () => { stop = true; };
+  }, [user]);
+
+  // After checkout, poll sync+billing until the account actually activates, so
+  // "paid" reliably becomes "active" even if the webhook is slow/missed (PAY-001).
+  useEffect(() => {
+    if (!done || !user) return undefined;
+    let stop = false, attempts = 0;
+    const tick = async () => {
+      if (stop) return;
+      setReconciling(true);
+      attempts++;
+      await syncSubscription();
+      const b = await fetchMyBilling(user.id);
+      if (stop) return;
+      setBilling(b);
+      if (b?.sub_status === "active" || attempts >= 6) { setReconciling(false); return; }
+      setTimeout(tick, 3000);
+    };
+    const t = setTimeout(tick, 0); // defer out of the synchronous effect body
+    return () => { stop = true; clearTimeout(t); };
+  }, [done, user]);
+
   const isSubscribed = billing?.sub_status === "active";
 
   const subscribe = async (plan) => {
@@ -78,7 +122,25 @@ export default function Pricing({ user, onHome, onSignIn }) {
         modal: { ondismiss: () => setBusy(null) },
       });
       rzp.open();
-    } catch (e) { setErr(e?.message || "Something went wrong."); setBusy(null); }
+    } catch (e) {
+      const msg = e?.message || "Something went wrong.";
+      // Dormant billing returns "Billing not configured" — don't show users that raw (PAY-008).
+      setErr(/not configured/i.test(msg)
+        ? "Subscriptions aren't live yet — they're coming soon. Thanks for your interest!"
+        : msg);
+      setBusy(null);
+    }
+  };
+
+  const doCancel = async () => {
+    if (typeof window !== "undefined" && !window.confirm("Cancel your subscription? You'll keep access until the end of your current billing period.")) return;
+    setCancelling(true); setErr("");
+    try {
+      const r = await cancelSubscription();
+      const when = r?.ends_at ? new Date(r.ends_at).toLocaleDateString() : "the end of your billing period";
+      setCancelInfo(`Subscription cancelled — you'll keep access until ${when}.`);
+    } catch (e) { setErr(e?.message || "Could not cancel."); }
+    setCancelling(false);
   };
 
 
@@ -99,17 +161,24 @@ export default function Pricing({ user, onHome, onSignIn }) {
 
         {done && (
           <div style={{ background: "#ecfdf5", border: "1px solid #6ee7b7", color: "#065f46", borderRadius: 10, padding: "12px 16px", fontSize: 13.5, marginBottom: 24, fontWeight: 600 }}>
-            ✓ Payment received! Your Verified badge and validations activate within a minute.
+            {isSubscribed
+              ? "✓ You're all set — Verified Founder is active. Welcome aboard!"
+              : reconciling
+                ? "✓ Payment received — activating your account…"
+                : "✓ Payment received! Activation is taking a little longer than usual — refresh in a minute, and it'll appear."}
           </div>
         )}
         {isSubscribed && !done && (
-          <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,.12)", borderRadius: 10, padding: "12px 16px", fontSize: 13.5, marginBottom: 24, fontWeight: 600 }}>
-            ✓ You're a Verified Founder ({billing.sub_plan || "active"}). Thanks for supporting Startup Oracle!
+          <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,.12)", borderRadius: 10, padding: "12px 16px", fontSize: 13.5, marginBottom: 24, fontWeight: 600, textAlign: "left", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+            <span>✓ You're a Verified Founder ({billing.sub_plan || "active"}). Thanks for supporting Startup Oracle!</span>
+            {cancelInfo
+              ? <span style={{ fontWeight: 500, color: "rgba(0,0,0,.6)" }}>{cancelInfo}</span>
+              : <button onClick={doCancel} disabled={cancelling} style={{ background: "transparent", border: "1px solid rgba(0,0,0,.2)", borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 600, color: "rgba(0,0,0,.6)", cursor: cancelling ? "default" : "pointer", fontFamily: F }}>{cancelling ? "Cancelling…" : "Cancel subscription"}</button>}
           </div>
         )}
         {err && <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 20 }}>{err}</div>}
 
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", justifyContent: "center", marginBottom: 36 }}>
+        <div role="radiogroup" aria-label="Choose a plan" style={{ display: "flex", gap: 18, flexWrap: "wrap", justifyContent: "center", marginBottom: 36 }}>
           <PlanCard plan="monthly" price="₹50" per="/ month" sub="Billed monthly · cancel anytime" selected={selected} busy={busy} isSubscribed={isSubscribed} onSelect={setSelected} onSubscribe={subscribe} />
           <PlanCard plan="yearly" price="₹500" per="/ year" sub="₹41/mo · 2 months free" recommended selected={selected} busy={busy} isSubscribed={isSubscribed} onSelect={setSelected} onSubscribe={subscribe} />
         </div>

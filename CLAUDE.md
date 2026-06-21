@@ -89,8 +89,14 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                          /api/generate directly. Fails open until billing + REPORT_GRANT_SECRET exist.
   news.js              — live startup news (server-side TechCrunch RSS fetch)
   unfurl.js            — link-preview OG scraper (auth-gated, SSRF guards)
-  razorpay-subscribe.js— create a Razorpay subscription (auth-gated)
-  razorpay-webhook.js  — activate/deactivate subscription + verified badge (uses service-role key)
+  razorpay-subscribe.js— create a Razorpay subscription (auth-gated; refuses a 2nd sub while one is
+                         active, and records the sub id at creation so sync can reconcile)
+  razorpay-webhook.js  — activate/deactivate subscription + verified badge (service-role key;
+                         constant-time signature check, out-of-order guard via rzp_event_at, returns
+                         non-2xx on DB-write failure so Razorpay retries)
+  razorpay-sync.js     — reconcile a user's subscription vs Razorpay directly (fallback the client polls
+                         after checkout, so a slow/missed webhook can't leave a paid user un-activated)
+  razorpay-cancel.js   — cancel a subscription at cycle end (in-app "cancel anytime")
 ```
 
 ### SQL migrations — run in Supabase SQL Editor in THIS order
@@ -145,6 +151,12 @@ Subscription model via **Razorpay**: ₹50/month, ₹500/year. Free tier = **1 v
 subscribers get **2 validations/month** + the verified badge. `consume_validation()` /
 `refund_validation()` Postgres RPCs gate it atomically (quota constant is `2` in `supabase_billing.sql`).
 Until `supabase_billing.sql` is run, gating **fails open** (everyone validates freely).
+
+**Activation is webhook + reconciliation:** the webhook is the fast path; after checkout `Pricing`
+also polls `/api/razorpay-sync` (which queries Razorpay directly and writes via service role) so a
+slow/missed webhook can't leave a paid user un-activated. Subscriptions can be cancelled in-app
+(`/api/razorpay-cancel`, at cycle end), creating a 2nd active sub is refused server-side, and the
+webhook is idempotent (out-of-order guard via the `rzp_event_at` column).
 
 To go live (owner): create Razorpay account + 2 Plans (monthly 5000 paise, yearly 50000 paise);
 add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MONTHLY`,

@@ -173,7 +173,7 @@ export default function App() {
         />
       : null
   } else if (view === 'pricing') {
-    screen = <Pricing user={user} onHome={() => setView('oracle')} onSignIn={goSignIn} />
+    screen = <Pricing user={user} onHome={() => setView('oracle')} onSignIn={() => goAuth('pricing')} />
   } else if (view === 'submit') {
     screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} onSignIn={() => goAuth('submit')} />
   } else if (view === 'community') {
@@ -185,6 +185,7 @@ export default function App() {
         onSubmitIdea={() => setView('submit')}
         onCommunity={() => setView('community')}
         afterAuth={afterAuth}
+        onPricing={() => setView('pricing')}
         recovery={recovery}
         onRecoveryDone={() => { setRecovery(false); setView('oracle') }}
       />
