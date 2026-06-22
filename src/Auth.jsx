@@ -543,6 +543,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, aft
   const handleSuccess = (newUser=false) => {
     setIsNew(newUser);
     setSuccess(true);
+    if (newUser) { try { localStorage.setItem('so_welcome_pending', '1'); } catch { /* private mode */ } }
     // Auto-redirect after 1.2s to the destination they came from
     setTimeout(() => {
       if (afterAuth === 'community') onCommunity();

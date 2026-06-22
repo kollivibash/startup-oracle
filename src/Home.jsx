@@ -25,7 +25,7 @@ const InkBtn = ({ children, onClick, size='sm' }) => (
   </button>
 );
 
-export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount, onPricing }) {
+export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount, onPricing, onHowItWorks }) {
   return (
     <div style={{ minHeight:'100vh', background:'#fff', color:INK, fontFamily:SANS, display:'flex', flexDirection:'column' }}>
       <style>{`
@@ -46,6 +46,7 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
           <NavLink onClick={onCommunity}>Community</NavLink>
           <NavLink onClick={onAnalyse}>Analyse Idea</NavLink>
           <NavLink onClick={onPricing}>Pricing</NavLink>
+          {onHowItWorks && <NavLink onClick={onHowItWorks}>How it works</NavLink>}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:20 }}>
           {user ? (

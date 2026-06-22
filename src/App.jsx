@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import Home from './Home'
 import ErrorBoundary from './ErrorBoundary'
+import WelcomeSlides from './WelcomeSlides'
 import { supabase } from './supabaseClient'
 
 // Code-split the heavy views so the landing page ships a small initial bundle —
@@ -41,6 +42,17 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [recovery, setRecovery]   = useState(false)  // password-reset landing (AUTH-002)
   const [online, setOnline]       = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true))
+  // First-run welcome slides — shown once on first visit (not during an OAuth/recovery/deep-link
+  // boot), once after signup (so_welcome_pending), and replayable via "How it works".
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      if (localStorage.getItem('so_welcome_seen')) return false
+      const h = window.location.hash
+      if (h.includes('access_token') || /^#\/(idea|legal)\//.test(h)) return false
+      return true
+    } catch { return false }
+  })
+  const dismissWelcome = () => { try { localStorage.setItem('so_welcome_seen', '1') } catch { /* private mode */ } setShowWelcome(false) }
   const [activeIdea, setActiveIdea] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
@@ -116,6 +128,19 @@ export default function App() {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  // Show the welcome slides once right after a new user signs up.
+  useEffect(() => {
+    if (!user) return undefined
+    let t
+    try {
+      if (localStorage.getItem('so_welcome_pending')) {
+        localStorage.removeItem('so_welcome_pending')
+        t = setTimeout(() => setShowWelcome(true), 0) // defer out of the effect body
+      }
+    } catch { /* private mode */ }
+    return () => clearTimeout(t)
+  }, [user])
 
   // Offline awareness (CROSS-003) — a banner instead of silent failures on flaky networks.
   useEffect(() => {
@@ -217,12 +242,14 @@ export default function App() {
         onSignIn={goSignIn}
         onAccount={goAccount}
         onPricing={() => setView('pricing')}
+        onHowItWorks={() => setShowWelcome(true)}
       />
     )
   }
 
   return (
     <>
+      {showWelcome && <WelcomeSlides onClose={dismissWelcome} onStart={() => { dismissWelcome(); goAuth('submit') }} />}
       {!online && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2000, background: '#1f2937', color: '#fff', textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '8px 16px', fontFamily: 'var(--font)' }}>
           You're offline — some actions may not work until you reconnect.

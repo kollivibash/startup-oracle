@@ -56,6 +56,9 @@ src/
                      app in `ErrorBoundary` + shows an offline banner (navigator.onLine)
   ErrorBoundary.jsx— class error boundary so a render crash shows a recover screen, not a white page
                      (mounted in main.jsx around <App/>, and per-view in App.jsx keyed by `view`)
+  WelcomeSlides.jsx— first-run 3-slide intro carousel (Validate / Community / Free to start); shown once
+                     on first visit + once after signup (localStorage `so_welcome_seen`/`so_welcome_pending`),
+                     replayable via Home's "How it works" link. Distinct from the in-feed OnboardingCard.
   Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
