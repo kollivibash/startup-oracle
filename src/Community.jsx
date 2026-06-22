@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -22,6 +22,42 @@ const timeAgo = d => {
   if (s < 604800) return `${Math.floor(s/86400)}d`;
   return new Date(d).toLocaleDateString('en-IN',{month:'short',day:'numeric'});
 };
+
+// Post audience / visibility (enforced by supabase_post_visibility.sql).
+const VIS = {
+  public:    { icon:'🌐', label:'Everyone',  hint:'Anyone can see this post' },
+  followers: { icon:'👥', label:'Followers', hint:'Only people who follow you' },
+  private:   { icon:'🔒', label:'Only me',   hint:'Hidden from everyone but you' },
+};
+const visKey = v => (VIS[v] ? v : 'public');
+
+// Dropdown to pick a post's audience — used in the composer, edit modal, and change-audience.
+function AudiencePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => { const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
+  const cur = VIS[visKey(value)];
+  return (
+    <div ref={ref} style={{ position:'relative', display:'inline-block' }}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} aria-haspopup="listbox" aria-expanded={open}
+        style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:99, border:'1px solid rgba(0,0,0,.18)', background:'#fff', fontSize:12.5, fontWeight:600, color:'rgba(0,0,0,.7)', cursor:'pointer', fontFamily:F }}>
+        <span>{cur.icon}</span><span>{cur.label}</span><span style={{ fontSize:9, color:'rgba(0,0,0,.4)' }}>▼</span>
+      </button>
+      {open && (
+        <div role="listbox" style={{ position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:400, width:240, background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:10, boxShadow:'0 12px 40px rgba(0,0,0,.16)', overflow:'hidden', padding:'6px 0' }}>
+          {Object.entries(VIS).map(([k,v])=>(
+            <button key={k} type="button" role="option" aria-selected={k===visKey(value)} onClick={()=>{ onChange(k); setOpen(false); }}
+              style={{ display:'flex', gap:10, alignItems:'flex-start', width:'100%', textAlign:'left', padding:'9px 14px', border:'none', background: k===visKey(value)?'rgba(0,0,0,.04)':'#fff', cursor:'pointer', fontFamily:F }}
+              onMouseEnter={e=>{ if(k!==visKey(value)) e.currentTarget.style.background='rgba(0,0,0,.03)'; }} onMouseLeave={e=>{ if(k!==visKey(value)) e.currentTarget.style.background='#fff'; }}>
+              <span style={{ fontSize:16, lineHeight:1.2 }}>{v.icon}</span>
+              <span><span style={{ display:'block', fontSize:13.5, fontWeight:700, color:'rgba(0,0,0,.85)' }}>{v.label}</span><span style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>{v.hint}</span></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 const nameOf = u => u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'You';
 const headlineOf = p => p?.bio || 'Founder · Startup Oracle';
 // DB stores 0.5–5.0 (half-star schema); UI shows a 1–10 scale
@@ -430,8 +466,69 @@ const OnboardingCard = ({ steps, doneCount, onDismiss }) => (
   </div>
 );
 
-function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
+// Edit an existing post's text + audience after posting.
+function EditPostModal({ post, onClose, onSave }) {
+  useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
+  const isRepost = !!post.repost_of;
+  const kind = post.kind || (isRepost ? 'repost' : 'post');
+  const isArticle = kind === 'article';
+  const isPoll = kind === 'poll';
+  const initialText = isArticle ? (post.body || '')
+    : isPoll ? (post.title || '')
+    : isRepost ? (post.body || '')
+    : [post.title, post.body].filter(Boolean).join('\n');
+  const [text, setText] = useState(initialText);
+  const [title, setTitle] = useState(post.title || '');
+  const [visibility, setVisibility] = useState(visKey(post.visibility));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const save = async () => {
+    setBusy(true); setErr('');
+    const fields = { visibility };
+    if (isArticle) { fields.title = title.trim().slice(0,120) || 'Untitled'; fields.body = text.trim(); }
+    else if (isPoll) { fields.title = text.trim().slice(0,140) || post.title; }
+    else if (isRepost) { fields.body = text.trim(); }
+    else { const t = text.trim(); fields.title = (t.split('\n')[0].trim().slice(0,80)) || 'New Idea'; fields.body = t.split('\n').slice(1).join('\n').trim(); }
+    const res = await onSave(post, fields);
+    setBusy(false);
+    if (res?.error) { setErr('Could not save changes. Please try again.'); return; }
+    onClose();
+  };
+
+  const fin = { width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, fontFamily:F, outline:'none', boxSizing:'border-box' };
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:355, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card, width:'100%', maxWidth:520, padding:0, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Edit post</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, padding:4 }}>✕</button>
+        </div>
+        <div style={{ padding:'14px 18px 4px' }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'rgba(0,0,0,.55)', marginBottom:8 }}>Who can see this</div>
+          <AudiencePicker value={visibility} onChange={setVisibility}/>
+        </div>
+        <div style={{ padding:'12px 18px 0' }}>
+          {isArticle && <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Article title" maxLength={120} style={{ ...fin, fontWeight:700, marginBottom:10 }}/>}
+          {isPoll && <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', marginBottom:6 }}>Editing the poll question (the options stay the same).</div>}
+          <textarea value={text} onChange={e=>setText(e.target.value)} rows={isArticle?7:5} maxLength={isArticle?20000:5000} placeholder={isPoll?'Poll question…':'What’s on your mind?'}
+            style={{ ...fin, lineHeight:1.6, resize:'vertical' }}/>
+          {err && <div style={{ fontSize:12.5, color:'#DC2626', marginTop:8 }}>{err}</div>}
+        </div>
+        <div style={{ padding:'14px 18px', display:'flex', justifyContent:'flex-end', gap:10 }}>
+          <button onClick={onClose} style={{ background:'#fff', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 18px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ background:'#0a0a0a', color:'#fff', border:'none', borderRadius:8, padding:'10px 22px', fontSize:14, fontWeight:700, cursor:busy?'default':'pointer', fontFamily:F }}>{busy?'Saving…':'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const postMenuItem = { display:'block', width:'100%', textAlign:'left', padding:'10px 16px', border:'none', background:'#fff', fontSize:13.5, fontWeight:600, color:'rgba(0,0,0,.8)', cursor:'pointer', fontFamily:F };
+
+function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, requireAuth, onDelete, onEdit, onDM, highlight, onSave, onRepost, saved, onOpenPost, onVote, verifiedIds }) {
   const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extraSug, setExtraSug] = useState(0);
   const author = post.author || {};
@@ -468,13 +565,25 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
             </div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1, display:'flex', alignItems:'center', gap:6 }}>
-              <span>{timeAgo(post.created_at)} · 🌐</span>
+              <span title={VIS[visKey(post.visibility)].hint}>{timeAgo(post.created_at)} · {VIS[visKey(post.visibility)].icon}</span>
               <span style={{ padding:'1px 8px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11, fontWeight:600, color:'rgba(0,0,0,.55)' }}>{isRepost?'Repost':isPoll?'Poll':isArticle?'Article':'Idea'}</span>
             </div>
           </div>
         </div>
-        {isSelf && onDelete && (
-          <button onClick={()=>onDelete(post)} title="Delete" aria-label="Delete post" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:4, fontSize:13, fontFamily:F }}>🗑</button>
+        {isSelf && (onDelete || onEdit) && (
+          <div style={{ position:'relative' }}>
+            <button onClick={()=>setMenuOpen(o=>!o)} title="Post options" aria-label="Post options" aria-haspopup="menu" aria-expanded={menuOpen}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.45)', padding:'2px 6px', fontSize:18, lineHeight:1, fontFamily:F }}>⋯</button>
+            {menuOpen && (
+              <>
+                <div onClick={()=>setMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:340 }}/>
+                <div role="menu" style={{ position:'absolute', top:'calc(100% + 4px)', right:0, width:208, background:'#fff', border:'1px solid rgba(0,0,0,.12)', borderRadius:10, boxShadow:'0 12px 40px rgba(0,0,0,.16)', zIndex:341, overflow:'hidden', padding:'6px 0' }}>
+                  {onEdit && <button role="menuitem" onClick={()=>{ setMenuOpen(false); onEdit(post); }} style={postMenuItem} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>✎ Edit post &amp; audience</button>}
+                  {onDelete && <button role="menuitem" onClick={()=>{ setMenuOpen(false); onDelete(post); }} style={{ ...postMenuItem, color:'#DC2626' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>🗑 Delete</button>}
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -556,6 +665,7 @@ function ComposerModal({ me, onClose, onPosted }) {
   const [pollQ, setPollQ] = useState('');
   const [pollOpts, setPollOpts] = useState(['', '']);
   const [tags, setTags] = useState('');
+  const [visibility, setVisibility] = useState('public');
   const [files, setFiles] = useState([]); // { file, type, name, size, preview }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -587,13 +697,13 @@ function ComposerModal({ me, onClose, onPosted }) {
     try {
       const tagArr = tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
       const author = { id: me.id, name: nameOf(me), avatar_url: me.user_metadata?.avatar_url };
-      const baseNew = { author, ratings: [], reactions: [], pollVotes: [], sugCount: 0, tags: tagArr };
+      const baseNew = { author, ratings: [], reactions: [], pollVotes: [], sugCount: 0, tags: tagArr, visibility };
 
       if (mode === 'poll') {
         const options = pollOpts.map(o => o.trim()).filter(Boolean).slice(0, 4);
         const poll = { question: pollQ.trim(), options };
         const title = pollQ.trim().slice(0, 80);
-        const row = await createPost(me.id, { title, body: '', tags: tagArr, media: [], kind: 'poll', poll });
+        const row = await createPost(me.id, { title, body: '', tags: tagArr, media: [], kind: 'poll', poll, visibility });
         onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: '', media: [], kind: 'poll', poll, ...baseNew });
         return onClose();
       }
@@ -614,7 +724,7 @@ function ComposerModal({ me, onClose, onPosted }) {
       if (m && !media.some(x => x.type === 'image')) link_preview = await unfurlLink(m[1]);
 
       const kind = mode === 'article' ? 'article' : 'post';
-      const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind, link_preview });
+      const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind, link_preview, visibility });
       onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: bodyText, media, kind, link_preview, ...baseNew });
       onClose();
     } catch (e) {
@@ -638,8 +748,8 @@ function ComposerModal({ me, onClose, onPosted }) {
         <div style={{ padding:'14px 18px 6px', display:'flex', gap:10, alignItems:'center' }}>
           <Av name={nameOf(me)} uid={me?.id||'me'} url={me?.user_metadata?.avatar_url} sz={44}/>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:14, fontWeight:700 }}>{nameOf(me)}</div>
-            <div style={{ fontSize:12, color:'rgba(0,0,0,.5)' }}>Posting to the community feed</div>
+            <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>{nameOf(me)}</div>
+            <AudiencePicker value={visibility} onChange={setVisibility}/>
           </div>
         </div>
 
@@ -1547,7 +1657,7 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
+function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onEdit, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
@@ -1760,7 +1870,7 @@ function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds,
 
           {fps.length === 0
           ? <div style={{ ...card, padding:40, textAlign:'center', fontSize:14, color:'rgba(0,0,0,.4)' }}>No ideas posted yet.</div>
-          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onDM={openDM} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote} verifiedIds={verifiedIds}/>)}
+          : fps.map(p=><PostCard key={p.id} post={p} me={me} followingIds={followingIds} pendingIds={pendingIds} onFollow={onFollow} onProfile={onProfile} onRate={onRate} rOpen={rOpen===p.id} onTR={()=>onTR(p.id)} cOpen={cOpen===p.id} onTC={()=>onTC(p.id)} requireAuth={requireAuth} onDelete={onDelete} onEdit={onEdit} onDM={openDM} onSave={onSave} onRepost={onRepost} onOpenPost={onOpenPost} saved={savedIds?.has(p.id)} onVote={onVote} verifiedIds={verifiedIds}/>)}
         </>
       )}
 
@@ -1857,6 +1967,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const pendingIds = followState.pending;
   const [followerCount, setFollowerCount] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [editPost, setEditPost] = useState(null);
   const [rOpen, setROpen] = useState(null);
   const [cOpen, setCOpen] = useState(null);
   const [convs, setConvs] = useState({});
@@ -2051,6 +2162,16 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (error) { setPosts(prevPosts); notify("Couldn't delete the post."); }
   }, [user, posts, notify]);
 
+  // Edit a post's text and/or audience; optimistic with rollback. Returns { error } for the modal.
+  const handleUpdatePost = useCallback(async (post, fields) => {
+    if (!user) return { error: true };
+    const prevPosts = posts;
+    setPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...fields } : p));
+    const { error } = (await updatePost(user.id, post.id, fields)) || {};
+    if (error) { setPosts(prevPosts); notify("Couldn't save your changes."); }
+    return { error };
+  }, [user, posts, notify]);
+
   const openDM = useCallback(peer => {
     if (!user) return onSignIn?.();
     if (peer.id === user.id) return;
@@ -2196,7 +2317,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds, savedIds]);
 
-  const cardProps = { me:meUser, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
+  const cardProps = { me:meUser, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onEdit:p=>setEditPost(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
 
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
@@ -2379,7 +2500,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={meUser} onProfileSaved={f=>setMyProfile(prev=>({ ...(prev||{}), ...f }))} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
+            <ProfileView uid={pid} me={meUser} onProfileSaved={f=>setMyProfile(prev=>({ ...(prev||{}), ...f }))} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onEdit={p=>setEditPost(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
           )}
 
           {view === 'messages' && (
@@ -2401,6 +2522,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* Composer modal */}
       {composerOpen && user && (
         <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
+      )}
+
+      {/* Edit-post modal */}
+      {editPost && user && (
+        <EditPostModal post={editPost} onClose={()=>setEditPost(null)} onSave={handleUpdatePost}/>
       )}
 
       {/* Repost modal */}

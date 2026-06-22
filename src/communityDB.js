@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 
 const POST_CORE = 'id, title, body, tags, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
 const POST_VARIANTS = [
+  POST_CORE + ', media, meta, repost_of, kind, poll, link_preview, visibility, reactions:post_reactions(user_id, type), pollVotes:poll_votes(user_id, option_idx)',
   POST_CORE + ', media, meta, repost_of, kind, poll, link_preview, reactions:post_reactions(user_id, type), pollVotes:poll_votes(user_id, option_idx)',
   POST_CORE + ', media, meta, repost_of, reactions:post_reactions(user_id, type)',
   POST_CORE + ', media, meta, repost_of',
@@ -9,8 +10,8 @@ const POST_VARIANTS = [
   POST_CORE + ', media',
   POST_CORE,
 ];
-const POST_DEGRADE = /media|meta|repost|reaction|relationship|schema cache|column|does not exist|poll|kind|link/i;
-const shapePost = p => ({ ...p, media: p.media || [], meta: p.meta || null, repost_of: p.repost_of || null, reactions: p.reactions || [], kind: p.kind || 'post', poll: p.poll || null, link_preview: p.link_preview || null, pollVotes: p.pollVotes || [], sugCount: p.sug?.[0]?.count ?? 0 });
+const POST_DEGRADE = /media|meta|repost|reaction|relationship|schema cache|column|does not exist|poll|kind|link|visibility/i;
+const shapePost = p => ({ ...p, media: p.media || [], meta: p.meta || null, repost_of: p.repost_of || null, reactions: p.reactions || [], kind: p.kind || 'post', poll: p.poll || null, link_preview: p.link_preview || null, pollVotes: p.pollVotes || [], visibility: p.visibility || 'public', sugCount: p.sug?.[0]?.count ?? 0 });
 
 // Attaches the embedded original onto each repost, resolving from the loaded set.
 const linkReposts = list => {
@@ -77,11 +78,12 @@ export async function repost(userId, originalId, commentary = '') {
   return res.data;
 }
 
-export async function createPost(userId, { title, body, tags, media = [], meta = null, kind = 'post', poll = null, link_preview = null }) {
-  const payload = { user_id: userId, title, body, tags, media, meta, kind, poll, link_preview };
+export async function createPost(userId, { title, body, tags, media = [], meta = null, kind = 'post', poll = null, link_preview = null, visibility = 'public' }) {
+  const payload = { user_id: userId, title, body, tags, media, meta, kind, poll, link_preview, visibility };
   const strip = keys => keys.forEach(k => delete payload[k]);
   const insert = () => supabase.from('community_posts').insert(payload).select('id, created_at').single();
   let res = await insert();
+  if (res.error && /visibility/i.test(res.error.message || '')) { strip(['visibility']); res = await insert(); }
   if (res.error && /kind|poll|link/i.test(res.error.message || '')) { strip(['kind', 'poll', 'link_preview']); res = await insert(); }
   if (res.error && /meta/i.test(res.error.message || '')) { strip(['meta']); res = await insert(); }
   if (res.error && /media/i.test(res.error.message || '')) { strip(['media']); res = await insert(); }
@@ -130,6 +132,21 @@ export async function deletePost(userId, postId) {
   const { error } = await supabase.from('community_posts').delete().eq('id', postId).eq('user_id', userId);
   if (error) console.error('deletePost failed', error);
   return { error };
+}
+
+// Edit a post's text and/or audience (visibility). Author-only via RLS. Returns { error }.
+// Falls back to a text-only update if the visibility column isn't migrated yet.
+export async function updatePost(userId, postId, fields) {
+  const payload = { ...fields };
+  let { error } = await supabase.from('community_posts').update(payload).eq('id', postId).eq('user_id', userId);
+  if (error && /visibility|column|does not exist|schema cache/i.test(error.message || '') && 'visibility' in payload) {
+    delete payload.visibility;
+    if (Object.keys(payload).length) {
+      ({ error } = await supabase.from('community_posts').update(payload).eq('id', postId).eq('user_id', userId));
+    } else { error = null; }
+  }
+  if (error) { console.error('updatePost failed', error); return { error }; }
+  return {};
 }
 
 export async function ratePost(userId, postId, value) {

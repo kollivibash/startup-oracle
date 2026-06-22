@@ -71,8 +71,10 @@ src/
   MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community,
                      **PDF/print export** (a print-only `PrintReport` renders ALL sections; on-screen
                      UI is `print:hidden`; "Download PDF" buttons call `window.print()`)
-  Community.jsx    — the community (~1900 lines): feed, composer (post/poll/article), Rate (1–10),
-                     threaded comments+likes, repost, save, follow (approval), notifications bell,
+  Community.jsx    — the community (~1900 lines): feed, composer (post/poll/article) with an **audience
+                     picker** (Everyone / Followers / Only me) + post **visibility badge** + author ⋯ menu
+                     to **edit text & re-set audience** after posting (RLS-enforced — supabase_post_visibility.sql),
+                     Rate (1–10), threaded comments+likes, repost, save, follow (approval), notifications bell,
                      rich profiles, photo carousel + fullscreen lightbox, link previews, verified
                      badge, "Followed by X" social proof, mobile bottom nav, and rich realtime DMs
                      (attachments: photo/video/doc/voice-note; emoji picker; reply; forward;
@@ -130,6 +132,11 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     SENDER can tombstone a message, a `toggle_message_reaction` RPC
                                     (atomic, identity-checked), and post-media/avatars bucket size+mime
                                     limits. Idempotent; client degrades gracefully until it's run.
+16. supabase_post_visibility.sql      post `visibility` column + audience-aware read policy (Everyone /
+                                    Followers / Only me) + a posts UPDATE-own policy (so authors can
+                                    edit + re-set audience). Until run, all posts stay public + edit
+                                    fails (client degrades). ⚠️ "Only me"/"Followers" privacy is only
+                                    enforced after this is run.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
