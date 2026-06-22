@@ -25,6 +25,7 @@ RULES:
 - "bars" values must be plain numbers on one comparable scale; put the unit in the title.
 - Use concrete numbers (market sizes, prices, %, timelines) with assumptions stated; mark estimates "(est.)".
 - Name real competitors, tools, channels, and communities. Numbers must be internally consistent across blocks.
+- LOCALIZE to the startup's TARGET MARKET (see "Target customer"): use that market's currency, pricing norms, real local competitors, acquisition channels, and regulations. When the market is India or unspecified, DEFAULT to ₹ (INR) with India-relevant market sizes, pricing, competitors, channels, and rules (UPI, DPDP, GST, etc.); otherwise match the stated market. Always state the currency on monetary values.
 - Zero generic startup advice — every block must be specific to this exact idea.`;
 
 const ctx = (f) => `STARTUP UNDER ANALYSIS
@@ -125,7 +126,7 @@ const SECTIONS = [
       UGC: "UGC and social proof engine: UGC brief templates, creator outreach script, incentive structure, review-generation flow, and 5 UGC video concepts with hooks written out.",
       Funnel: "Full-funnel design: awareness→consideration→conversion→retention→referral with the asset, channel, message, and metric at each stage, plus the email/onboarding sequence outlined message by message.",
       SEO: "SEO plan: 15-20 target keywords with intent classification, content cluster structure, 5 priority article titles with outlines, technical SEO checklist, and realistic traffic timeline.",
-      Launch: "Launch plan: week-by-week 4-week launch sequence (waitlist, Product Hunt, communities, press), launch-day checklist, the exact Product Hunt tagline + first comment draft, and post-launch momentum plan.",
+      Launch: "Launch plan: week-by-week 4-week launch sequence (waitlist, the launch platforms + communities that fit this market, press), launch-day checklist, a ready-to-use launch tagline + first community post draft, and post-launch momentum plan.",
     },
   },
 ];

@@ -135,8 +135,8 @@ const Step2 = ({ form, set, onBack, onNext }) => {
     <div style={{ animation:'fadeUp 0.3s ease' }}>
       <StepHeader label="Step 2 of 3" title="Tell us more" subtitle="The more specific you are, the more precise your validation score will be."/>
       <Field><Label hint="What pain point does this address? Who feels it most acutely?">What problem does this solve?</Label><FTextarea label="What problem does this solve?" value={form.problem} onChange={set('problem')} placeholder="e.g. Freelancers spend 6+ hours a month manually managing invoices…" rows={4} maxLength={1200}/></Field>
-      <Field><Label hint="How does your product actually work?">How does your solution work?</Label><FTextarea label="How does your solution work?" value={form.solution} onChange={set('solution')} placeholder="e.g. A single dashboard that connects to Stripe and PayPal…" rows={4} maxLength={1200}/></Field>
-      <Field><Label>Who is your target customer?</Label><FInput label="Who is your target customer?" value={form.market} onChange={set('market')} placeholder="e.g. Independent designers and developers earning $50k–$150k/year" maxLength={300}/></Field>
+      <Field><Label hint="How does your product actually work?">How does your solution work?</Label><FTextarea label="How does your solution work?" value={form.solution} onChange={set('solution')} placeholder="e.g. A single dashboard that connects to Razorpay and UPI…" rows={4} maxLength={1200}/></Field>
+      <Field><Label>Who is your target customer?</Label><FInput label="Who is your target customer?" value={form.market} onChange={set('market')} placeholder="e.g. Independent designers and developers earning ₹15–40L/year" maxLength={300}/></Field>
       <Field>
         <Label hint="What do you know that others don't? What gives you an edge?">Your unique insight <span style={{ fontWeight:400, color:C.muted }}>(optional)</span></Label>
         <FTextarea label="Your unique insight (optional)" value={form.edge} onChange={set('edge')} placeholder="e.g. I freelanced for 5 years and built this for myself first…" rows={3} maxLength={800}/>

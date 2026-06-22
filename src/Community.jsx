@@ -20,7 +20,7 @@ const timeAgo = d => {
   if (s < 3600) return `${Math.floor(s/60)}m`;
   if (s < 86400) return `${Math.floor(s/3600)}h`;
   if (s < 604800) return `${Math.floor(s/86400)}d`;
-  return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  return new Date(d).toLocaleDateString('en-IN',{month:'short',day:'numeric'});
 };
 const nameOf = u => u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'You';
 const headlineOf = p => p?.bio || 'Founder · Startup Oracle';
@@ -217,6 +217,7 @@ const EmbeddedPost = ({ post, onOpen }) => {
 function RepostModal({ original, me, onClose, onDone }) {
   const [txt, setTxt] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const submit = async () => { setBusy(true); try { await onDone(txt.trim()); onClose(); } catch { setBusy(false); } };
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:360, display:'flex', alignItems:'flex-start', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:'40px 16px', overflowY:'auto' }}>
@@ -549,6 +550,7 @@ const URL_RE = /(https?:\/\/[^\s]+)/i;
 
 function ComposerModal({ me, onClose, onPosted }) {
   const [mode, setMode] = useState('post'); // post | poll | article
+  useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const [body, setBody] = useState('');
   const [artTitle, setArtTitle] = useState('');
   const [pollQ, setPollQ] = useState('');
@@ -1429,6 +1431,7 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
 
 // ── Edit profile modal ───────────────────────────────────────────────────────
 function EditProfileModal({ me, prof, onClose, onSaved }) {
+  useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const [name, setName] = useState(nameOf(me));
   const [bio, setBio] = useState(prof?.bio || '');
   const [about, setAbout] = useState(prof?.about || '');
@@ -1870,10 +1873,21 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const notify = useCallback(msg => { setToast(msg); clearTimeout(toastTO.current); toastTO.current = setTimeout(() => setToast(''), 3500); }, []);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [feedError, setFeedError] = useState(false);
   useEffect(() => { activePeerRef.current = view === 'messages' ? activePeer : null; }, [view, activePeer]);
   useEffect(() => { dmUserRef.current = dmUser?.id ?? null; }, [dmUser]);
 
-  useEffect(() => { fetchPosts().then(p => { setPosts(p); setHasMore(p.length >= FEED_PAGE); setLoading(false); }); }, []);
+  // Initial feed load with a timeout so a dropped connection shows a retry, not an
+  // infinite skeleton (CROSS-004).
+  const loadFeed = useCallback(() => {
+    setLoading(true); setFeedError(false);
+    Promise.race([
+      fetchPosts(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
+    ]).then(p => { setPosts(p); setHasMore(p.length >= FEED_PAGE); setLoading(false); })
+      .catch(() => { setLoading(false); setFeedError(true); });
+  }, []);
+  useEffect(() => { const t = setTimeout(loadFeed, 0); return () => clearTimeout(t); }, [loadFeed]);
   useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
   useEffect(() => { if (user?.id) fetchProfile(user.id).then(setMyProfile).catch(() => {}); }, [user]);
 
@@ -2335,7 +2349,15 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                 ))}
               </div>
               {loading && <FeedSkeleton/>}
-              {!loading && shown.length === 0 && (
+              {!loading && feedError && (
+                <div style={{ ...card, padding:'48px 32px', textAlign:'center' }}>
+                  <div style={{ fontSize:28, marginBottom:10 }}>📡</div>
+                  <div style={{ fontSize:15, fontWeight:700, marginBottom:5 }}>Couldn't load the feed</div>
+                  <div style={{ fontSize:13, color:'var(--ink-2)', marginBottom:16 }}>Check your connection and try again.</div>
+                  <button onClick={loadFeed} style={{ padding:'9px 20px', borderRadius:'var(--r-pill)', background:'var(--ink)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Retry</button>
+                </div>
+              )}
+              {!loading && !feedError && shown.length === 0 && (
                 <div style={{ ...card, padding:'52px 32px', textAlign:'center' }}>
                   <div style={{ fontSize:30, marginBottom:10 }}>{search?'🔍':tab==='saved'?'🔖':tab==='following'?'👥':'💡'}</div>
                   <div style={{ fontSize:15, fontWeight:700, marginBottom:5 }}>{search?'No matches':tab==='following'?'Nothing here yet':tab==='saved'?'No saved ideas':'No ideas yet'}</div>

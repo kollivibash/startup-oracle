@@ -88,11 +88,14 @@ export async function syncSubscription() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) return { synced: false };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 12000); // don't hang reconciliation (CROSS-004)
   try {
-    const r = await fetch("/api/razorpay-sync", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch("/api/razorpay-sync", { method: "POST", headers: { Authorization: `Bearer ${token}` }, signal: ctl.signal });
     if (!r.ok) return { synced: false };
     return await r.json();
   } catch { return { synced: false }; }
+  finally { clearTimeout(timer); }
 }
 
 // Cancel the user's subscription at the end of the current cycle (PAY-006).
@@ -100,8 +103,15 @@ export async function cancelSubscription() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error("Please sign in first.");
-  const r = await fetch("/api/razorpay-cancel", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data?.error || "Could not cancel subscription.");
-  return data;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch("/api/razorpay-cancel", { method: "POST", headers: { Authorization: `Bearer ${token}` }, signal: ctl.signal });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || "Could not cancel subscription.");
+    return data;
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("Request timed out — please try again.", { cause: e });
+    throw e;
+  } finally { clearTimeout(timer); }
 }

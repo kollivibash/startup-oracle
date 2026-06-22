@@ -100,12 +100,15 @@ export async function unfurlLink(url) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000); // link preview is best-effort (CROSS-004)
   try {
-    const r = await fetch('/api/unfurl', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ url }) });
+    const r = await fetch('/api/unfurl', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ url }), signal: ctl.signal });
     if (!r.ok) return null;
     const d = await r.json();
     return d && d.title ? d : null;
   } catch { return null; }
+  finally { clearTimeout(timer); }
 }
 
 // Uploads one photo/document to the post-media bucket, returns its public URL.

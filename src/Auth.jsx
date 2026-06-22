@@ -52,6 +52,12 @@ const GitHubIcon = () => (
   </svg>
 );
 
+const PhoneIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>
+  </svg>
+);
+
 const Spinner = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation:'spin 0.7s linear infinite' }}>
     <circle cx="8" cy="8" r="6" fill="none" stroke="#ccc" strokeWidth="2.5"/>
@@ -170,7 +176,7 @@ const StrengthBar = ({ password }) => {
   );
 };
 
-const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
+const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, onPhone, webview }) => {
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
   const [errors,setErrors] = useState({});
@@ -206,14 +212,15 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
         <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Welcome back</h1>
         <p style={{ fontSize:15, color:C.muted }}>Sign in to your Startup Oracle account</p>
       </div>
-      {!webview && (<>
-        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:4 }}>
+      {!webview && (
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:8 }}>
           <SocialBtn icon={<GoogleIcon/>} label="Continue with Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
           <SocialBtn icon={<GitHubIcon/>} label="Continue with GitHub" variant="secondary" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
+          {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:4, fontWeight:500 }}>{oauthErr}</div>}
         </div>
-        {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
-        <Divider label="or continue with email"/>
-      </>)}
+      )}
+      <SocialBtn icon={<PhoneIcon/>} label="Continue with phone" variant="secondary" onClick={onPhone}/>
+      <Divider label="or continue with email"/>
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
         <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}}
           placeholder="you@example.com" error={errors.email}/>
@@ -233,7 +240,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, webview }) => {
   );
 };
 
-const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
+const SignUp = ({ onSwitch, onSuccess, afterAuth, onPhone, webview }) => {
   const [name,setName]     = useState('');
   const [email,setEmail]   = useState('');
   const [pass,setPass]     = useState('');
@@ -286,14 +293,15 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, webview }) => {
         <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>Create your account</h1>
         <p style={{ fontSize:15, color:C.muted }}>Free forever — no credit card required</p>
       </div>
-      {!webview && (<>
-        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:4 }}>
+      {!webview && (
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:8 }}>
           <SocialBtn icon={<GoogleIcon/>} label="Continue with Google" onClick={()=>{setOauthErr('');signInWithOAuth('google',afterAuth,setOauthErr);}}/>
           <SocialBtn icon={<GitHubIcon/>} label="Continue with GitHub" variant="secondary" onClick={()=>{setOauthErr('');signInWithOAuth('github',afterAuth,setOauthErr);}}/>
+          {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:4, fontWeight:500 }}>{oauthErr}</div>}
         </div>
-        {oauthErr && <div style={{ fontSize:12, color:C.error, marginTop:8, fontWeight:500 }}>{oauthErr}</div>}
-        <Divider label="or sign up with email"/>
-      </>)}
+      )}
+      <SocialBtn icon={<PhoneIcon/>} label="Continue with phone" variant="secondary" onClick={onPhone}/>
+      <Divider label="or sign up with email"/>
       <div style={{ animation:shake?'shake 0.4s ease':'none' }}>
         <Field label="Full name" value={name} onChange={v=>{setName(v);setErrors(e=>({...e,name:''}));}} placeholder="Jane Smith" error={errors.name}/>
         <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setErrors(e=>({...e,email:''}));}} placeholder="you@example.com" error={errors.email}/>
@@ -473,6 +481,59 @@ const ResetPassword = ({ onDone }) => {
   );
 };
 
+// Phone / OTP sign-in (CROSS-005 / AUTH-004 — India is phone-first). This is a working
+// scaffold: it calls Supabase phone OTP, but won't actually text a code until phone auth
+// + an SMS provider are configured in Supabase (until then signInWithOtp errors inline).
+// Phone OTP also sidesteps the in-app-webview OAuth block, so it's offered even there.
+const PhoneAuth = ({ onBack, onSuccess }) => {
+  const [phone, setPhone]     = useState('+91 ');
+  const [code, setCode]       = useState('');
+  const [step, setStep]       = useState('phone');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+
+  const send = async () => {
+    const p = phone.replace(/\s/g, '');
+    if (!/^\+\d{8,15}$/.test(p)) { setError('Enter your number with country code, e.g. +91 98765 43210'); return; }
+    setError(''); setLoading(true);
+    try {
+      const { error } = await withTimeout(supabase.auth.signInWithOtp({ phone: p }));
+      if (error) { setError(/not enabled|provider|sms|unsupported/i.test(error.message) ? 'Phone sign-in isn’t available yet — please use email or Google for now.' : error.message); return; }
+      setStep('code');
+    } catch { setError(TIMEOUT_MSG); } finally { setLoading(false); }
+  };
+
+  const verify = async () => {
+    if (!/^\d{4,8}$/.test(code.trim())) { setError('Enter the code we texted you.'); return; }
+    setError(''); setLoading(true);
+    try {
+      const { error } = await withTimeout(supabase.auth.verifyOtp({ phone: phone.replace(/\s/g, ''), token: code.trim(), type: 'sms' }));
+      if (error) { setError(error.message); return; }
+      onSuccess();
+    } catch { setError(TIMEOUT_MSG); } finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom:32 }}>
+        <h1 style={{ fontFamily:FD, fontSize:30, fontWeight:800, color:C.black, letterSpacing:'-1px', marginBottom:8 }}>{step==='phone'?'Sign in with phone':'Enter the code'}</h1>
+        <p style={{ fontSize:15, color:C.muted }}>{step==='phone'?'We’ll text you a one-time code.':`Sent to ${phone.trim()}.`}</p>
+      </div>
+      {step==='phone'
+        ? <Field label="Phone number" type="tel" value={phone} onChange={v=>{setPhone(v);setError('');}} placeholder="+91 98765 43210" error={error}/>
+        : <Field label="Verification code" type="text" value={code} onChange={v=>{setCode(v);setError('');}} placeholder="6-digit code" error={error}/>}
+      <button onClick={step==='phone'?send:verify} disabled={loading}
+        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
+        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>{step==='phone'?'Sending…':'Verifying…'}</span>:(step==='phone'?'Send code →':'Verify →')}
+      </button>
+      <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
+        {step==='code' && <span onClick={()=>{setStep('phone');setError('');}} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3, marginRight:14 }}>Change number</span>}
+        <span onClick={onBack} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Back to sign in</span>
+      </p>
+    </div>
+  );
+};
+
 export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, afterAuth, recovery, onRecoveryDone }) {
   const [mode, setMode]       = useState('signin');
   const [success, setSuccess] = useState(false);
@@ -511,7 +572,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, aft
         <div style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'clamp(32px,6vw,64px) clamp(20px,5vw,48px)', overflowY:'auto' }}>
           <div style={{ width:'100%', maxWidth:420 }}>
             {webview && !success && !recovery && <WebviewBanner/>}
-            {!success && !recovery && mode!=='forgot' && (
+            {!success && !recovery && mode!=='forgot' && mode!=='phone' && (
               <div style={{ display:'flex', background:C.surface, borderRadius:6, padding:4, marginBottom:44, gap:4 }}>
                 {[['signin','Sign In'],['signup','Sign Up']].map(([id,label])=>(
                   <button key={id} onClick={()=>{setMode(id);setSuccess(false);}}
@@ -524,11 +585,13 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, aft
               ? <ResetPassword onDone={onRecoveryDone}/>
               : success
                 ? <Success isNew={isNew} onSubmitIdea={onSubmitIdea} onCommunity={onCommunity} afterAuth={afterAuth}/>
-                : mode==='forgot'
-                  ? <ForgotPassword onBack={()=>setMode('signin')}/>
-                  : mode==='signin'
-                    ? <SignIn  onSwitch={()=>setMode('signup')} onForgot={()=>setMode('forgot')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
-                    : <SignUp  onSwitch={()=>setMode('signin')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
+                : mode==='phone'
+                  ? <PhoneAuth onBack={()=>setMode('signin')} onSuccess={handleSuccess}/>
+                  : mode==='forgot'
+                    ? <ForgotPassword onBack={()=>setMode('signin')}/>
+                    : mode==='signin'
+                      ? <SignIn  onSwitch={()=>setMode('signup')} onForgot={()=>setMode('forgot')} onPhone={()=>setMode('phone')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
+                      : <SignUp  onSwitch={()=>setMode('signin')} onPhone={()=>setMode('phone')} onSuccess={handleSuccess} afterAuth={afterAuth} webview={webview}/>
             }
             <div style={{ marginTop:40, paddingTop:20, borderTop:`1px solid ${C.border}`, display:'flex', justifyContent:'center', gap:20, fontSize:12, color:C.muted }}>
               <a href="#/legal/terms" target="_blank" rel="noopener noreferrer" style={{ color:C.muted, textDecoration:'none', fontWeight:600 }}>Terms</a>

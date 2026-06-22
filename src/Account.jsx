@@ -313,7 +313,7 @@ function IdeasSection({ user, onSubmitIdea, onViewReport }) {
                     {hasReport && <span style={{ fontSize:11, color:'#9CA3AF', fontStyle:'italic' }}>View report →</span>}
                   </div>
                   <p style={{ margin:'4px 0 0', fontSize:12, color:'#9CA3AF' }}>
-                    {idea.date ? new Date(idea.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : ''}{idea.category ? ` · ${idea.category}` : ''}
+                    {idea.date ? new Date(idea.date).toLocaleDateString('en-IN', { month:'short', day:'numeric', year:'numeric' }) : ''}{idea.category ? ` · ${idea.category}` : ''}
                   </p>
                 </div>
                 <button

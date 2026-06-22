@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import Home from './Home'
+import ErrorBoundary from './ErrorBoundary'
 import { supabase } from './supabaseClient'
 
 // Code-split the heavy views so the landing page ships a small initial bundle —
@@ -39,6 +40,7 @@ export default function App() {
   const [user, setUser]           = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [recovery, setRecovery]   = useState(false)  // password-reset landing (AUTH-002)
+  const [online, setOnline]       = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true))
   const [activeIdea, setActiveIdea] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
@@ -113,6 +115,14 @@ export default function App() {
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  // Offline awareness (CROSS-003) — a banner instead of silent failures on flaky networks.
+  useEffect(() => {
+    const up = () => setOnline(true), down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
   // Never show the auth screen to someone who is already logged in —
@@ -211,5 +221,16 @@ export default function App() {
     )
   }
 
-  return <Suspense fallback={<Loading />}>{screen}</Suspense>
+  return (
+    <>
+      {!online && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2000, background: '#1f2937', color: '#fff', textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '8px 16px', fontFamily: 'var(--font)' }}>
+          You're offline — some actions may not work until you reconnect.
+        </div>
+      )}
+      <ErrorBoundary resetKey={view} onReset={() => setView('oracle')}>
+        <Suspense fallback={<Loading />}>{screen}</Suspense>
+      </ErrorBoundary>
+    </>
+  )
 }

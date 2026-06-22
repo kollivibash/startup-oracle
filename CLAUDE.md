@@ -52,7 +52,10 @@ Styling is **inline styles** everywhere except `MasterReport.jsx`, which uses **
 
 ```
 src/
-  App.jsx          — routing, auth state, OAuth hash handling, browser-back history sync
+  App.jsx          — routing, auth state, OAuth hash handling, browser-back history sync; wraps the
+                     app in `ErrorBoundary` + shows an offline banner (navigator.onLine)
+  ErrorBoundary.jsx— class error boundary so a render crash shows a recover screen, not a white page
+                     (mounted in main.jsx around <App/>, and per-view in App.jsx keyed by `view`)
   Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
@@ -175,6 +178,9 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   it, calls `setSession`, sets `recovery` state, and renders the set-new-password screen (the
   "never show auth to a logged-in user" guard is skipped while `recovery` is true). **In-app webviews**
   (Instagram/WhatsApp/FB, where Google blocks OAuth) are detected by UA and shown email/password first.
+  **Phone/OTP** sign-in (`signInWithOtp`/`verifyOtp`, +91 default) is wired and offered everywhere
+  (incl. webviews, where it beats OAuth) — but stays a graceful scaffold until Supabase phone auth +
+  an SMS provider are configured (until then it shows "Phone sign-in isn't available yet").
   **Resilience**: signup/reset enforce the advertised password policy (≥8 chars + uppercase + number via
   `validatePassword`); all auth network calls are wrapped in a 15s `withTimeout` race so a flaky connection
   shows an inline error instead of a stuck button; the boot gate renders the `<Loading/>` spinner (never a
