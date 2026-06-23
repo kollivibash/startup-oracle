@@ -79,7 +79,8 @@ src/
                      badge, "Followed by X" social proof, mobile bottom nav, and rich realtime DMs
                      (attachments: photo/video/doc/voice-note; emoji picker; reply; forward;
                      message reactions; read receipts; typing indicator; WhatsApp-style delete
-                     [for-me / for-everyone tombstone] with 5s Undo)
+                     [for-me / for-everyone tombstone] with 5s Undo; per-conversation Clear chat /
+                     Delete chat from the header ⋯ menu — both your-view-only, reuse `deleted_for`)
   Pricing.jsx      — pricing page (₹50/mo, ₹500/yr) + Razorpay checkout
   Account.jsx      — account, validated-ideas list, re-open reports, hard delete
   reportEngine.js  — 6 Gemini section calls via /api/generate (2-worker concurrency, retries/backoff)

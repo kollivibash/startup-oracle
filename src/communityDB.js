@@ -451,6 +451,25 @@ export async function setMessageDeleted(messageId, deleted, senderId = null) {
   if (error && !msgColMissing(error)) console.error('setMessageDeleted failed', error);
 }
 
+// Clear / delete a conversation for me only: apply delete-for-me to every message in
+// the thread (the peer keeps their copy — same per-user semantics as a single
+// delete-for-me). Used by "Clear chat" and "Delete chat". No new migration needed —
+// reuses the existing `deleted_for` column; degrades to a no-op pre-migration.
+export async function clearConversation(userId, peerId) {
+  const pair = `and(sender_id.eq.${userId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${userId})`;
+  let { data, error } = await supabase.from('messages').select('id, deleted_for').or(pair);
+  if (error && msgColMissing(error)) ({ data, error } = await supabase.from('messages').select('id').or(pair));
+  if (error) { console.error('clearConversation failed', error); return { error }; }
+  const rows = (data || []).filter(m => !(Array.isArray(m.deleted_for) && m.deleted_for.includes(userId)));
+  const results = await Promise.all(rows.map(m => {
+    const next = [...new Set([...(m.deleted_for || []), userId])];
+    return supabase.from('messages').update({ deleted_for: next }).eq('id', m.id);
+  }));
+  const failed = results.find(r => r.error && !msgColMissing(r.error));
+  if (failed) { console.error('clearConversation update failed', failed.error); return { error: failed.error }; }
+  return {};
+}
+
 export async function markConversationRead(userId, peerId) {
   const { error } = await supabase
     .from('messages')

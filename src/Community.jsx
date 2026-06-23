@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -1064,6 +1064,45 @@ function DeleteMsgDialog({ msg, me, onForEveryone, onForMe, onClose }) {
   );
 }
 
+// ⋯ menu in a DM header: Clear chat (empty my view, keep the conversation) /
+// Delete chat (also remove it from my inbox). Both affect my view only.
+function ChatHeaderMenu({ peerId, onClear, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(null);   // 'clear' | 'delete'
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const item = { width:'100%', textAlign:'left', padding:'10px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, fontFamily:F, color:'rgba(0,0,0,.82)', whiteSpace:'nowrap' };
+  const cbtn = (bg, color) => ({ width:'100%', padding:'12px', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:F, border:'none', background:bg, color });
+  return (
+    <div ref={ref} style={{ position:'relative', flexShrink:0 }}>
+      <button onClick={()=>setOpen(o=>!o)} aria-label="Chat options" style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:18, lineHeight:1, padding:'4px 6px', borderRadius:8 }}>⋯</button>
+      {open && (
+        <div style={{ position:'absolute', right:0, top:'100%', marginTop:4, background:'#fff', borderRadius:10, boxShadow:'0 10px 36px rgba(0,0,0,.16), 0 0 0 1px rgba(0,0,0,.06)', minWidth:148, overflow:'hidden', zIndex:410 }}>
+          <button style={item} onClick={()=>{ setOpen(false); setConfirm('clear'); }}>Clear chat</button>
+          <button style={{ ...item, color:'#DC2626' }} onClick={()=>{ setOpen(false); setConfirm('delete'); }}>Delete chat</button>
+        </div>
+      )}
+      {confirm && (
+        <div onClick={()=>setConfirm(null)} style={{ position:'fixed', inset:0, zIndex:420, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.12)', padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, boxShadow:'0 24px 70px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.06)', width:'100%', maxWidth:300, padding:20 }}>
+            <p style={{ margin:'0 0 4px', fontSize:16, fontWeight:700, textAlign:'center' }}>{confirm==='clear' ? 'Clear this chat?' : 'Delete this chat?'}</p>
+            <p style={{ margin:'0 0 18px', fontSize:12.5, color:'rgba(0,0,0,.5)', textAlign:'center', lineHeight:1.5 }}>{confirm==='clear' ? 'All messages will be removed from your view. The other person keeps their copy.' : 'This conversation will be removed from your inbox. The other person keeps their copy.'}</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+              <button style={cbtn('#DC2626', '#fff')} onClick={()=>{ const c = confirm; setConfirm(null); c==='clear' ? onClear(peerId) : onDelete(peerId); }}>{confirm==='clear' ? 'Clear chat' : 'Delete chat'}</button>
+              <button style={cbtn('rgba(0,0,0,.06)', 'rgba(0,0,0,.55)')} onClick={()=>setConfirm(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatArea({ peer, msgs, chat }) {
   const { me, onSend, onReact, onDeleteForMe, onUnsend, onUndoDelete, onForward, onLoadOlder } = chat;
   const [input, setInput] = useState('');
@@ -1294,7 +1333,8 @@ function MessagesView({ convs, activePeer, onOpenConv, chat }) {
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
           <div style={{ padding:'13px 22px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
             <Av name={act.peer.name} uid={act.peer.id} url={act.peer.avatar_url} sz={34}/>
-            <div style={{ fontSize:14, fontWeight:700 }}>{act.peer.name || 'Founder'}</div>
+            <div style={{ flex:1, fontSize:14, fontWeight:700 }}>{act.peer.name || 'Founder'}</div>
+            <ChatHeaderMenu peerId={act.peer.id} onClear={chat.onClearChat} onDelete={chat.onDeleteChat}/>
           </div>
           <ChatArea peer={act.peer} msgs={act.messages} chat={chat}/>
         </div>
@@ -1313,6 +1353,7 @@ function DMPanel({ peer, msgs, chat, onClose }) {
         <div style={{ padding:'13px 18px', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
           <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={34}/>
           <div style={{ flex:1, fontSize:14, fontWeight:700 }}>{peer.name || 'Founder'}</div>
+          <ChatHeaderMenu peerId={peer.id} onClear={chat.onClearChat} onDelete={chat.onDeleteChat}/>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:16, padding:4 }}>✕</button>
         </div>
         <ChatArea peer={peer} msgs={msgs} chat={chat}/>
@@ -2237,6 +2278,24 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     }
   }, [user]);
 
+  // Clear chat: empty the thread in my view but keep the conversation open.
+  const handleClearChat = useCallback(async peerId => {
+    if (!user) return;
+    setConvs(prev => prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], messages: [], unread: 0 } } : prev);
+    notify('Chat cleared.');
+    await clearConversation(user.id, peerId);
+  }, [user, notify]);
+
+  // Delete chat: clear it AND remove the conversation from my inbox + close it.
+  const handleDeleteChat = useCallback(async peerId => {
+    if (!user) return;
+    setConvs(prev => { const n = { ...prev }; delete n[peerId]; return n; });
+    setActivePeer(p => p === peerId ? null : p);
+    setDmUser(d => d?.id === peerId ? null : d);
+    notify('Chat deleted.');
+    await clearConversation(user.id, peerId);
+  }, [user, notify]);
+
   // Prepend an older page of messages for one conversation (COM-008). Returns the count added.
   const loadOlder = useCallback(async peerId => {
     if (!user) return 0;
@@ -2251,8 +2310,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return add.length;
   }, [user, convs]);
 
-  const chatApi = useMemo(() => ({ me:user, notify, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg, onLoadOlder:loadOlder }),
-    [user, notify, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete, loadOlder]);
+  const chatApi = useMemo(() => ({ me:user, notify, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg, onLoadOlder:loadOlder, onClearChat:handleClearChat, onDeleteChat:handleDeleteChat }),
+    [user, notify, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete, loadOlder, handleClearChat, handleDeleteChat]);
 
   const openConv = useCallback(peerId => {
     setActivePeer(peerId);
