@@ -1,6 +1,11 @@
 import { supabase } from './supabaseClient';
 
-const POST_CORE = 'id, title, body, tags, created_at, user_id, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio), ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
+const POST_BASE = 'id, title, body, tags, created_at, user_id, ratings:community_ratings(user_id, value), sug:community_suggestions(count)';
+// The author headline derives from role + company (LinkedIn-style). POST_CORE asks
+// for those columns; POST_CORE_BASIC is the pre-migration fallback (no role/company)
+// so the feed still loads before supabase_profile_role.sql is run.
+const POST_CORE = `${POST_BASE}, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio, role, company)`;
+const POST_CORE_BASIC = `${POST_BASE}, author:profiles!community_posts_user_id_fkey(id, name, avatar_url, bio)`;
 const POST_VARIANTS = [
   POST_CORE + ', media, meta, repost_of, kind, poll, link_preview, visibility, reactions:post_reactions(user_id, type), pollVotes:poll_votes(user_id, option_idx)',
   POST_CORE + ', media, meta, repost_of, kind, poll, link_preview, reactions:post_reactions(user_id, type), pollVotes:poll_votes(user_id, option_idx)',
@@ -9,6 +14,7 @@ const POST_VARIANTS = [
   POST_CORE + ', media, meta',
   POST_CORE + ', media',
   POST_CORE,
+  POST_CORE_BASIC,
 ];
 const POST_DEGRADE = /media|meta|repost|reaction|relationship|schema cache|column|does not exist|poll|kind|link|visibility/i;
 const shapePost = p => ({ ...p, media: p.media || [], meta: p.meta || null, repost_of: p.repost_of || null, reactions: p.reactions || [], kind: p.kind || 'post', poll: p.poll || null, link_preview: p.link_preview || null, pollVotes: p.pollVotes || [], visibility: p.visibility || 'public', sugCount: p.sug?.[0]?.count ?? 0 });
@@ -327,19 +333,31 @@ export async function fetchRatingsReceived(userId) {
 export async function fetchProfile(id) {
   let { data, error } = await supabase
     .from('profiles')
-    .select('id, name, avatar_url, bio, about, location, banner_url, experience, education, skills')
+    .select('id, name, avatar_url, bio, role, company, about, location, banner_url, experience, education, skills')
     .eq('id', id).single();
   if (error) ({ data } = await supabase.from('profiles').select('id, name, avatar_url, bio').eq('id', id).single());
   return data;
 }
 
 export async function updateProfile(userId, fields) {
-  let { error } = await supabase.from('profiles').update(fields).eq('id', userId);
-  if (error && /column|schema cache|does not exist/i.test(error.message || '')) {
-    const safe = {}; for (const k of ['name', 'bio', 'avatar_url']) if (k in fields) safe[k] = fields[k];
-    ({ error } = await supabase.from('profiles').update(safe).eq('id', userId));
+  // Drop columns the DB doesn't have yet (e.g. role/company before
+  // supabase_profile_role.sql is run) ONE AT A TIME, so a single missing column
+  // never wipes the rest of the profile on save.
+  const payload = { ...fields };
+  for (let i = 0; i < 8 && Object.keys(payload).length; i++) {
+    const { error } = await supabase.from('profiles').update(payload).eq('id', userId);
+    if (!error) return;
+    const msg = error.message || '';
+    if (!/column|schema cache|does not exist/i.test(msg)) { console.error('updateProfile failed', error); throw error; }
+    const m = /'(\w+)' column|column ["']?(\w+)["']?/i.exec(msg);
+    const col = m && (m[1] || m[2]);
+    if (col && col in payload) { delete payload[col]; continue; }
+    // Couldn't pinpoint the column — fall back to the always-present core fields.
+    const safe = {}; for (const k of ['name', 'bio', 'avatar_url']) if (k in payload) safe[k] = payload[k];
+    const { error: e2 } = await supabase.from('profiles').update(safe).eq('id', userId);
+    if (e2) { console.error('updateProfile failed', e2); throw e2; }
+    return;
   }
-  if (error) { console.error('updateProfile failed', error); throw error; }
 }
 
 // Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).

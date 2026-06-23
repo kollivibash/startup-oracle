@@ -138,6 +138,12 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     edit + re-set audience). Until run, all posts stay public + edit
                                     fails (client degrades). ⚠️ "Only me"/"Followers" privacy is only
                                     enforced after this is run.
+17. supabase_profile_role.sql         profiles `role` + `company` columns (LinkedIn-style). The
+                                    under-name subtitle (`headlineOf`) derives from role + company; a
+                                    custom `bio` headline still overrides, and it's blank if neither is
+                                    set — replacing the old hardcoded "Founder · Startup Oracle" default.
+                                    Until run, that misleading default is already gone (falls back to
+                                    blank) but Role/Company just don't persist on save. Idempotent.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
@@ -152,7 +158,7 @@ is approval-based** (Instagram-style requests in the bell, 30s polling); **rich 
 (photo/video/document/voice-note attachments, built-in emoji picker, reply, forward, message
 reactions, "Seen" read receipts, typing indicator, WhatsApp-style delete — delete-for-me, or
 delete-for-everyone leaving a "This message was deleted" tombstone, with a 5s Undo); rich profiles
-(headline/About/Experience/Education/Skills, avatar+banner upload, profile-strength meter, "Who
+(Role + Company, headline/About/Experience/Education/Skills, avatar+banner upload, profile-strength meter, "Who
 viewed your profile"); **"Followed by X and Y"** social proof on profiles + sidebar suggestions;
 multi-photo **carousel + fullscreen lightbox** (arrows, dots, Esc/arrow keys); link previews; polls;
 shareable post permalinks (`#/idea/:id`); live Startup News; "Founders to follow"; Openings (placeholder);

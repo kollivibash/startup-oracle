@@ -59,7 +59,15 @@ function AudiencePicker({ value, onChange }) {
   );
 }
 const nameOf = u => u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'You';
-const headlineOf = p => p?.bio || 'Founder · Startup Oracle';
+// Subtitle under a name. Custom headline (bio) wins; else build it from role +
+// company (LinkedIn-style); else blank — never a hardcoded "Founder · Startup Oracle".
+const headlineOf = p => {
+  const bio = (p?.bio || '').trim();
+  if (bio) return bio;
+  const role = (p?.role || '').trim(), company = (p?.company || '').trim();
+  if (role && company) return `${role} at ${company}`;
+  return role || company || '';
+};
 // DB stores 0.5–5.0 (half-star schema); UI shows a 1–10 scale
 const to10 = v => Math.round(Number(v) * 2);
 const avg10 = ratings => ratings?.length ? (ratings.reduce((a,r)=>a+Number(r.value),0)/ratings.length)*2 : 0;
@@ -1363,7 +1371,7 @@ function DMPanel({ peer, msgs, chat, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
+function LeftBar({ me, myProfile, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const myRatings = myPosts.flatMap(p=>p.ratings||[]);
   const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
@@ -1387,7 +1395,7 @@ function LeftBar({ me, posts, followerCount, unread, view, goFeed, goProfile, go
               <button onClick={me?()=>goProfile(me.id):requireAuth(()=>{})} style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)', textAlign:'left', fontFamily:F }}>{me?nameOf(me):'Sign in'}</button>
               {me && verifiedIds?.has(me.id) && <VerifiedBadge sz={16}/>}
             </div>
-            <p style={{ margin:'2px 0 0', fontSize:12.5, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{me?'Founder · Startup Oracle':'Join the founder community'}</p>
+            {(() => { const sub = me ? headlineOf(myProfile) : 'Join the founder community'; return sub ? <p style={{ margin:'2px 0 0', fontSize:12.5, color:'rgba(0,0,0,.55)', lineHeight:1.4 }}>{sub}</p> : null; })()}
           </div>
         </div>
         {me && (
@@ -1585,6 +1593,8 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const [name, setName] = useState(nameOf(me));
   const [bio, setBio] = useState(prof?.bio || '');
+  const [role, setRole] = useState(prof?.role || '');
+  const [company, setCompany] = useState(prof?.company || '');
   const [about, setAbout] = useState(prof?.about || '');
   const [location, setLocation] = useState(prof?.location || '');
   const [skills, setSkills] = useState((prof?.skills || []).join(', '));
@@ -1608,6 +1618,8 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
       const fields = {
         name: name.trim() || nameOf(me),
         bio: bio.trim(),
+        role: role.trim(),
+        company: company.trim(),
         about: about.trim(),
         location: location.trim(),
         skills: skills.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20),
@@ -1649,7 +1661,14 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 
         <div style={{ padding:'40px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
           <div><label style={lbl}>Name</label><input value={name} onChange={e=>setName(e.target.value)} maxLength={60} style={inp}/></div>
-          <div><label style={lbl}>Headline</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="e.g. Founder · Building X for Y" maxLength={120} style={inp}/></div>
+          <div style={{ display:'flex', gap:10 }}>
+            <div style={{ flex:1 }}><label style={lbl}>Role</label><input value={role} onChange={e=>setRole(e.target.value)} placeholder="e.g. Founder" maxLength={60} style={inp}/></div>
+            <div style={{ flex:1 }}><label style={lbl}>Company</label><input value={company} onChange={e=>setCompany(e.target.value)} placeholder="e.g. Acme Labs" maxLength={60} style={inp}/></div>
+          </div>
+          <div>
+            <label style={lbl}>Headline <span style={{ fontWeight:400, color:'rgba(0,0,0,.45)' }}>— optional, overrides Role · Company</span></label>
+            <input value={bio} onChange={e=>setBio(e.target.value)} placeholder="e.g. Building X for Y" maxLength={120} style={inp}/>
+          </div>
           <div><label style={lbl}>Location</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Hyderabad, India" maxLength={80} style={inp}/></div>
           <div><label style={lbl}>About</label><textarea value={about} onChange={e=>setAbout(e.target.value)} rows={4} maxLength={1200} placeholder="Tell founders about yourself, what you're building, and what you're looking for." style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/></div>
           <div><label style={lbl}>Skills (comma-separated)</label><input value={skills} onChange={e=>setSkills(e.target.value)} placeholder="Product, Growth, Fundraising" maxLength={200} style={inp}/></div>
@@ -2483,7 +2502,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={meUser} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
+          <LeftBar me={meUser} myProfile={myProfile} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
