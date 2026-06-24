@@ -582,6 +582,24 @@ export async function fetchProfileViewers(userId) {
   return { count: viewers.length, viewers };
 }
 
+// People search — query the profiles table by name (and headline) so anyone is
+// findable, not just authors of already-loaded posts. Degrades to a name-only
+// select if role/company columns don't exist yet.
+export async function searchProfiles(query, { limit = 8 } = {}) {
+  const q = (query || '').trim();
+  if (!q) return [];
+  const like = `%${q}%`;
+  let { data, error } = await supabase.from('profiles')
+    .select('id, name, avatar_url, bio, role, company')
+    .or(`name.ilike.${like},bio.ilike.${like}`).limit(limit);
+  if (error && /role|company|column|schema cache|does not exist/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('profiles')
+      .select('id, name, avatar_url, bio').or(`name.ilike.${like},bio.ilike.${like}`).limit(limit));
+  }
+  if (error) { console.error('searchProfiles failed', error); return []; }
+  return data || [];
+}
+
 export async function fetchPeopleYouMayKnow(userId, excludeIds = []) {
   if (!userId) return [];
   const { data, error } = await supabase.from('profiles').select('id, name, avatar_url, bio').neq('id', userId).limit(40);

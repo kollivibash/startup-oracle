@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -291,50 +291,162 @@ function RepostModal({ original, me, onClose, onDone }) {
 // ── Post card ────────────────────────────────────────────────────────────────
 const formatSize = b => !b ? '' : b > 1048576 ? `${(b/1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b/1024))} KB`;
 
-// Swipeable carousel for multi-image / document-deck posts (LinkedIn-style).
-const ExpandIcon = ({ c='#fff' }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4H4v5M20 9V4h-5M4 15v5h5M15 20h5v-5"/></svg>
-);
-
-// Fullscreen photo viewer — arrow keys / on-screen arrows / Esc, swipe through photos.
+// ── LIGHTBOX ─────────────────────────────────────────────────────────────────
+// Fullscreen viewer: blur backdrop, SVG arrows, thumbnail filmstrip, keyboard nav.
 const Lightbox = ({ images, start, onClose }) => {
   const [i, setI] = useState(start);
-  const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + images.length) % images.length); };
+  const multi = images.length > 1;
+
+  const go = (dir, e) => { if (e) e.stopPropagation(); setI(p => (p + dir + images.length) % images.length); };
+
   useEffect(() => {
     const onKey = e => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape')      onClose();
       else if (e.key === 'ArrowRight') setI(p => (p + 1) % images.length);
-      else if (e.key === 'ArrowLeft') setI(p => (p - 1 + images.length) % images.length);
+      else if (e.key === 'ArrowLeft')  setI(p => (p - 1 + images.length) % images.length);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [images.length, onClose]);
-  const nav = side => ({ position:'absolute', top:'50%', [side]:'2.5%', transform:'translateY(-50%)', width:48, height:48, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3 });
-  return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(0,0,0,.93)', display:'flex', alignItems:'center', justifyContent:'center', animation:'fadeUp .15s ease both' }}>
-      <button onClick={onClose} title="Close (Esc)" aria-label="Close" style={{ position:'absolute', top:18, right:22, width:42, height:42, borderRadius:'50%', border:'none', background:'rgba(255,255,255,.14)', color:'#fff', fontSize:20, cursor:'pointer', zIndex:3 }}>✕</button>
-      {images.length > 1 && <button onClick={e=>go(-1,e)} title="Previous" aria-label="Previous image" style={nav('left')}>‹</button>}
-      <img src={images[i].url} alt={images[i].name||''} onClick={e=>e.stopPropagation()} style={{ maxWidth:'92vw', maxHeight:'88vh', objectFit:'contain', display:'block', borderRadius:4 }}/>
-      {images.length > 1 && <button onClick={e=>go(1,e)} title="Next" aria-label="Next image" style={nav('right')}>›</button>}
-      {images.length > 1 && <div style={{ position:'absolute', bottom:22, left:0, right:0, textAlign:'center', color:'#fff', fontSize:13, fontWeight:600 }}>{i+1} / {images.length}</div>}
-    </div>
-  );
-};
 
-const Carousel = ({ images, onOpen }) => {
-  const [i, setI] = useState(0);
-  const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + images.length) % images.length); };
-  const arrow = side => ({ position:'absolute', top:'50%', [side]:8, transform:'translateY(-50%)', width:34, height:34, borderRadius:'50%', border:'none', background:'rgba(0,0,0,.55)', color:'#fff', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 });
+  const cur = images[i];
+
   return (
-    <div style={{ position:'relative', borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)', background:'#000' }}>
-      <img src={images[i].url} alt={images[i].name||''} loading="lazy" onClick={()=>onOpen?.(i)} style={{ width:'100%', height:380, objectFit:'contain', display:'block', background:'#000', cursor:'zoom-in' }}/>
-      <button onClick={e=>go(-1,e)} title="Previous" aria-label="Previous image" style={arrow('left')}>‹</button>
-      <button onClick={e=>go(1,e)} title="Next" aria-label="Next image" style={arrow('right')}>›</button>
-      <div style={{ position:'absolute', top:8, right:10, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:99 }}>{i+1} / {images.length}</div>
-      <button onClick={()=>onOpen?.(i)} title="View full screen" aria-label="View full screen" style={{ position:'absolute', bottom:10, right:10, width:30, height:30, borderRadius:6, border:'none', background:'rgba(0,0,0,.55)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}><ExpandIcon/></button>
-      <div style={{ position:'absolute', bottom:12, left:0, right:0, display:'flex', justifyContent:'center', gap:5, pointerEvents:'none' }}>
-        {images.map((_,n)=><span key={n} style={{ width:7, height:7, borderRadius:'50%', background:n===i?'#fff':'rgba(255,255,255,.45)' }}/>)}
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 500,
+        background: 'rgba(10,10,10,.94)',
+        backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        animation: 'lbIn .18s ease both',
+      }}
+    >
+      {/* Top bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        padding: '18px 20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'linear-gradient(to bottom, rgba(0,0,0,.55) 0%, transparent 100%)',
+        zIndex: 3,
+      }}>
+        <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, fontWeight: 600, fontFamily: F }}>
+          {cur.name || ''}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {multi && (
+            <div style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, fontWeight: 600, fontFamily: F }}>
+              {i + 1} / {images.length}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            title="Close (Esc)" aria-label="Close"
+            style={{
+              width: 38, height: 38, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,.13)', color: '#fff',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Prev arrow */}
+      {multi && (
+        <button
+          onClick={e => go(-1, e)}
+          title="Previous" aria-label="Previous image"
+          style={{
+            position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,.14)', color: '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 3,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+      )}
+
+      {/* Main image */}
+      <div onClick={e => e.stopPropagation()} style={{ position: 'relative', zIndex: 2 }}>
+        <img
+          key={cur.url}
+          src={cur.url}
+          alt={cur.name || ''}
+          onClick={e => e.stopPropagation()}
+          style={{
+            maxWidth: '92vw', maxHeight: '80vh',
+            objectFit: 'contain', display: 'block',
+            borderRadius: 4,
+            boxShadow: '0 32px 80px rgba(0,0,0,.6)',
+            animation: 'lbImgIn .22s cubic-bezier(.2,.8,.4,1) both',
+          }}
+        />
+      </div>
+
+      {/* Next arrow */}
+      {multi && (
+        <button
+          onClick={e => go(1, e)}
+          title="Next" aria-label="Next image"
+          style={{
+            position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)',
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,.14)', color: '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 3,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+      )}
+
+      {/* Thumbnail filmstrip */}
+      {multi && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', bottom: 24, left: 0, right: 0,
+            display: 'flex', justifyContent: 'center', gap: 8,
+            padding: '0 24px', overflowX: 'auto',
+            animation: 'lbThumb .28s .1s ease both',
+            zIndex: 3,
+          }}
+        >
+          {images.map((img, n) => (
+            <div
+              key={n}
+              onClick={() => setI(n)}
+              style={{
+                width: 56, height: 56, borderRadius: 6, overflow: 'hidden', flexShrink: 0,
+                border: `2px solid ${n === i ? '#fff' : 'transparent'}`,
+                opacity: n === i ? 1 : 0.45,
+                cursor: 'pointer',
+                transition: 'opacity .15s, transform .15s',
+              }}
+            >
+              <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom gradient */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: 160,
+        background: 'linear-gradient(to top, rgba(0,0,0,.6) 0%, transparent 100%)',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
     </div>
   );
 };
@@ -381,29 +493,119 @@ const Poll = ({ post, me, onVote, requireAuth }) => {
   );
 };
 
-// Renders attached photos (carousel for 2+, single image otherwise) + document chips.
+// ── MEDIA GRID ───────────────────────────────────────────────────────────────
+// Renders attached images in a smart grid layout:
+//   1 image  → full-width crop
+//   2 images → side-by-side
+//   3+ images → tall-left + stacked-right (shows first 3, "+N more" on last)
+// Also renders non-image file chips below.
 const MediaGrid = ({ media }) => {
   const images = media.filter(m => m.type === 'image');
-  const files = media.filter(m => m.type !== 'image');
+  const files  = media.filter(m => m.type !== 'image');
   const [lb, setLb] = useState(null); // lightbox start index, or null
-  return (
-    <div style={{ margin:'6px 0 8px' }}>
-      {images.length > 1 && <Carousel images={images} onOpen={setLb}/>}
-      {images.length === 1 && (
-        <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid rgba(0,0,0,.08)' }}>
-          <img src={images[0].url} alt={images[0].name||''} loading="lazy" onClick={()=>setLb(0)} style={{ width:'100%', height:'auto', maxHeight:420, objectFit:'cover', display:'block', cursor:'zoom-in' }}/>
+
+  const imgStyle = {
+    width: '100%', height: '100%',
+    objectFit: 'cover', display: 'block',
+    cursor: 'zoom-in',
+    transition: 'transform .22s ease',
+  };
+  const cell = (img, idx, style = {}) => (
+    <div
+      key={idx}
+      onClick={() => setLb(idx)}
+      style={{ overflow: 'hidden', ...style }}
+      onMouseEnter={e => e.currentTarget.querySelector('img').style.transform = 'scale(1.04)'}
+      onMouseLeave={e => e.currentTarget.querySelector('img').style.transform = 'scale(1)'}
+    >
+      <img src={img.url} alt={img.name || ''} loading="lazy" style={imgStyle} />
+    </div>
+  );
+
+  const shown   = images.slice(0, 3);   // max 3 tiles shown
+  const hidden  = images.length - 3;    // how many are hidden behind "+N more"
+
+  let grid = null;
+  if (images.length === 1) {
+    grid = (
+      <div style={{ borderRadius: 10, overflow: 'hidden' }}>
+        {cell(images[0], 0, { height: 340 })}
+      </div>
+    );
+  } else if (images.length === 2) {
+    grid = (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, borderRadius: 10, overflow: 'hidden' }}>
+        {cell(images[0], 0, { height: 280 })}
+        {cell(images[1], 1, { height: 280 })}
+      </div>
+    );
+  } else if (images.length >= 3) {
+    // 3+ → asymmetric: tall left, two stacked right
+    grid = (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '180px 180px', gap: 2, borderRadius: 10, overflow: 'hidden' }}>
+        {/* Tall left cell spanning both rows */}
+        {cell(shown[0], 0, { gridRow: '1 / 3' })}
+        {/* Top right */}
+        {cell(shown[1], 1)}
+        {/* Bottom right — may have "+N more" overlay */}
+        <div
+          style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in' }}
+          onClick={() => setLb(2)}
+          onMouseEnter={e => { e.currentTarget.querySelector('img').style.transform = 'scale(1.04)'; if (e.currentTarget.querySelector('.more-ov')) e.currentTarget.querySelector('.more-ov').style.background = 'rgba(0,0,0,.68)'; }}
+          onMouseLeave={e => { e.currentTarget.querySelector('img').style.transform = 'scale(1)'; if (e.currentTarget.querySelector('.more-ov')) e.currentTarget.querySelector('.more-ov').style.background = 'rgba(0,0,0,.55)'; }}
+        >
+          <img src={shown[2].url} alt={shown[2].name || ''} loading="lazy" style={{ ...imgStyle, height: '100%' }} />
+          {hidden > 0 && (
+            <div
+              className="more-ov"
+              style={{
+                position: 'absolute', inset: 0,
+                background: 'rgba(0,0,0,.55)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background .18s',
+              }}
+            >
+              <span style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: F }}>
+                +{hidden + 1} more
+              </span>
+            </div>
+          )}
         </div>
-      )}
-      {lb !== null && <Lightbox images={images} start={lb} onClose={()=>setLb(null)}/>}
-      {files.map((m,i)=>(
-        <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" download={m.name}
-          style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginTop:6, border:'1px solid rgba(0,0,0,.12)', borderRadius:8, textDecoration:'none', color:'rgba(0,0,0,.85)', background:'rgba(0,0,0,.02)' }}>
-          <span style={{ fontSize:20 }}>📄</span>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name || 'Document'}</div>
-            <div style={{ fontSize:11, color:'rgba(0,0,0,.45)' }}>{m.size ? formatSize(m.size) : 'Open document'}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ margin: '6px 0 8px' }}>
+      {grid}
+      {lb !== null && <Lightbox images={images} start={lb} onClose={() => setLb(null)} />}
+
+      {/* Non-image file chips */}
+      {files.map((m, idx) => (
+        <a
+          key={idx}
+          href={m.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          download={m.name}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 12px', marginTop: 6,
+            border: '1px solid rgba(0,0,0,.12)', borderRadius: 8,
+            textDecoration: 'none', color: 'rgba(0,0,0,.85)',
+            background: 'rgba(0,0,0,.02)',
+          }}
+        >
+          <span style={{ fontSize: 20 }}>📄</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {m.name || 'Document'}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(0,0,0,.45)' }}>
+              {m.size ? formatSize(m.size) : 'Open document'}
+            </div>
           </div>
-          <span style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>↓</span>
+          <span style={{ fontSize: 13, color: 'rgba(0,0,0,.5)' }}>↓</span>
         </a>
       ))}
     </div>
@@ -1371,10 +1573,8 @@ function DMPanel({ peer, msgs, chat, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, myProfile, posts, followerCount, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
+function LeftBar({ me, myProfile, posts, followerCount, followingCount, onOpenPeople, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
-  const myRatings = myPosts.flatMap(p=>p.ratings||[]);
-  const myAvg = myRatings.length ? (avg10(myRatings)).toFixed(1) : '—';
   const tagCounts = useMemo(() => {
     const c = {};
     posts.forEach(p=>(p.tags||[]).forEach(t=>{ c[t]=(c[t]||0)+1; }));
@@ -1400,11 +1600,13 @@ function LeftBar({ me, myProfile, posts, followerCount, unread, view, goFeed, go
         </div>
         {me && (
           <div style={{ borderTop:'1px solid rgba(0,0,0,.08)', padding:'12px 8px', display:'flex' }}>
-            {[['Followers', followerCount],['Ideas', myPosts.length],['Rating', myAvg==='—'?'—':`${myAvg}`]].map(([l,v])=>(
-              <div key={l} style={{ flex:1, textAlign:'center' }}>
+            {[['Followers', followerCount, 'followers'],['Following', followingCount, 'following'],['Ideas', myPosts.length, null]].map(([l,v,modal])=>(
+              <button key={l} onClick={modal?()=>onOpenPeople(modal):()=>goProfile(me.id)} title={modal?`See ${l.toLowerCase()}`:'See your ideas'}
+                style={{ flex:1, textAlign:'center', background:'none', border:'none', cursor:'pointer', fontFamily:F, padding:'2px 0', borderRadius:6 }}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
                 <div style={{ fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{v}</div>
                 <div style={{ fontSize:11.5, color:'rgba(0,0,0,.5)' }}>{l}</div>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -1584,6 +1786,34 @@ function PeopleModal({ uid, type, me, followingIds, pendingIds, onFollow, onProf
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── People search results (shown in the feed column while searching) ─────────
+function PeopleResults({ results, me, followingIds, pendingIds, onFollow, onProfile, requireAuth, verifiedIds }) {
+  if (!results?.length) return null;
+  return (
+    <div style={{ ...card, padding:'4px 0', marginBottom:14 }}>
+      <div style={{ padding:'11px 18px 5px', fontSize:13, fontWeight:800, color:'rgba(0,0,0,.55)' }}>People</div>
+      {results.map(u=>(
+        <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 18px', borderTop:'1px solid rgba(0,0,0,.06)' }}>
+          <Av name={u.name} uid={u.id} url={u.avatar_url} sz={42} onClick={()=>onProfile(u.id)}/>
+          <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>onProfile(u.id)}>
+            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <span style={{ fontSize:14, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.name || 'Founder'}</span>
+              {verifiedIds?.has(u.id) && <VerifiedBadge sz={13}/>}
+            </div>
+            <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(u)}</div>
+          </div>
+          {me && u.id !== me.id && (
+            <button onClick={requireAuth(()=>onFollow(u.id))}
+              style={{ padding:'6px 16px', borderRadius:99, border:`1.5px solid ${pendingIds?.has(u.id)?'rgba(0,0,0,.3)':'rgba(0,0,0,.9)'}`, fontSize:12.5, fontWeight:700, cursor:'pointer', background:followingIds.has(u.id)?'rgba(0,0,0,.9)':'transparent', color:followingIds.has(u.id)?'#fff':pendingIds?.has(u.id)?'rgba(0,0,0,.45)':'rgba(0,0,0,.9)', fontFamily:F, flexShrink:0 }}>
+              {followingIds.has(u.id)?'Following':pendingIds?.has(u.id)?'Requested':'Follow'}
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -2022,6 +2252,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const didFocus = useRef(false);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
+  const [peopleResults, setPeopleResults] = useState([]);
+  const [sidePeople, setSidePeople] = useState(null);
   const [followState, setFollowState] = useState({ accepted: new Set(), pending: new Set() });
   const followingIds = followState.accepted;
   const pendingIds = followState.pending;
@@ -2382,6 +2614,17 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     }
   }, [focusPostId, loading, focusPost, onConsumeFocus]);
 
+  // Debounced people search — queries the profiles table so anyone is findable.
+  useEffect(() => {
+    const q = search.trim();
+    let on = true;
+    const t = setTimeout(() => {
+      if (!q) { if (on) setPeopleResults([]); return; }
+      searchProfiles(q).then(r => on && setPeopleResults(r));
+    }, q ? 250 : 0);
+    return () => { on = false; clearTimeout(t); };
+  }, [search]);
+
   const shown = useMemo(() => {
     let l = [...posts];
     if (search.trim()) {
@@ -2407,6 +2650,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#c0bfbc;border-radius:3px}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
         .fade-up{animation:fadeUp .18s ease both}
+        @keyframes lbIn{from{opacity:0}to{opacity:1}}
+        @keyframes lbImgIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+        @keyframes lbThumb{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:600px}}
         .slide-down{animation:slideDown .2s ease both;overflow:hidden}
         @keyframes dmSlide{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -2502,7 +2748,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={meUser} myProfile={myProfile} posts={posts} followerCount={followerCount} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
+          <LeftBar me={meUser} myProfile={myProfile} posts={posts} followerCount={followerCount} followingCount={followingIds.size} onOpenPeople={t=>requireAuth(()=>setSidePeople(t))()} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
@@ -2547,6 +2793,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   </button>
                 ))}
               </div>
+              {search.trim() && <PeopleResults results={peopleResults} me={meUser} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>}
               {loading && <FeedSkeleton/>}
               {!loading && feedError && (
                 <div style={{ ...card, padding:'48px 32px', textAlign:'center' }}>
@@ -2556,12 +2803,12 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   <button onClick={loadFeed} style={{ padding:'9px 20px', borderRadius:'var(--r-pill)', background:'var(--ink)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Retry</button>
                 </div>
               )}
-              {!loading && !feedError && shown.length === 0 && (
+              {!loading && !feedError && shown.length === 0 && !(search.trim() && peopleResults.length > 0) && (
                 <div style={{ ...card, padding:'52px 32px', textAlign:'center' }}>
                   <div style={{ fontSize:30, marginBottom:10 }}>{search?'🔍':tab==='saved'?'🔖':tab==='following'?'👥':'💡'}</div>
                   <div style={{ fontSize:15, fontWeight:700, marginBottom:5 }}>{search?'No matches':tab==='following'?'Nothing here yet':tab==='saved'?'No saved ideas':'No ideas yet'}</div>
                   <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.6, maxWidth:300, margin:'0 auto' }}>
-                    {search ? `Nothing matches "${search}".` : tab==='following' ? 'Follow founders to see their ideas here.' : tab==='saved' ? 'Tap Save on any idea to keep it here.' : 'Be the first to share one with the community.'}
+                    {search ? `Nothing matches "${search}" — try a different name or keyword.` : tab==='following' ? 'Follow founders to see their ideas here.' : tab==='saved' ? 'Tap Save on any idea to keep it here.' : 'Be the first to share one with the community.'}
                   </div>
                   {!search && tab==='all' && <button onClick={()=>setComposerOpen(true)} style={{ marginTop:16, padding:'9px 20px', borderRadius:'var(--r-pill)', background:'var(--ink)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Share an idea</button>}
                 </div>
@@ -2596,6 +2843,11 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           <RightBar me={meUser} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         )}
       </div>
+
+      {/* Followers / Following list opened from the sidebar stats */}
+      {sidePeople && user && (
+        <PeopleModal uid={user.id} type={sidePeople} me={meUser} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={id=>{ setSidePeople(null); goProfile(id); }} requireAuth={requireAuth} onClose={()=>setSidePeople(null)}/>
+      )}
 
       {/* Composer modal */}
       {composerOpen && user && (
