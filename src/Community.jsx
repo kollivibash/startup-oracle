@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 
@@ -311,7 +312,10 @@ const Lightbox = ({ images, start, onClose }) => {
 
   const cur = images[i];
 
-  return (
+  // Portal to <body> so a transformed/filtered ancestor (e.g. a `.fade-up` card)
+  // can't trap this position:fixed layer inside the feed column — it must cover
+  // the whole viewport.
+  return createPortal((
     <div
       onClick={onClose}
       style={{
@@ -448,7 +452,7 @@ const Lightbox = ({ images, start, onClose }) => {
         pointerEvents: 'none', zIndex: 2,
       }} />
     </div>
-  );
+  ), document.body);
 };
 
 // Rich link preview card (data fetched server-side at post time).
