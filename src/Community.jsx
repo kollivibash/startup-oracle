@@ -2237,7 +2237,7 @@ function OpeningsView({ onSubmitIdea }) {
   );
 }
 
-export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, focusPostId, onConsumeFocus }) {
+export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, onLogout, focusPostId, onConsumeFocus }) {
   const [view, setView] = useState('feed');         // feed | profile | messages
   const [pid, setPid] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -2273,6 +2273,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [composerOpen, setComposerOpen] = useState(false);
   const [requests, setRequests] = useState([]);
   const [bellOpen, setBellOpen] = useState(false);
+  const [acctMenuOpen, setAcctMenuOpen] = useState(false);
   const activePeerRef = useRef(null);
   const dmUserRef = useRef(null);
   const [toast, setToast] = useState('');
@@ -2739,9 +2740,21 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           </div>
         </nav>
         {user ? (
-          <div onClick={()=>onAccount?.()} title="My Account" style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer', paddingLeft:8, borderLeft:'1px solid rgba(0,0,0,.1)' }}>
-            <Av name={nameOf(meUser)} uid={user.id} url={meUser.user_metadata?.avatar_url} sz={34}/>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          <div style={{ position:'relative', paddingLeft:8, borderLeft:'1px solid rgba(0,0,0,.1)' }}>
+            <div onClick={()=>setAcctMenuOpen(o=>!o)} title="Me" style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer' }}>
+              <Av name={nameOf(meUser)} uid={user.id} url={meUser.user_metadata?.avatar_url} sz={34}/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform:acctMenuOpen?'rotate(180deg)':'none', transition:'transform .15s' }}><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            {acctMenuOpen && (
+              <>
+                <div onClick={()=>setAcctMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:240 }}/>
+                <div role="menu" className="fade-up" style={{ position:'absolute', top:48, right:0, width:212, background:'#fff', border:'1px solid rgba(0,0,0,.1)', borderRadius:10, boxShadow:'0 12px 40px rgba(0,0,0,.14)', zIndex:241, overflow:'hidden', padding:'6px 0' }}>
+                  <button role="menuitem" onClick={()=>{ setAcctMenuOpen(false); goProfile(user.id); }} style={postMenuItem} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>👤 View profile</button>
+                  <button role="menuitem" onClick={()=>{ setAcctMenuOpen(false); onAccount?.(); }} style={postMenuItem} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>⚙️ Account &amp; ideas</button>
+                  {onLogout && <button role="menuitem" onClick={()=>{ setAcctMenuOpen(false); onLogout(); }} style={{ ...postMenuItem, color:'#DC2626', borderTop:'1px solid rgba(0,0,0,.06)' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.04)'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>↩ Sign out</button>}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <span onClick={()=>onSignIn?.()} style={{ fontSize:13, color:'rgba(0,0,0,.6)', cursor:'pointer', fontWeight:600, paddingLeft:8 }}>Sign in</span>
