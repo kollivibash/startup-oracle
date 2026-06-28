@@ -1843,6 +1843,90 @@ function PeopleResults({ results, me, followingIds, pendingIds, onFollow, onProf
   );
 }
 
+// ── Full-screen search overlay (BUG-006): recent people, live results, topics ──
+const SEARCH_TOPICS = ['Fundraising', 'Co-founder', 'Go-to-market strategy', 'AI startups', 'SaaS', 'Hiring & early team'];
+function SearchOverlay({ query, onQuery, people, ideas, recents, onPickPerson, onPickIdea, onPickTopic, onRemoveRecent, onClearRecents, onClose, verifiedIds }) {
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const q = query.trim();
+  return createPortal((
+    <div style={{ position:'fixed', inset:0, zIndex:600, background:'#fff', display:'flex', flexDirection:'column', animation:'lbIn .15s ease both' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'12px 14px', borderBottom:'1px solid rgba(0,0,0,.08)', flexShrink:0 }}>
+        <button onClick={onClose} aria-label="Back" style={{ background:'none', border:'none', cursor:'pointer', padding:6, display:'flex' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <input ref={inputRef} value={query} onChange={e=>onQuery(e.target.value)} placeholder="I'm looking for…" maxLength={80}
+          style={{ flex:1, border:'none', outline:'none', fontSize:16, fontFamily:F, background:'transparent', minWidth:0 }}/>
+        {q && <button onClick={()=>onQuery('')} aria-label="Clear" style={{ background:'rgba(0,0,0,.06)', border:'none', borderRadius:'50%', width:26, height:26, cursor:'pointer', color:'rgba(0,0,0,.5)', fontSize:12, flexShrink:0 }}>✕</button>}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:'4px 0 40px' }}>
+        {!q && recents.length > 0 && (
+          <div style={{ padding:'14px 16px 4px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <span style={{ fontSize:14, fontWeight:800 }}>Recent</span>
+              <button onClick={onClearRecents} style={{ background:'none', border:'none', color:'var(--accent,#2563eb)', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Clear all</button>
+            </div>
+            <div style={{ display:'flex', gap:14, overflowX:'auto', paddingBottom:8 }}>
+              {recents.map(r=>(
+                <div key={r.id} onClick={()=>onPickPerson(r)} style={{ position:'relative', flexShrink:0, width:64, textAlign:'center', cursor:'pointer' }}>
+                  <Av name={r.name} uid={r.id} url={r.avatar_url} sz={56}/>
+                  <button onClick={e=>{ e.stopPropagation(); onRemoveRecent(r.id); }} aria-label="Remove" style={{ position:'absolute', top:-4, right:4, width:20, height:20, borderRadius:'50%', background:'rgba(0,0,0,.65)', color:'#fff', border:'2px solid #fff', cursor:'pointer', fontSize:9, lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>✕</button>
+                  <div style={{ fontSize:11.5, color:'rgba(0,0,0,.7)', marginTop:5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(r.name||'Founder').split(' ')[0]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!q && (
+          <div style={{ padding:'12px 16px' }}>
+            <div style={{ fontSize:14, fontWeight:800, marginBottom:6 }}>Try searching for</div>
+            {SEARCH_TOPICS.map(t=>(
+              <button key={t} onClick={()=>onPickTopic(t)} style={{ display:'flex', alignItems:'center', gap:11, width:'100%', textAlign:'left', background:'none', border:'none', padding:'11px 2px', cursor:'pointer', fontFamily:F, fontSize:14, color:'rgba(0,0,0,.8)' }}>
+                <span style={{ fontSize:15 }}>🔍</span>{t}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {q && (
+          <>
+            {people.length > 0 && <div style={{ padding:'10px 16px 4px', fontSize:13, fontWeight:800, color:'rgba(0,0,0,.55)' }}>People</div>}
+            {people.map(u=>(
+              <div key={u.id} onClick={()=>onPickPerson(u)} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', cursor:'pointer' }}>
+                <Av name={u.name} uid={u.id} url={u.avatar_url} sz={42}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:5 }}><span style={{ fontSize:14, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.name||'Founder'}</span>{verifiedIds?.has(u.id) && <VerifiedBadge sz={13}/>}</div>
+                  <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headlineOf(u)}</div>
+                </div>
+              </div>
+            ))}
+            {ideas.length > 0 && <div style={{ padding:'14px 16px 4px', fontSize:13, fontWeight:800, color:'rgba(0,0,0,.55)' }}>Ideas</div>}
+            {ideas.map(p=>(
+              <div key={p.id} onClick={()=>onPickIdea(p)} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', cursor:'pointer' }}>
+                <span style={{ fontSize:18, flexShrink:0 }}>💡</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.title || 'Idea'}</div>
+                  <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.author?.name || 'Founder'}</div>
+                </div>
+              </div>
+            ))}
+            {people.length === 0 && ideas.length === 0 && (
+              <div style={{ padding:'44px 16px', textAlign:'center', color:'rgba(0,0,0,.45)', fontSize:13.5 }}>No people or ideas match “{q}”.</div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  ), document.body);
+}
+
 // ── Edit profile modal ───────────────────────────────────────────────────────
 function EditProfileModal({ me, prof, onClose, onSaved }) {
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
@@ -2284,6 +2368,10 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [peopleResults, setPeopleResults] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [recentSearches, setRecentSearches] = useState(() => { try { return JSON.parse(localStorage.getItem('so_recent_searches') || '[]'); } catch { return []; } });
+  const saveRecents = list => { setRecentSearches(list); try { localStorage.setItem('so_recent_searches', JSON.stringify(list)); } catch { /* storage unavailable */ } };
+  const addRecent = p => { if (p?.id) saveRecents([{ id:p.id, name:p.name, avatar_url:p.avatar_url }, ...recentSearches.filter(r=>r.id!==p.id)].slice(0, 10)); };
   const [sidePeople, setSidePeople] = useState(null);
   const [followState, setFollowState] = useState({ accepted: new Set(), pending: new Set() });
   const followingIds = followState.accepted;
@@ -2695,6 +2783,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return l;
   }, [posts, tab, search, followingIds, savedIds]);
 
+  // Idea matches for the full-screen search overlay (BUG-006).
+  const ideaResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return posts.filter(p => p.title?.toLowerCase().includes(q) || p.body?.toLowerCase().includes(q) || p.tags?.some(t=>t.toLowerCase().includes(q))).slice(0, 5);
+  }, [posts, search]);
+
   const cardProps = { me:meUser, followingIds, pendingIds, onFollow:handleFollow, onProfile:goProfile, onRate:handleRate, rOpen, cOpen, requireAuth, onDelete:p=>setConfirmDel(p), onEdit:p=>setEditPost(p), onDM:openDM, onSave:handleSave, onRepost:o=>setRepostOf(o), onOpenPost:focusPost, onVote:handleVote, verifiedIds };
 
   return (
@@ -2736,7 +2831,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         <span onClick={onHome} style={{ fontFamily:FD, fontSize:20, fontWeight:800, letterSpacing:'-0.5px', color:GREEN, whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
         <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.05)', borderRadius:8, padding:'0 12px', height:38, flex:'0 1 320px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input value={search} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas, people…"
+          <input value={search} onFocus={()=>setSearchOpen(true)} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas, people…"
             style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, fontFamily:F, minWidth:0 }}/>
         </div>
         <div style={{ flex:1 }}/>
@@ -2914,6 +3009,20 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           <RightBar me={meUser} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
         )}
       </div>
+
+      {/* Full-screen search overlay (BUG-006) */}
+      {searchOpen && (
+        <SearchOverlay
+          query={search} onQuery={setSearch}
+          people={peopleResults} ideas={ideaResults} recents={recentSearches}
+          onPickPerson={p=>{ addRecent(p); setSearchOpen(false); setSearch(''); goProfile(p.id); }}
+          onPickIdea={p=>{ setSearchOpen(false); setSearch(''); focusPost(p.id); }}
+          onPickTopic={t=>setSearch(t)}
+          onRemoveRecent={id=>saveRecents(recentSearches.filter(r=>r.id!==id))}
+          onClearRecents={()=>saveRecents([])}
+          onClose={()=>{ setSearchOpen(false); setSearch(''); }}
+          verifiedIds={verifiedIds}/>
+      )}
 
       {/* Followers / Following list opened from the sidebar stats */}
       {sidePeople && user && (
