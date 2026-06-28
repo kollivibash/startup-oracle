@@ -144,6 +144,17 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     set — replacing the old hardcoded "Founder · Startup Oracle" default.
                                     Until run, that misleading default is already gone (falls back to
                                     blank) but Role/Company just don't persist on save. Idempotent.
+18. supabase_dm_message_request.sql   DM message requests (QA BUG-007): BEFORE INSERT trigger on
+                                    `messages` — if the sender has no accepted follow with the recipient
+                                    (either direction) AND the recipient hasn't messaged back, the sender
+                                    may send only ONE message. Client (handleSend/ChatArea) enforces the
+                                    same rule + shows a "message request" composer state. Degrades
+                                    gracefully (client-only limit) until run. Idempotent.
+19. supabase_follow_list_privacy.sql  Private follower/following lists (QA BUG-009): SECURITY DEFINER RPC
+                                    `get_follow_list(target, kind)` — only the owner or an accepted
+                                    follower may read the lists (counts + "Followed by X" stay public).
+                                    fetchFollowList calls it, falling back to a direct select until run.
+                                    Client also hides the lists from non-followers. Idempotent.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
