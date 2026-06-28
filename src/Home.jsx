@@ -38,7 +38,7 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
       `}</style>
 
       {/* Nav */}
-      <nav style={{ height:68, padding:'0 48px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+      <nav style={{ height:68, padding:'0 clamp(20px,5vw,48px)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
         <span style={{ fontFamily:SERIF, fontSize:20, fontWeight:600, letterSpacing:'1.6px', textTransform:'uppercase', cursor:'default', whiteSpace:'nowrap' }}>
           Startup Oracle
         </span>
@@ -82,7 +82,7 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
       <div className="home-band" style={{ display:'flex', width:'100%', flexShrink:0 }}>
         {/* Community card */}
         <div onClick={onCommunity}
-          style={{ flex:'1 1 58%', background:'#F7F6F3', padding:'56px 48px', display:'flex', flexDirection:'column', cursor:'pointer', minHeight:380 }}>
+          style={{ flex:'1 1 58%', background:'#F7F6F3', padding:'clamp(40px,7vw,56px) clamp(22px,6vw,48px)', display:'flex', flexDirection:'column', cursor:'pointer', minHeight:380 }}>
           <div style={{ fontSize:9, letterSpacing:'1.98px', textTransform:'uppercase', color:'rgba(0,0,0,.28)', marginBottom:22 }}>Community</div>
           <div style={{ fontFamily:SERIF, fontSize:40, fontWeight:500, lineHeight:1.08, color:INK, marginBottom:20 }}>
             A home for<br/>every founder
@@ -99,7 +99,7 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
 
         {/* Analyse card */}
         <div onClick={onAnalyse}
-          style={{ flex:'1 1 42%', background:INK, color:'#fff', padding:'56px 48px', display:'flex', flexDirection:'column', cursor:'pointer', minHeight:380 }}>
+          style={{ flex:'1 1 42%', background:INK, color:'#fff', padding:'clamp(40px,7vw,56px) clamp(22px,6vw,48px)', display:'flex', flexDirection:'column', cursor:'pointer', minHeight:380 }}>
           <div style={{ fontSize:9, letterSpacing:'1.98px', textTransform:'uppercase', color:'rgba(255,255,255,.28)', marginBottom:22 }}>Analyse Idea</div>
           <div style={{ fontFamily:SERIF, fontSize:40, fontWeight:500, lineHeight:1.08, marginBottom:20 }}>
             Know before<br/>you build

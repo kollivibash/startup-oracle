@@ -31,6 +31,14 @@
 html{scroll-behavior:smooth}
 body{font-family:var(--font);color:var(--ink);text-rendering:optimizeLegibility}
 
+/* ── Mobile guards: never let the page render wider than the screen (the #1 cause
+   of the "everything is tiny / doesn't fit" zoom-out on phones). `clip` kills
+   horizontal overflow WITHOUT creating a scroll container, so the sticky header
+   and position:sticky elements keep working (unlike overflow-x:hidden). ── */
+html,body{overflow-x:clip;max-width:100%}
+img,video{max-width:100%}
+body{overflow-wrap:break-word}
+
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield}

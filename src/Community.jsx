@@ -2819,6 +2819,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         .act-btn.rated{color:${GREEN}}
         @media (max-width:1100px){ .comm-right{display:none!important} }
         @media (max-width:840px){ .comm-left{display:none!important} .comm-page{padding-bottom:74px!important} .topnav-mobhide{display:none!important} .comm-header{padding:0 13px!important;gap:11px!important} }
+        /* Very narrow phones: let search flex down and drop the CTA label so the header never overflows */
+        @media (max-width:600px){ .comm-search{flex:1 1 60px!important} .cta-text{display:none} .comm-header{gap:9px!important} }
         .comm-mobnav{display:none}
         @media (max-width:840px){ .comm-mobnav{display:flex} }
         .mobnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;font-size:18px;color:rgba(0,0,0,.55);font-family:'DM Sans',system-ui,sans-serif;position:relative}
@@ -2829,8 +2831,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* Top nav */}
       <header className="comm-header" style={{ height:62, background:'#fff', borderBottom:'1px solid rgba(0,0,0,.08)', display:'flex', alignItems:'center', padding:'0 22px', gap:16, position:'sticky', top:0, zIndex:100 }}>
         <span onClick={onHome} style={{ fontFamily:FD, fontSize:20, fontWeight:800, letterSpacing:'-0.5px', color:GREEN, whiteSpace:'nowrap', cursor:'pointer' }}>startup oracle</span>
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.05)', borderRadius:8, padding:'0 12px', height:38, flex:'0 1 320px' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <div className="comm-search" style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,.05)', borderRadius:8, padding:'0 12px', height:38, flex:'0 1 320px', minWidth:0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink:0 }}><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input value={search} onFocus={()=>setSearchOpen(true)} onChange={e=>{ setSearch(e.target.value); setView('feed'); }} placeholder="Search ideas, people…"
             style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, fontFamily:F, minWidth:0 }}/>
         </div>
@@ -2906,7 +2908,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         ) : (
           <span onClick={()=>onSignIn?.()} style={{ fontSize:13, color:'rgba(0,0,0,.6)', cursor:'pointer', fontWeight:600, paddingLeft:8 }}>Sign in</span>
         )}
-        <button onClick={onSubmitIdea} style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', background:GREEN, color:'#fff', border:'none', borderRadius:99, fontSize:13.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', fontFamily:F }}>✦ Validate My Idea</button>
+        <button onClick={onSubmitIdea} title="Validate My Idea" style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', background:GREEN, color:'#fff', border:'none', borderRadius:99, fontSize:13.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', fontFamily:F, flexShrink:0 }}>✦ <span className="cta-text">Validate My Idea</span></button>
       </header>
 
       {/* 3-column layout */}
