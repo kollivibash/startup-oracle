@@ -1326,6 +1326,13 @@ function ChatHeaderMenu({ peerId, onClear, onDelete }) {
 
 function ChatArea({ peer, msgs, chat }) {
   const { me, onSend, onReact, onDeleteForMe, onUnsend, onUndoDelete, onForward, onLoadOlder } = chat;
+  // BUG-007 message requests: if I don't follow this peer and they haven't replied,
+  // I can send only one message until they do.
+  const iFollow = chat.following?.has(peer.id);
+  const peerReplied = msgs.some(m => m.sender_id === peer.id && !String(m.id).startsWith('t_'));
+  const myMsgCount = msgs.filter(m => m.sender_id === me?.id).length;
+  const isRequest = !iFollow && !peerReplied;
+  const requestLocked = isRequest && myMsgCount >= 1;
   const [input, setInput] = useState('');
   const [atts, setAtts] = useState([]);          // { file, type, name, size, preview }
   const [replyTo, setReplyTo] = useState(null);
@@ -1379,7 +1386,7 @@ function ChatArea({ peer, msgs, chat }) {
 
   const send = async () => {
     const text = input.trim();
-    if ((!text && atts.length === 0) || sending) return;
+    if ((!text && atts.length === 0) || sending || requestLocked) return;
     setSending(true);
     typingApi.current?.send(false); clearTimeout(stopTO.current); lastTyped.current = 0;
     try {
@@ -1473,18 +1480,25 @@ function ChatArea({ peer, msgs, chat }) {
       <input ref={pvInput} type="file" accept="image/*,video/*" multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
       <input ref={docInput} type="file" accept={DOC_ACCEPT} multiple hidden onChange={e=>{ addAtts(e.target.files); e.target.value=''; }}/>
 
-      <div style={{ padding:'10px 14px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:3, alignItems:'flex-end', flexShrink:0 }}>
-        <button title="Photo or video" aria-label="Attach photo or video" onClick={()=>pvInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoPhoto/></button>
-        <button title="Document" aria-label="Attach document" onClick={()=>docInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoClip/></button>
+      {isRequest && (
+        <div style={{ padding:'8px 14px', borderTop:'1px solid rgba(0,0,0,.08)', background:'rgba(0,0,0,.02)', fontSize:11.5, color:'rgba(0,0,0,.55)', lineHeight:1.45, flexShrink:0 }}>
+          {requestLocked
+            ? `Message request sent. You can send another once ${peer.name || 'they'} reply or follow you back.`
+            : `You're not connected — this sends as a message request. You can send one message until ${peer.name || 'they'} reply.`}
+        </div>
+      )}
+      <div style={{ padding:'10px 14px', borderTop:'1px solid rgba(0,0,0,.08)', display:'flex', gap:3, alignItems:'flex-end', flexShrink:0, opacity:requestLocked?.55:1 }}>
+        <button title="Photo or video" aria-label="Attach photo or video" disabled={requestLocked} onClick={()=>pvInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoPhoto/></button>
+        <button title="Document" aria-label="Attach document" disabled={requestLocked} onClick={()=>docInput.current?.click()} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoClip/></button>
         <div style={{ position:'relative' }}>
-          <button title="Emoji" aria-label="Insert emoji" onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
+          <button title="Emoji" aria-label="Insert emoji" disabled={requestLocked} onClick={()=>setEmojiOpen(o=>!o)} style={iconBtn} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.06)'} onMouseLeave={e=>e.currentTarget.style.background='none'}><IcoEmoji/></button>
           {emojiOpen && <EmojiPicker onPick={e=>setInput(v=>v+e)} onClose={()=>setEmojiOpen(false)}/>}
         </div>
-        <input value={input} onChange={e=>onType(e.target.value)} placeholder={`Message ${peer.name || 'founder'}…`} disabled={sending} maxLength={2000}
+        <input value={input} onChange={e=>onType(e.target.value)} placeholder={requestLocked ? 'Message request sent — waiting for a reply' : `Message ${peer.name || 'founder'}…`} disabled={sending || requestLocked} maxLength={2000}
           onKeyDown={e=>{ if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-          style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center' }}/>
+          style={{ flex:1, minWidth:0, border:'1px solid rgba(0,0,0,.2)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:F, outline:'none', alignSelf:'center', background:requestLocked?'rgba(0,0,0,.04)':'#fff' }}/>
         {hasContent
-          ? <button onClick={send} disabled={sending} title="Send" aria-label="Send message" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer', flexShrink:0, opacity:sending?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
+          ? <button onClick={send} disabled={sending || requestLocked} title="Send" aria-label="Send message" style={{ width:36, height:36, background:'rgba(0,0,0,.9)', border:'none', borderRadius:'50%', color:'#fff', cursor:requestLocked?'not-allowed':'pointer', flexShrink:0, opacity:(sending||requestLocked)?.4:1, display:'flex', alignItems:'center', justifyContent:'center' }}><IcoSend/></button>
           : <VoiceRecorder onDone={sendVoice} iconBtn={iconBtn} onError={chat.notify}/>}
       </div>
     </>
@@ -2268,6 +2282,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [sidePeople, setSidePeople] = useState(null);
   const [followState, setFollowState] = useState({ accepted: new Set(), pending: new Set() });
   const followingIds = followState.accepted;
+  const followingIdsRef = useRef(followingIds);
+  useEffect(() => { followingIdsRef.current = followingIds; }, [followingIds]);
   const pendingIds = followState.pending;
   const [followerCount, setFollowerCount] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -2276,6 +2292,10 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [rOpen, setROpen] = useState(null);
   const [cOpen, setCOpen] = useState(null);
   const [convs, setConvs] = useState({});
+  // Always-current mirrors so handleSend can gate message requests (BUG-007)
+  // without churning its useCallback identity.
+  const convsRef = useRef(convs);
+  useEffect(() => { convsRef.current = convs; }, [convs]);
   const [activePeer, setActivePeer] = useState(null);
   const [dmUser, setDmUser] = useState(null);
   const [forwardMsg, setForwardMsg] = useState(null);
@@ -2501,6 +2521,18 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     const { text = '', media = null, replyTo = null, forwarded = false } =
       typeof payload === 'string' ? { text: payload } : (payload || {});
     if (!text.trim() && !(media && media.length)) return;
+    // BUG-007 message requests: if you don't follow the recipient and they haven't
+    // replied, you may send only ONE message until they do. (Enforced server-side by
+    // supabase_dm_message_request.sql; this is the matching client guard.)
+    const conv = convsRef.current[peerId];
+    const cmsgs = conv?.messages || [];
+    const iFollow = followingIdsRef.current.has(peerId);
+    const peerReplied = cmsgs.some(m => m.sender_id === peerId && !String(m.id).startsWith('t_'));
+    const myCount = cmsgs.filter(m => m.sender_id === user.id).length;
+    if (!iFollow && !peerReplied && myCount >= 1) {
+      notify(`You can send one message until they reply or follow you back.`);
+      return;
+    }
     const temp = { id:`t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, sender_id:user.id, recipient_id:peerId, text:text||null, media, reply_to:replyTo, forwarded, reactions:{}, deleted_for:[], read:false, created_at:new Date().toISOString() };
     setConvs(prev => { const ex = prev[peerId] || { peer:{ id:peerId }, unread:0 }; return { ...prev, [peerId]: { ...ex, messages:[...(ex.messages||[]), temp] } }; });
     try {
@@ -2581,8 +2613,8 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     return add.length;
   }, [user, convs]);
 
-  const chatApi = useMemo(() => ({ me:user, notify, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg, onLoadOlder:loadOlder, onClearChat:handleClearChat, onDeleteChat:handleDeleteChat }),
-    [user, notify, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete, loadOlder, handleClearChat, handleDeleteChat]);
+  const chatApi = useMemo(() => ({ me:user, notify, following:followingIds, onSend:handleSend, onReact:handleReact, onDeleteForMe:handleDeleteForMe, onUnsend:handleUnsend, onUndoDelete:handleUndoDelete, onForward:setForwardMsg, onLoadOlder:loadOlder, onClearChat:handleClearChat, onDeleteChat:handleDeleteChat }),
+    [user, notify, followingIds, handleSend, handleReact, handleDeleteForMe, handleUnsend, handleUndoDelete, loadOlder, handleClearChat, handleDeleteChat]);
 
   const openConv = useCallback(peerId => {
     setActivePeer(peerId);
