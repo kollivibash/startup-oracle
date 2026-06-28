@@ -233,6 +233,13 @@ export async function setFollow(userId, targetId, follow) {
 }
 
 export async function fetchFollowList(userId, type) {
+  // BUG-009: privacy-gated RPC first — only the owner or an accepted follower may
+  // see the lists. Falls back to the legacy direct select when the migration
+  // (supabase_follow_list_privacy.sql) isn't installed (degrades gracefully).
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('get_follow_list', { target: userId, kind: type });
+  if (!rpcErr) return rpcData || [];
+  if (/FOLLOW_LIST_PRIVATE/i.test(rpcErr.message || '')) return []; // viewer not allowed
+  // RPC absent → legacy path.
   const col   = type === 'followers' ? 'followee_id' : 'follower_id';
   const join  = type === 'followers' ? 'follower_id' : 'followee_id';
   const sel   = `person:profiles!follows_${join}_fkey(id, name, avatar_url, bio)`;

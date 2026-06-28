@@ -1972,7 +1972,7 @@ function EditProfileModal({ me, prof, onClose, onSaved }) {
 }
 
 // ── Profile view (any founder) ───────────────────────────────────────────────
-function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onEdit, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
+function ProfileView({ uid, me, notify, onProfileSaved, posts, followingIds, pendingIds, onFollow, onProfile, onRate, rOpen, onTR, cOpen, onTC, onBack, openDM, requireAuth, onDelete, onEdit, onSave, onRepost, onOpenPost, savedIds, onVote, verifiedIds }) {
   const isSelf = me && uid === me.id;
   const [prof, setProf] = useState(null);
   const [counts, setCounts] = useState({ followers:0, following:0 });
@@ -2076,15 +2076,20 @@ function ProfileView({ uid, me, onProfileSaved, posts, followingIds, pendingIds,
             )}
           </div>
           <div style={{ display:'flex', gap:24, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(0,0,0,.08)' }}>
-            {[['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>(
-              <div key={l} onClick={modal ? ()=>setPeopleModal(modal) : undefined}
-                style={{ cursor: modal ? 'pointer' : 'default', borderRadius:6, padding:'2px 6px', margin:'-2px -6px', transition:'background .12s' }}
-                onMouseEnter={e=>{ if(modal) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
+            {[['Followers', counts.followers, 'followers'],['Following', counts.following, 'following'],['Ideas', fps.length, null]].map(([l,v,modal])=>{
+              // BUG-009: only the owner or an accepted follower can open the lists.
+              const openable = modal && (isSelf || followingIds.has(uid));
+              return (
+              <div key={l} onClick={openable ? ()=>setPeopleModal(modal) : modal ? ()=>notify?.('Only followers can see this list.') : undefined}
+                title={modal && !openable ? 'Only followers can see this' : undefined}
+                style={{ cursor: openable ? 'pointer' : 'default', borderRadius:6, padding:'2px 6px', margin:'-2px -6px', transition:'background .12s' }}
+                onMouseEnter={e=>{ if(openable) e.currentTarget.style.background='rgba(0,0,0,.05)'; }}
                 onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; }}>
                 <div style={{ fontSize:16, fontWeight:800, color:'rgba(0,0,0,.9)' }}>{v}</div>
                 <div style={{ fontSize:13, color:'rgba(0,0,0,.5)' }}>{l}</div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         {isSelf && (
@@ -2891,7 +2896,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           )}
 
           {view === 'profile' && pid && (
-            <ProfileView uid={pid} me={meUser} onProfileSaved={f=>setMyProfile(prev=>({ ...(prev||{}), ...f }))} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onEdit={p=>setEditPost(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
+            <ProfileView uid={pid} me={meUser} notify={notify} onProfileSaved={f=>setMyProfile(prev=>({ ...(prev||{}), ...f }))} posts={posts} followingIds={followingIds} pendingIds={pendingIds} onFollow={handleFollow} onProfile={goProfile} onRate={handleRate} rOpen={rOpen} onTR={toggleR} cOpen={cOpen} onTC={toggleC} onBack={goFeed} openDM={openDM} requireAuth={requireAuth} onDelete={p=>setConfirmDel(p)} onEdit={p=>setEditPost(p)} onSave={handleSave} onRepost={o=>setRepostOf(o)} onOpenPost={focusPost} savedIds={savedIds} onVote={handleVote} verifiedIds={verifiedIds}/>
           )}
 
           {view === 'messages' && (
