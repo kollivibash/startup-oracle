@@ -80,7 +80,7 @@ const NAV_ICONS = {
   home: 'M3 11.2 12 4l9 7.2M5.5 9.8V20h13V9.8',
   network: 'M9 11a3 3 0 100-6 3 3 0 000 6Zm7.5 0a2.5 2.5 0 100-5M3 19a6 6 0 0112 0m2.5-.5a5.5 5.5 0 00-3.5-5',
   openings: 'M4 8.5h16V20H4zM9 8.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 6v2.5M4 13h16',
-  messages: 'M4 5h16v10.5H8.5L4 19.5z',
+  messages: 'M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z',
   alerts: 'M11 3.5a6 6 0 016 6v3.5l1.8 1.8v1.2H4.2v-1.2L6 13V9.5a6 6 0 016-6ZM9.2 18a2.8 2.8 0 005.6 0',
 };
 function NavBtn({ icon, label, active, onClick, badge }) {
@@ -761,8 +761,15 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
   const sugCount = (post.sugCount ?? 0) + extraSug;
   const shareTitle = post.title || post.original?.title || 'idea';
 
-  const share = () => {
-    try { navigator.clipboard.writeText(`"${shareTitle}" — Startup Oracle: ${window.location.origin}/#/idea/${post.id}`); setCopied(true); setTimeout(()=>setCopied(false), 1600); } catch { /* clipboard unavailable */ }
+  const share = async () => {
+    const url = `${window.location.origin}/#/idea/${post.id}`;
+    const text = `"${shareTitle}" — Startup Oracle`;
+    // Native share sheet (WhatsApp / X / Messages / …) where supported; copy is the fallback.
+    if (navigator.share) {
+      try { await navigator.share({ title: shareTitle, text, url }); return; }
+      catch (e) { if (e?.name === 'AbortError') return; /* user dismissed */ }
+    }
+    try { await navigator.clipboard.writeText(`${text}: ${url}`); setCopied(true); setTimeout(()=>setCopied(false), 1600); } catch { /* clipboard unavailable */ }
   };
 
   return (
@@ -2248,6 +2255,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const [repostOf, setRepostOf] = useState(null);
   const [verifiedIds, setVerifiedIds] = useState(new Set());
   const [myProfile, setMyProfile] = useState(null);
+  const [myProfileLoaded, setMyProfileLoaded] = useState(false);
   const [onbDismissed, setOnbDismissed] = useState(() => { try { return localStorage.getItem('so_onboard_dismissed') === '1'; } catch { return false; } });
   const dismissOnboarding = () => { setOnbDismissed(true); try { localStorage.setItem('so_onboard_dismissed', '1'); } catch { /* storage unavailable */ } };
   // Prefer the uploaded profile avatar/name over (possibly stale) Google auth metadata,
@@ -2263,6 +2271,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const pendingIds = followState.pending;
   const [followerCount, setFollowerCount] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [confirmUnfollow, setConfirmUnfollow] = useState(null);
   const [editPost, setEditPost] = useState(null);
   const [rOpen, setROpen] = useState(null);
   const [cOpen, setCOpen] = useState(null);
@@ -2297,7 +2306,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   }, []);
   useEffect(() => { const t = setTimeout(loadFeed, 0); return () => clearTimeout(t); }, [loadFeed]);
   useEffect(() => { fetchVerifiedIds().then(setVerifiedIds); }, []);
-  useEffect(() => { if (user?.id) fetchProfile(user.id).then(setMyProfile).catch(() => {}); }, [user]);
+  useEffect(() => { if (user?.id) fetchProfile(user.id).then(setMyProfile).catch(() => {}).finally(() => setMyProfileLoaded(true)); }, [user]);
 
   // Live feed over websockets — any post/rating/comment/poll change refreshes the feed
   // (debounced so bursts coalesce). No manual refresh needed.
@@ -2383,7 +2392,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
   const requireAuth = useCallback(fn => user ? fn : () => onSignIn?.(), [user, onSignIn]);
 
-  const handleFollow = useCallback(async uid => {
+  const doFollow = useCallback(async uid => {
     if (!user) return;
     // following or requested → cancel; otherwise → send a follow request
     const had = followingIds.has(uid) || pendingIds.has(uid);
@@ -2397,6 +2406,12 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     const { error } = (await setFollow(user.id, uid, !had)) || {};
     if (error) { setFollowState(prevState); notify("Couldn't update follow — please try again."); }
   }, [user, followingIds, pendingIds, followState, notify]);
+  // Unfollowing an accepted follow is destructive — confirm first (BUG-010). Following
+  // and cancelling a still-pending request stay one-tap.
+  const handleFollow = useCallback(uid => {
+    if (followingIds.has(uid)) { setConfirmUnfollow(uid); return; }
+    doFollow(uid);
+  }, [followingIds, doFollow]);
 
   const respondRequest = useCallback(async (followerId, accept) => {
     if (!user) return;
@@ -2772,7 +2787,9 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
           {view === 'feed' && (
             <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {(() => {
-                if (!user || onbDismissed) return null;
+                // Wait until the feed + the user's profile have actually loaded, else the
+                // card renders "incomplete" for a frame and then vanishes (the flash).
+                if (!user || onbDismissed || loading || !myProfileLoaded) return null;
                 const hasPosted = posts.some(p => p.user_id === user.id);
                 const profileDone = !!(myProfile && ((myProfile.about && myProfile.about.trim()) || (myProfile.headline && myProfile.headline.trim()) || (myProfile.bio && myProfile.bio.trim()) || (myProfile.skills && myProfile.skills.length)));
                 const steps = [
@@ -2907,6 +2924,18 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       </div>
 
       {/* Delete confirm */}
+      {confirmUnfollow && (
+        <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }} onClick={()=>setConfirmUnfollow(null)}>
+          <div style={{ background:'#fff', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e=>e.stopPropagation()}>
+            <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:700 }}>Unfollow this founder?</p>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:'rgba(0,0,0,.55)', lineHeight:1.6 }}>You'll stop seeing their ideas in your Following feed. You can follow them again anytime.</p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>{ const u=confirmUnfollow; setConfirmUnfollow(null); doFollow(u); }} style={{ flex:1, fontSize:13, fontWeight:600, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Unfollow</button>
+              <button onClick={()=>setConfirmUnfollow(null)} style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'rgba(0,0,0,.6)', border:'1px solid rgba(0,0,0,.15)', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDel && (
         <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.45)', backdropFilter:'blur(4px)', padding:16 }} onClick={()=>setConfirmDel(null)}>
           <div style={{ background:'#fff', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:380, padding:24 }} onClick={e=>e.stopPropagation()}>
