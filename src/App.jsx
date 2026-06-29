@@ -176,12 +176,13 @@ export default function App() {
 
   // Resolve the investor-onboarding gate once the user is known. A locally-remembered completion
   // wins immediately (so it works before supabase_investor_profile.sql is run); otherwise check
-  // the profile blob's `completed` flag.
+  // the profile blob's `completed` flag. Keyed by user id — a bare 'so_investor_onboarded' key
+  // would leak across accounts on a shared browser, skipping onboarding for a brand-new investor.
   useEffect(() => {
     if (!user) { const t = setTimeout(() => setInvestorOnboarded(null), 0); return () => clearTimeout(t) }
     let cancelled = false
     let local = false
-    try { local = localStorage.getItem('so_investor_onboarded') === '1' } catch { /* private mode */ }
+    try { local = localStorage.getItem(`so_investor_onboarded_${user.id}`) === '1' } catch { /* private mode */ }
     if (local) { const t = setTimeout(() => setInvestorOnboarded(true), 0); return () => clearTimeout(t) }
     import('./communityDB').then(({ getInvestorProfile }) => {
       if (cancelled) return
@@ -249,7 +250,7 @@ export default function App() {
   const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
   // Investor finished (or is leaving) onboarding.
   const finishInvestorOnboarding = () => {
-    try { localStorage.setItem('so_investor_onboarded', '1') } catch { /* private mode */ }
+    try { localStorage.setItem(`so_investor_onboarded_${user.id}`, '1') } catch { /* private mode */ }
     setInvestorOnboarded(true)
     setView('invest')
   }
