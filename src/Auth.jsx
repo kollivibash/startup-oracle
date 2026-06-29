@@ -534,7 +534,7 @@ const PhoneAuth = ({ onBack, onSuccess }) => {
   );
 };
 
-export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, afterAuth, recovery, onRecoveryDone }) {
+export default function Auth({ onHome, onSubmitIdea, onCommunity, onInvest, onPricing, afterAuth, recovery, onRecoveryDone }) {
   const [mode, setMode]       = useState('signin');
   const [success, setSuccess] = useState(false);
   const [isNew, setIsNew]     = useState(false);
@@ -547,6 +547,7 @@ export default function Auth({ onHome, onSubmitIdea, onCommunity, onPricing, aft
     // Auto-redirect after 1.2s to the destination they came from
     setTimeout(() => {
       if (afterAuth === 'community') onCommunity();
+      else if (afterAuth === 'invest') onInvest?.();
       else if (afterAuth === 'pricing') onPricing?.();
       else if (afterAuth === 'oracle') onHome();
       else onSubmitIdea();

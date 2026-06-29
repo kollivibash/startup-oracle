@@ -750,6 +750,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
   const isRepost = !!post.repost_of;
   const isPoll = post.kind === 'poll' && post.poll;
   const isArticle = post.kind === 'article';
+  const isPitch = post.kind === 'pitch';
   const ratings = post.ratings || [];
   const myR = me ? ratings.find(r=>r.user_id===me.id) : null;
   const uRating = myR ? to10(myR.value) : null;
@@ -787,7 +788,7 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
             <div style={{ fontSize:12, color:'rgba(0,0,0,.6)', lineHeight:1.4 }}>{headlineOf(author)}</div>
             <div style={{ fontSize:12, color:'rgba(0,0,0,.45)', marginTop:1, display:'flex', alignItems:'center', gap:6 }}>
               <span title={VIS[visKey(post.visibility)].hint}>{timeAgo(post.created_at)} · {VIS[visKey(post.visibility)].icon}</span>
-              <span style={{ padding:'1px 8px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11, fontWeight:600, color:'rgba(0,0,0,.55)' }}>{isRepost?'Repost':isPoll?'Poll':isArticle?'Article':'Idea'}</span>
+              <span style={{ padding:'1px 8px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11, fontWeight:600, color:'rgba(0,0,0,.55)' }}>{isRepost?'Repost':isPoll?'Poll':isPitch?'Pitch':isArticle?'Article':'Idea'}</span>
             </div>
           </div>
         </div>
@@ -826,6 +827,19 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
         ) : (
           <>
             {isArticle && <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginBottom:6, padding:'3px 10px', borderRadius:99, background:'rgba(0,0,0,.05)' }}><span style={{ fontSize:11, fontWeight:700, color:'rgba(0,0,0,.6)' }}>📄 Article</span></div>}
+            {isPitch && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginBottom:8, padding:'3px 10px', borderRadius:99, background:'rgba(37,99,235,.08)', border:'1px solid rgba(37,99,235,.22)' }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#1d4ed8' }}>💡 Pitch · seeking investment</span>
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
+                  {post.meta?.amount && <span style={{ padding:'3px 11px', borderRadius:99, background:'rgba(37,99,235,.08)', border:'1px solid rgba(37,99,235,.22)', fontSize:11.5, fontWeight:700, color:'#1d4ed8' }}>Raising {post.meta.amount}{post.meta.equity?` · ${post.meta.equity}`:''}</span>}
+                  {post.meta?.category && <span style={{ padding:'3px 10px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11.5, fontWeight:600, color:'rgba(0,0,0,.6)' }}>{post.meta.category}</span>}
+                  {post.meta?.stage && <span style={{ padding:'3px 10px', borderRadius:99, background:'rgba(0,0,0,.05)', fontSize:11.5, fontWeight:600, color:'rgba(0,0,0,.6)' }}>{post.meta.stage}</span>}
+                  {post.meta?.website && <a href={post.meta.website.startsWith('http')?post.meta.website:`https://${post.meta.website}`} target="_blank" rel="noreferrer noopener" style={{ fontSize:12, fontWeight:600, color:ACCENT, textDecoration:'none' }}>Visit site ↗</a>}
+                </div>
+              </div>
+            )}
             {post.meta?.validated && (
               <div style={{ display:'inline-flex', alignItems:'center', gap:6, marginBottom:6, padding:'3px 10px', borderRadius:99, background:'rgba(37,99,235,.08)', border:'1px solid rgba(37,99,235,.25)' }}>
                 <span style={{ fontSize:11, fontWeight:700, color:'#1d4ed8' }}>✓ Oracle-Validated{post.meta.overallScore!=null?` · ${post.meta.overallScore}/100`:''}</span>
@@ -875,6 +889,10 @@ function PostCard({ post, me, followingIds, pendingIds, onFollow, onProfile, onR
 // ── Composer modal (text + photo + document upload) ──────────────────────────
 const DOC_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.md';
 const MAX_FILE = 25 * 1024 * 1024; // 25 MB
+// Pitch (kind='pitch') — a structured post investors browse in the deal-flow. Its fields live in
+// the post's `meta` jsonb: { pitch:true, category, stage, amount, equity, website }.
+const PITCH_CATEGORIES = ['AI / ML','SaaS','Fintech','Healthtech','E-commerce','Edtech','Consumer','Deeptech','Climate','Marketplace','Web3','Gaming','Other'];
+const PITCH_STAGES = ['Idea','Prototype','MVP','Early Revenue','Scaling'];
 
 const URL_RE = /(https?:\/\/[^\s]+)/i;
 
@@ -888,6 +906,13 @@ function ComposerModal({ me, onClose, onPosted }) {
   const [tags, setTags] = useState('');
   const [visibility, setVisibility] = useState('public');
   const [files, setFiles] = useState([]); // { file, type, name, size, preview }
+  // Pitch fields (mode === 'pitch') — stored on the post's meta jsonb.
+  const [pitchTitle, setPitchTitle] = useState('');
+  const [pitchCat, setPitchCat] = useState(PITCH_CATEGORIES[0]);
+  const [pitchStage, setPitchStage] = useState(PITCH_STAGES[0]);
+  const [pitchAmount, setPitchAmount] = useState('');
+  const [pitchEquity, setPitchEquity] = useState('');
+  const [pitchWebsite, setPitchWebsite] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const imgInput = useRef(null);
@@ -908,9 +933,11 @@ function ComposerModal({ me, onClose, onPosted }) {
 
   const canPost = mode === 'poll'
     ? (pollQ.trim() && pollOpts.filter(o => o.trim()).length >= 2)
-    : mode === 'article'
-      ? (artTitle.trim() && body.trim())
-      : (body.trim() || files.length > 0);
+    : mode === 'pitch'
+      ? (pitchTitle.trim() && body.trim() && pitchAmount.trim())
+      : mode === 'article'
+        ? (artTitle.trim() && body.trim())
+        : (body.trim() || files.length > 0);
 
   const submit = async () => {
     if (!canPost || !me) return;
@@ -935,6 +962,22 @@ function ComposerModal({ me, onClose, onPosted }) {
         media.push({ url, type: f.type, name: f.name, size: f.size });
       }
 
+      if (mode === 'pitch') {
+        const meta = {
+          pitch: true,
+          category: pitchCat,
+          stage: pitchStage,
+          amount: pitchAmount.trim().slice(0, 40),
+          equity: pitchEquity.trim().slice(0, 20),
+          website: pitchWebsite.trim().slice(0, 200),
+        };
+        const title = pitchTitle.trim().slice(0, 120);
+        const bodyText = body.trim();
+        const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind: 'pitch', meta, visibility });
+        onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: bodyText, media, kind: 'pitch', meta, ...baseNew });
+        return onClose();
+      }
+
       let title, bodyText;
       if (mode === 'article') { title = artTitle.trim().slice(0, 120); bodyText = body.trim(); }
       else { const lines = body.trim(); title = (lines.split('\n')[0].trim().slice(0, 80)) || 'New Idea'; bodyText = lines.split('\n').slice(1).join('\n').trim(); }
@@ -956,6 +999,10 @@ function ComposerModal({ me, onClose, onPosted }) {
 
   const toolBtn = { display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:6, border:'none', background:'transparent', color:'rgba(0,0,0,.65)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F };
   const fin = { width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, fontFamily:F, outline:'none', boxSizing:'border-box' };
+  const pf = {
+    lbl:  { display:'flex', flexDirection:'column', gap:4, fontSize:11, fontWeight:700, letterSpacing:'.3px', textTransform:'uppercase', color:'rgba(0,0,0,.5)', flex:'1 1 150px' },
+    ctrl: { ...fin, fontWeight:600, color:'rgba(0,0,0,.82)' },
+  };
   const modeChip = active => ({ padding:'6px 12px', borderRadius:99, border:'1px solid', borderColor: active?'rgba(0,0,0,.9)':'rgba(0,0,0,.15)', background: active?'rgba(0,0,0,.9)':'transparent', color: active?'#fff':'rgba(0,0,0,.6)', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F });
 
   return (
@@ -975,7 +1022,7 @@ function ComposerModal({ me, onClose, onPosted }) {
         </div>
 
         <div style={{ display:'flex', gap:8, padding:'4px 18px 10px' }}>
-          {[['post','✎ Post'],['poll','📊 Poll'],['article','📄 Article']].map(([k,l])=>(
+          {[['post','✎ Post'],['pitch','💡 Pitch'],['poll','📊 Poll'],['article','📄 Article']].map(([k,l])=>(
             <button key={k} onClick={()=>{ setMode(k); setErr(''); }} style={modeChip(mode===k)}>{l}</button>
           ))}
         </div>
@@ -991,6 +1038,22 @@ function ComposerModal({ me, onClose, onPosted }) {
                 </div>
               ))}
               {pollOpts.length < 4 && <button onClick={()=>setPollOpts(p=>[...p,''])} style={{ alignSelf:'flex-start', background:'none', border:'none', color:'#2563EB', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:F }}>+ Add option</button>}
+            </div>
+          ) : mode === 'pitch' ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+              <input autoFocus value={pitchTitle} onChange={e=>setPitchTitle(e.target.value)} placeholder={'Pitch title — e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...fin, fontWeight:700, fontSize:15 }}/>
+              <textarea value={body} onChange={e=>setBody(e.target.value)} rows={5} maxLength={5000}
+                placeholder="The pitch: the problem, your solution, traction, why now — and why an investor should back you." style={{ ...fin, resize:'vertical', lineHeight:1.6 }}/>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                <label style={pf.lbl}>Category<select value={pitchCat} onChange={e=>setPitchCat(e.target.value)} style={pf.ctrl}>{PITCH_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label>
+                <label style={pf.lbl}>Stage<select value={pitchStage} onChange={e=>setPitchStage(e.target.value)} style={pf.ctrl}>{PITCH_STAGES.map(s=><option key={s}>{s}</option>)}</select></label>
+              </div>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                <label style={pf.lbl}>Seeking *<input value={pitchAmount} onChange={e=>setPitchAmount(e.target.value)} placeholder="₹50,00,000" maxLength={40} style={pf.ctrl}/></label>
+                <label style={pf.lbl}>Equity offered<input value={pitchEquity} onChange={e=>setPitchEquity(e.target.value)} placeholder="e.g. 8%" maxLength={20} style={pf.ctrl}/></label>
+              </div>
+              <label style={{ ...pf.lbl, flex:'1 1 100%' }}>Website / demo (optional)<input value={pitchWebsite} onChange={e=>setPitchWebsite(e.target.value)} placeholder="https://…" maxLength={200} style={pf.ctrl}/></label>
+              <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', lineHeight:1.5 }}>Attach your deck, one-pager or prototype below — investors can open them from your pitch.</div>
             </div>
           ) : (
             <>
@@ -1038,7 +1101,7 @@ function ComposerModal({ me, onClose, onPosted }) {
           <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F, marginRight:4 }}>Cancel</button>
           <button onClick={submit} disabled={busy || !canPost}
             style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:(canPost&&!busy)?1:.5, fontFamily:F }}>
-            {busy ? 'Posting…' : 'Post'}
+            {busy ? (mode==='pitch'?'Publishing…':'Posting…') : (mode==='pitch'?'Publish pitch':'Post')}
           </button>
         </div>
       </div>

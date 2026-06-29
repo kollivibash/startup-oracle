@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import Home from './Home'
+import Gateway from './Gateway'
 import ErrorBoundary from './ErrorBoundary'
 import WelcomeSlides from './WelcomeSlides'
 import { supabase } from './supabaseClient'
@@ -14,8 +15,9 @@ const Account      = lazy(() => import('./Account'))
 const MasterReport = lazy(() => import('./MasterReport'))
 const Pricing      = lazy(() => import('./Pricing'))
 const Legal        = lazy(() => import('./Legal'))
+const Invest       = lazy(() => import('./Invest'))
 
-const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy']
+const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest']
 
 // Minimal full-screen fallback while a lazy view's chunk downloads.
 function Loading() {
@@ -54,6 +56,9 @@ export default function App() {
   })
   const dismissWelcome = () => { try { localStorage.setItem('so_welcome_seen', '1') } catch { /* private mode */ } setShowWelcome(false) }
   const [activeIdea, setActiveIdea] = useState(null)
+  // Founder/Investor role (account_type). Seeded from localStorage for an instant gateway
+  // highlight; refreshed from the profile once the user is known.
+  const [acctType, setAcctType] = useState(() => { try { return localStorage.getItem('so_account_type') } catch { return null } })
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -142,6 +147,30 @@ export default function App() {
     return () => clearTimeout(t)
   }, [user])
 
+  // Sync the Founder/Investor role with the profile once the user is known: persist a role
+  // chosen while logged out, otherwise refresh state from what's stored on the profile.
+  useEffect(() => {
+    if (!user) return undefined
+    let cancelled = false
+    import('./communityDB').then(({ getAccountType, setAccountType }) => {
+      if (cancelled) return
+      let pending = null
+      try { pending = localStorage.getItem('so_account_type_pending') ? localStorage.getItem('so_account_type') : null } catch { /* private mode */ }
+      if (pending) {
+        setAccountType(user.id, pending).catch(() => {})
+        try { localStorage.removeItem('so_account_type_pending') } catch { /* private mode */ }
+        setAcctType(pending)
+      } else {
+        getAccountType(user.id).then(t => {
+          if (cancelled || !t) return
+          setAcctType(t)
+          try { localStorage.setItem('so_account_type', t) } catch { /* private mode */ }
+        }).catch(() => {})
+      }
+    })
+    return () => { cancelled = true }
+  }, [user])
+
   // Offline awareness (CROSS-003) — a banner instead of silent failures on flaky networks.
   useEffect(() => {
     const up = () => setOnline(true), down = () => setOnline(false)
@@ -182,6 +211,22 @@ export default function App() {
   }
   const goAccount = () => { if (user) setView('account'); else { setAfterAuth('account'); setView('auth') } }
 
+  // Founder/Investor gateway: remember the choice, persist it to the profile (or queue it for
+  // after login), then route to that side. Doubles as the role switcher.
+  const chooseRole = (type) => {
+    try { localStorage.setItem('so_account_type', type) } catch { /* private mode */ }
+    setAcctType(type)
+    if (user) {
+      import('./communityDB').then(({ setAccountType }) => setAccountType(user.id, type).catch(() => {}))
+    } else {
+      try { localStorage.setItem('so_account_type_pending', '1') } catch { /* private mode */ }
+    }
+    goAuth(type === 'investor' ? 'invest' : 'community')
+  }
+  // Investor opens a pitch → jump into the community feed focused on that post (where the DM
+  // button lives), reusing the existing deep-link focus mechanism.
+  const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
+
   // Wait for the stored session before rendering, so the header never
   // flashes "Sign in" for a logged-in user. Show the spinner (not a blank
   // screen) so a slow getSession() round-trip doesn't look like a broken site. (AUTH-006)
@@ -213,12 +258,33 @@ export default function App() {
     screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} onSignIn={() => goAuth('submit')} />
   } else if (view === 'community') {
     screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
+  } else if (view === 'gateway') {
+    screen = (
+      <Gateway
+        current={acctType}
+        onFounder={() => chooseRole('founder')}
+        onInvestor={() => chooseRole('investor')}
+        onHome={() => setView('oracle')}
+      />
+    )
+  } else if (view === 'invest') {
+    screen = (
+      <Invest
+        user={user}
+        onHome={() => setView('oracle')}
+        onAccount={goAccount}
+        onSignIn={goSignIn}
+        onOpenPitch={openPitchInCommunity}
+        onSwitchToFounder={() => chooseRole('founder')}
+      />
+    )
   } else if (view === 'auth') {
     screen = (
       <Auth
         onHome={() => setView('oracle')}
         onSubmitIdea={() => setView('submit')}
         onCommunity={() => setView('community')}
+        onInvest={() => setView('invest')}
         afterAuth={afterAuth}
         onPricing={() => setView('pricing')}
         recovery={recovery}
@@ -237,6 +303,7 @@ export default function App() {
     screen = (
       <Home
         user={user}
+        onGateway={() => setView('gateway')}
         onCommunity={() => goAuth('community')}
         onAnalyse={() => goAuth('submit')}
         onSignIn={goSignIn}

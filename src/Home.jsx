@@ -25,7 +25,8 @@ const InkBtn = ({ children, onClick, size='sm' }) => (
   </button>
 );
 
-export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount, onPricing, onHowItWorks }) {
+export default function Home({ user, onGateway, onCommunity, onAnalyse, onSignIn, onAccount, onPricing, onHowItWorks }) {
+  const startCommunity = onGateway || onCommunity;
   return (
     <div style={{ minHeight:'100vh', background:'#fff', color:INK, fontFamily:SANS, display:'flex', flexDirection:'column' }}>
       <style>{`
@@ -74,14 +75,14 @@ export default function Home({ user, onCommunity, onAnalyse, onSignIn, onAccount
           Post your ideas. Get real feedback. Validate your startup with a community that actually builds.
         </p>
         <div className="hero-c">
-          <InkBtn size="lg" onClick={onCommunity}>Build Community</InkBtn>
+          <InkBtn size="lg" onClick={startCommunity}>Build Community</InkBtn>
         </div>
       </div>
 
       {/* Split band */}
       <div className="home-band" style={{ display:'flex', width:'100%', flexShrink:0 }}>
         {/* Community card */}
-        <div onClick={onCommunity}
+        <div onClick={startCommunity}
           style={{ flex:'1 1 58%', background:'#F7F6F3', padding:'clamp(40px,7vw,56px) clamp(22px,6vw,48px)', display:'flex', flexDirection:'column', cursor:'pointer', minHeight:380 }}>
           <div style={{ fontSize:9, letterSpacing:'1.98px', textTransform:'uppercase', color:'rgba(0,0,0,.28)', marginBottom:22 }}>Community</div>
           <div style={{ fontFamily:SERIF, fontSize:40, fontWeight:500, lineHeight:1.08, color:INK, marginBottom:20 }}>

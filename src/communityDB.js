@@ -48,6 +48,21 @@ export async function fetchPostById(id) {
   return null;
 }
 
+// Investor deal-flow: all pitches (kind='pitch' posts), newest first. Same graceful
+// column-degradation ladder as fetchPosts. Returns [] before supabase_posts_extra.sql
+// adds the `kind` column (no pitches can exist yet anyway).
+export async function fetchPitches({ before = null, limit = FEED_PAGE } = {}) {
+  for (const cols of POST_VARIANTS) {
+    let q = supabase.from('community_posts').select(cols).eq('kind', 'pitch').order('created_at', { ascending: false }).limit(limit);
+    if (before) q = q.lt('created_at', before);
+    const { data, error } = await q;
+    if (!error) return (data || []).map(shapePost);
+    if (/kind/i.test(error.message || '')) return [];          // no `kind` column → no pitches yet
+    if (!POST_DEGRADE.test(error.message || '')) { console.error('fetchPitches failed', error.message || error); return []; }
+  }
+  return [];
+}
+
 export async function reactToPost(userId, postId, type) {
   if (!type) {
     const { error } = await supabase.from('post_reactions').delete().eq('post_id', postId).eq('user_id', userId);
@@ -365,6 +380,20 @@ export async function updateProfile(userId, fields) {
     if (e2) { console.error('updateProfile failed', e2); throw e2; }
     return;
   }
+}
+
+// Account type (founder | investor) — drives the gateway after "Build Community".
+// Falls back to 'founder' when the column isn't migrated yet (supabase_account_type.sql)
+// or the profile row is missing, so the app never breaks pre-migration.
+export async function getAccountType(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles').select('account_type').eq('id', userId).single();
+  if (error || !data) return 'founder';
+  return data.account_type || 'founder';
+}
+export async function setAccountType(userId, type) {
+  // Reuses updateProfile's one-at-a-time column-drop fallback, so it no-ops gracefully pre-migration.
+  return updateProfile(userId, { account_type: type });
 }
 
 // Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).

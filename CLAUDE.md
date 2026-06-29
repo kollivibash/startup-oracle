@@ -1,8 +1,18 @@
 # Startup Oracle
 
-Startup validation platform: founders submit ideas and get an AI-generated 6-section deep-dive
-report, plus a LinkedIn-style community to share ideas, follow founders, rate posts, comment,
-repost, DM, and (when billing is switched on) subscribe for a Verified Founder badge.
+Startup validation platform **+ a two-sided founder↔investor marketplace**: founders submit ideas
+and get an AI-generated 6-section deep-dive report, share them in a LinkedIn-style community (follow,
+rate, comment, repost, DM), and **pitch to investors**; investors browse a deal-flow of pitches and
+message founders. Plus (when billing is switched on) subscribe for a Verified Founder badge.
+
+**Founder/Investor gateway:** clicking "Build Community" on Home opens a role chooser (`gateway` view).
+Founder → the community feed; Investor → the deal-flow dashboard (`invest` view, `Invest.jsx`). The
+choice is saved on `profiles.account_type` (`founder`|`investor`, switchable — re-pick at the gateway),
+seeded into `localStorage.so_account_type` and persisted after login (queued via `so_account_type_pending`
+when picked while logged out). A **pitch** is a `community_posts` row with `kind:'pitch'` and structured
+fields in `meta` (`{ pitch, category, stage, amount, equity, website }`) + uploaded files in `media` —
+it shows in BOTH the founder feed and the investor dashboard. Pitches are open deal-flow (every pitch
+visible to all investors). The composer has a 4th "💡 Pitch" mode; `fetchPitches()` powers the dashboard.
 
 **Live URL:** https://startup-oracle-seven.vercel.app
 **Hosting:** Vercel (auto-deploys from `main`)
@@ -41,7 +51,8 @@ calling `/api/generate` directly to burn the Gemini bill). Until it's set, gener
 ## Architecture
 
 Single-page React (Vite). No React Router — `App.jsx` switches views via `setView()`. Views:
-`oracle` (Home), `submit`, `community`, `account`, `pricing`, `auth`, `report`, `terms`, `privacy`. `sessionStorage.so_view`
+`oracle` (Home), `gateway` (Founder/Investor chooser), `submit`, `community`, `invest` (investor
+deal-flow), `account`, `pricing`, `auth`, `report`, `terms`, `privacy`. `sessionStorage.so_view`
 persists across reloads; the **browser Back button** is wired to the view via History API
 (`pushState`/`popstate`) so Back returns to the previous view.
 
@@ -59,7 +70,12 @@ src/
   WelcomeSlides.jsx— first-run 3-slide intro carousel (Validate / Community / Free to start); shown once
                      on first visit + once after signup (localStorage `so_welcome_seen`/`so_welcome_pending`),
                      replayable via Home's "How it works" link. Distinct from the in-feed OnboardingCard.
-  Home.jsx         — landing (serif hero; CTAs: "Build Community", "Analyse Idea", "Pricing")
+  Home.jsx         — landing (serif hero; CTAs: "Build Community" → gateway, "Analyse Idea", "Pricing")
+  Gateway.jsx      — Founder/Investor role chooser shown after "Build Community"; sets account_type and
+                     routes Founder→community / Investor→invest. Doubles as the role switcher.
+  Invest.jsx       — investor deal-flow dashboard (`invest` view): grid of pitch cards (fetchPitches),
+                     category filter chips + search, "View & message →" deep-links into the community
+                     feed focused on that pitch (where the DM button lives). Anon-browsable.
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
                      `type=recovery`); **in-app-webview detection** (hides OAuth + shows email-first
@@ -71,7 +87,9 @@ src/
   MasterReport.jsx — 6-section report (Tailwind), score dashboard on Validation→Summary, share-to-community,
                      **PDF/print export** (a print-only `PrintReport` renders ALL sections; on-screen
                      UI is `print:hidden`; "Download PDF" buttons call `window.print()`)
-  Community.jsx    — the community (~1900 lines): feed, composer (post/poll/article) with an **audience
+  Community.jsx    — the community (~1900 lines): feed, composer (post/**pitch**/poll/article — the 💡 Pitch
+                     mode adds a structured form: category/stage/amount/equity/website + file uploads,
+                     saved as kind='pitch' + meta; pitch cards render a "seeking investment" banner) with an **audience
                      picker** (Everyone / Followers / Only me) + post **visibility badge** + author ⋯ menu
                      to **edit text & re-set audience** after posting (RLS-enforced — supabase_post_visibility.sql),
                      Rate (1–10), threaded comments+likes, repost, save, follow (approval), notifications bell,
@@ -161,6 +179,12 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     follower may read the lists (counts + "Followed by X" stay public).
                                     fetchFollowList calls it, falling back to a direct select until run.
                                     Client also hides the lists from non-followers. Idempotent.
+20. supabase_account_type.sql         Founder/Investor marketplace: `profiles.account_type`
+                                    ('founder'|'investor') for the gateway + an index on
+                                    community_posts(kind) for the investor deal-flow query. A pitch needs
+                                    NO new columns (reuses kind/meta/media). Until run, everyone is treated
+                                    as a founder (client falls back to 'founder') and pitching still works.
+                                    Idempotent (kind index is guarded if posts_extra isn't run yet).
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the
