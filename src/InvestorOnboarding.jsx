@@ -25,24 +25,24 @@ const STEPS = [
     { k:'notableExits',    label:'Notable exits or marquee bets (optional)', type:'text', ph:'e.g. Ledgerly (acq. 2024), Stacklane (Series C)', full:true },
   ] },
   { id:'invest', title:'How you invest', sub:'We use this to route deals that match your check and stage.', fields:[
-    { k:'investorType',  label:'Investor type', type:'select', options:['Angel','Syndicate lead','Scout','Micro-VC','VC fund','Family office','CVC'] },
-    { k:'typicalTicket', label:'Typical ticket', type:'select', options:['₹5–25 L','₹25 L–1 Cr','₹1–5 Cr','₹5–15 Cr','₹15 Cr+'] },
+    { k:'investorType',  label:'Investor type', type:'select', options:['Angel','Syndicate lead','Scout','Micro-VC','VC fund','Family office','CVC'], req:true },
+    { k:'typicalTicket', label:'Typical ticket', type:'select', options:['₹5–25 L','₹25 L–1 Cr','₹1–5 Cr','₹5–15 Cr','₹15 Cr+'], req:true },
     { k:'followOn',      label:'Follow-on reserves', type:'select', options:['None','0.5×','1×','2×+'] },
-    { k:'stagesYouBack', label:'Stages you back', type:'multi', options:['Idea','Prototype','Pre-seed','Seed','Series A','Series B+'], full:true },
+    { k:'stagesYouBack', label:'Stages you back', type:'multi', options:['Idea','Prototype','Pre-seed','Seed','Series A','Series B+'], full:true, req:true },
     { k:'leadOrFollow',  label:'Lead or follow', type:'select', options:['Lead rounds','Co-lead','Follow only','Either'] },
-    { k:'decisionSpeed', label:'Decision speed', type:'select', options:['< 1 week','1–2 weeks','2–4 weeks','4+ weeks'] },
+    { k:'decisionSpeed', label:'Decision speed', type:'select', options:['< 1 week','1–2 weeks','2–4 weeks','4+ weeks'], req:true },
   ] },
   { id:'focus', title:'Where you focus', sub:'Pick the sectors, models and geographies you actually write checks in.', fields:[
-    { k:'sectors',        label:'Sectors', type:'multi', options:['Fintech','SaaS','Healthtech','AI · ML','Consumer','Climate','Deeptech','Edtech','Devtools','Infra','Marketplaces','Cybersecurity'], full:true },
-    { k:'businessModels', label:'Business models', type:'multi', options:['B2B SaaS','B2C','Marketplace','D2C','API / Infra','Hardware','Services + software'], full:true },
-    { k:'geographies',    label:'Geographies', type:'multi', options:['India','SEA','MENA','US','Europe','LATAM','Africa','Global'], full:true },
+    { k:'sectors',        label:'Sectors Interested in', type:'multi', options:['Fintech','SaaS','Healthtech','AI · ML','Consumer','Climate','Deeptech','Edtech','Devtools','Infra','Marketplaces','Cybersecurity','Others'], full:true, req:true },
+    { k:'businessModels', label:'Business models', type:'multi', options:['B2B SaaS','B2C','Marketplace','D2C','API / Infra','Hardware','Services + software'], full:true, req:true },
+    { k:'geographies',    label:'Geographies', type:'multi', options:['India','SEA','MENA','US','Europe','LATAM','Africa','Global'], full:true, req:true },
     { k:'dealBreakers',   label:'Deal-breakers', type:'multi', options:['Solo founder','No technical co-founder','Pre-revenue','Regulated markets','Hardware-heavy','Crypto','Adtech'], full:true },
   ] },
   { id:'help', title:'How you help', sub:'Founders increasingly pick capital by what comes with it.', fields:[
     { k:'whatYouBring',      label:'What you bring beyond capital', type:'multi', options:['Hiring','GTM intros','Enterprise customers','Fundraising help','Product reviews','Technical architecture','Regulatory','International expansion','PR & brand'], full:true },
     { k:'postInvestment',    label:'Post-investment involvement', type:'select', options:['Hands-off','Monthly check-ins','Weekly sparring','Embedded'] },
     { k:'boardSeats',        label:'Board seats', type:'select', options:['Never','Observer only','When lead','Open to it'] },
-    { k:'preferredApproach', label:'Preferred way to be approached', type:'multi', options:['Warm intro','Cold email OK','In-app pitch','Demo first'], full:true },
+    { k:'preferredApproach', label:'Preferred way to be approached', type:'multi', options:['Warm intro','Cold email OK','In-app pitch','Demo first'], full:true, req:true },
   ] },
   { id:'thesis', title:'Your thesis', sub:'A short note founders will read before they reach out.', fields:[
     { k:'thesis',     label:'Your investing thesis', type:'textarea', ph:'I back technical founders building infrastructure for Indian SMBs. I look for distribution insight and capital efficiency.', full:true },
@@ -81,20 +81,29 @@ function SelectField({ f, value, onChange }) {
 
 function MultiSelect({ f, value = [], onChange }) {
   const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef(null);
   useEffect(() => { const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
   const toggle = o => onChange(value.includes(o) ? value.filter(x => x !== o) : [...value, o]);
   const summary = value.length ? (value.length <= 3 ? value.join(', ') : `${value.slice(0,3).join(', ')} +${value.length-3}`) : 'Select all that apply…';
+  const openMenu = () => {
+    if (!open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const estHeight = Math.min(260, f.options.length * 41 + 12);
+      setDropUp(window.innerHeight - rect.bottom < estHeight + 12 && rect.top > estHeight + 12);
+    }
+    setOpen(o => !o);
+  };
   return (
     <div ref={ref} style={{ position:'relative' }}>
       <label style={lbl}>{f.label}{f.req && <Req/>}</label>
-      <button type="button" onClick={()=>setOpen(o=>!o)} aria-haspopup="listbox" aria-expanded={open}
+      <button type="button" onClick={openMenu} aria-haspopup="listbox" aria-expanded={open}
         style={{ ...ctrl, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, cursor:'pointer', textAlign:'left' }}>
         <span style={{ color: value.length ? 'var(--ink)' : 'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{summary}</span>
         <span aria-hidden="true" style={{ fontSize:10, color:'var(--ink-3)', flexShrink:0 }}>▼</span>
       </button>
       {open && (
-        <div role="listbox" aria-multiselectable="true" style={{ position:'absolute', zIndex:50, top:'calc(100% + 6px)', left:0, right:0, maxHeight:260, overflowY:'auto', background:'var(--surface)', border:`1px solid ${BORDER}`, borderRadius:'var(--r)', boxShadow:'var(--sh-2)', padding:'6px' }}>
+        <div role="listbox" aria-multiselectable="true" style={{ position:'absolute', zIndex:50, ...(dropUp ? { bottom:'calc(100% + 6px)' } : { top:'calc(100% + 6px)' }), left:0, right:0, maxHeight:260, overflowY:'auto', background:'var(--surface)', border:`1px solid ${BORDER}`, borderRadius:'var(--r)', boxShadow:'var(--sh-2)', padding:'6px' }}>
           {f.options.map(o => {
             const on = value.includes(o);
             return (
