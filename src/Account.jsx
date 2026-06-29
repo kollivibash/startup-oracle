@@ -409,6 +409,8 @@ function PreferencesSection({ user, onUserUpdated }) {
 function DangerSection({ user, onLogout }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [text, setText]               = useState('')
+  const [deleting, setDeleting]       = useState(false)
+  const [delErr, setDelErr]           = useState('')
   const CONFIRM_PHRASE = 'delete my account'
 
   const handleExport = () => {
@@ -424,6 +426,21 @@ function DangerSection({ user, onLogout }) {
   }
 
   const handleDelete = async () => {
+    setDeleting(true); setDelErr('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Your session expired — please sign in again.')
+      const res = await fetch('/api/delete-account', { method:'POST', headers:{ Authorization:`Bearer ${token}` } })
+      // /api/* only runs on the deployed site; locally this 404s.
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || "Couldn't delete your account. Please try again.")
+    } catch (e) {
+      setDeleting(false)
+      setDelErr(e?.message || "Couldn't delete your account. Please try again.")
+      return // stay signed in so it's clear the deletion did NOT happen
+    }
+    // Real deletion succeeded — clean up locally and sign out.
     localStorage.removeItem('myIdeas')
     setConfirmOpen(false)
     onLogout?.()
@@ -444,7 +461,7 @@ function DangerSection({ user, onLogout }) {
         <div style={{ ...rowStyle, borderBottom:'none' }}>
           <div>
             <p style={{ margin:0, fontSize:13, fontWeight:500, color:'#DC2626' }}>Delete account</p>
-            <p style={{ margin:'2px 0 0', fontSize:12, color:'#9CA3AF' }}>Erase your idea history and sign out everywhere.</p>
+            <p style={{ margin:'2px 0 0', fontSize:12, color:'#9CA3AF' }}>Permanently delete your account, profile and all your data.</p>
           </div>
           <OutlineBtn danger onClick={() => setConfirmOpen(true)}>Delete Account</OutlineBtn>
         </div>
@@ -455,17 +472,18 @@ function DangerSection({ user, onLogout }) {
           <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.18)', width:'100%', maxWidth:420, padding:24 }}>
             <p style={{ margin:'0 0 6px', fontSize:17, fontWeight:700, color:'#111827' }}>Delete your account?</p>
             <p style={{ margin:'0 0 16px', fontSize:13, color:'#6B7280', lineHeight:1.6 }}>
-              This erases your idea history and signs you out. Type <strong style={{ color:'#111827' }}>{CONFIRM_PHRASE}</strong> to confirm.
+              This <strong style={{ color:'#111827' }}>permanently deletes</strong> your account, profile, posts and all your data — you'll no longer appear in search or the community. This cannot be undone. Type <strong style={{ color:'#111827' }}>{CONFIRM_PHRASE}</strong> to confirm.
             </p>
-            <input value={text} onChange={e => setText(e.target.value)} placeholder={CONFIRM_PHRASE}
-              style={{ ...inputStyle, marginBottom:14 }}/>
+            <input value={text} onChange={e => setText(e.target.value)} placeholder={CONFIRM_PHRASE} disabled={deleting}
+              style={{ ...inputStyle, marginBottom:delErr?8:14 }}/>
+            {delErr && <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#DC2626', lineHeight:1.5 }}>{delErr}</p>}
             <div style={{ display:'flex', gap:10 }}>
-              <button disabled={text !== CONFIRM_PHRASE} onClick={handleDelete}
-                style={{ flex:1, fontSize:13, fontWeight:600, background: text === CONFIRM_PHRASE ? '#DC2626' : '#FCA5A5', color:'#fff', border:'none', borderRadius:8, padding:10, cursor: text === CONFIRM_PHRASE ? 'pointer' : 'not-allowed', transition:'background .15s', fontFamily:F }}>
-                Delete Account
+              <button disabled={text !== CONFIRM_PHRASE || deleting} onClick={handleDelete}
+                style={{ flex:1, fontSize:13, fontWeight:600, background: (text === CONFIRM_PHRASE && !deleting) ? '#DC2626' : '#FCA5A5', color:'#fff', border:'none', borderRadius:8, padding:10, cursor: (text === CONFIRM_PHRASE && !deleting) ? 'pointer' : 'not-allowed', transition:'background .15s', fontFamily:F }}>
+                {deleting ? 'Deleting…' : 'Delete Account'}
               </button>
-              <button onClick={() => { setConfirmOpen(false); setText('') }}
-                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'#374151', border:'1px solid #E5E7EB', borderRadius:8, padding:10, cursor:'pointer', fontFamily:F }}>
+              <button disabled={deleting} onClick={() => { setConfirmOpen(false); setText(''); setDelErr('') }}
+                style={{ flex:1, fontSize:13, fontWeight:500, background:'#fff', color:'#374151', border:'1px solid #E5E7EB', borderRadius:8, padding:10, cursor: deleting?'not-allowed':'pointer', fontFamily:F }}>
                 Cancel
               </button>
             </div>

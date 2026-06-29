@@ -106,6 +106,12 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
   razorpay-sync.js     — reconcile a user's subscription vs Razorpay directly (fallback the client polls
                          after checkout, so a slow/missed webhook can't leave a paid user un-activated)
   razorpay-cancel.js   — cancel a subscription at cycle end (in-app "cancel anytime")
+  delete-account.js    — REAL account deletion (service-role): verifies the caller's own session,
+                         then deletes their auth user → cascades to profiles → posts/follows/messages/
+                         ratings (so they vanish from search + community), and best-effort wipes their
+                         avatars/post-media storage. Needs SUPABASE_SERVICE_ROLE_KEY; until it's set the
+                         client shows an error instead of faking it. (The old in-app delete only logged
+                         out + cleared localStorage, leaving the profile in search — fixed.)
 ```
 
 ### SQL migrations — run in Supabase SQL Editor in THIS order
