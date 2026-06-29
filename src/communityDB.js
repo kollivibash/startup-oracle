@@ -396,6 +396,24 @@ export async function setAccountType(userId, type) {
   return updateProfile(userId, { account_type: type });
 }
 
+// Investor onboarding profile (supabase_investor_profile.sql). Stored as one JSONB blob with a
+// `completed` flag; also mirrors name/title/firm onto the profile so the headline reflects them.
+export async function getInvestorProfile(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles').select('investor_profile').eq('id', userId).single();
+  if (error || !data) return null;
+  return data.investor_profile || null;
+}
+export async function saveInvestorProfile(userId, profile) {
+  const fields = { investor_profile: { ...profile, completed: true } };
+  if (profile.fullName) fields.name = profile.fullName;
+  if (profile.title)    fields.role = profile.title;
+  if (profile.firm)     fields.company = profile.firm;
+  // updateProfile drops any column the DB doesn't have yet (e.g. investor_profile pre-migration),
+  // so this degrades to a no-op instead of failing.
+  return updateProfile(userId, fields);
+}
+
 // Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).
 export async function syncAuthMeta(meta) {
   const { error } = await supabase.auth.updateUser({ data: meta });

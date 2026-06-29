@@ -13,6 +13,8 @@ when picked while logged out). A **pitch** is a `community_posts` row with `kind
 fields in `meta` (`{ pitch, category, stage, amount, equity, website }`) + uploaded files in `media` —
 it shows in BOTH the founder feed and the investor dashboard. Pitches are open deal-flow (every pitch
 visible to all investors). The composer has a 4th "💡 Pitch" mode; `fetchPitches()` powers the dashboard.
+Picking Investor first runs a **required 6-step onboarding** (`InvestorOnboarding.jsx`, saved to
+`profiles.investor_profile`); the `invest` dashboard is gated until it's completed.
 
 **Live URL:** https://startup-oracle-seven.vercel.app
 **Hosting:** Vercel (auto-deploys from `main`)
@@ -76,6 +78,12 @@ src/
   Invest.jsx       — investor deal-flow dashboard (`invest` view): grid of pitch cards (fetchPitches),
                      category filter chips + search, "View & message →" deep-links into the community
                      feed focused on that pitch (where the DM button lives). Anon-browsable.
+  InvestorOnboarding.jsx — 6-step investor onboarding wizard (About you / Credentials / How you invest /
+                     Where you focus / How you help / Your thesis). REQUIRED, no-skip: a signed-in
+                     investor must finish before the `invest` dashboard renders (gated in App.jsx via
+                     getInvestorProfile + a localStorage `so_investor_onboarded` fallback). Answers save
+                     to `profiles.investor_profile` (jsonb) via saveInvestorProfile; single-choice fields
+                     are dropdowns, multi-choice are multi-select (checkbox) dropdowns.
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
                      `type=recovery`); **in-app-webview detection** (hides OAuth + shows email-first
@@ -185,6 +193,10 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     NO new columns (reuses kind/meta/media). Until run, everyone is treated
                                     as a founder (client falls back to 'founder') and pitching still works.
                                     Idempotent (kind index is guarded if posts_extra isn't run yet).
+21. supabase_investor_profile.sql     `profiles.investor_profile` (jsonb) for the 6-step investor
+                                    onboarding (InvestorOnboarding.jsx). Until run, onboarding works
+                                    in-session (a localStorage flag remembers completion) but doesn't
+                                    persist across devices. Idempotent.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the

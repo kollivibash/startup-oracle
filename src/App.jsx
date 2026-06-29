@@ -16,6 +16,7 @@ const MasterReport = lazy(() => import('./MasterReport'))
 const Pricing      = lazy(() => import('./Pricing'))
 const Legal        = lazy(() => import('./Legal'))
 const Invest       = lazy(() => import('./Invest'))
+const InvestorOnboarding = lazy(() => import('./InvestorOnboarding'))
 
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest']
 
@@ -59,6 +60,8 @@ export default function App() {
   // Founder/Investor role (account_type). Seeded from localStorage for an instant gateway
   // highlight; refreshed from the profile once the user is known.
   const [acctType, setAcctType] = useState(() => { try { return localStorage.getItem('so_account_type') } catch { return null } })
+  // Investor onboarding gate: null = unknown (still checking), false = must onboard, true = done.
+  const [investorOnboarded, setInvestorOnboarded] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -171,6 +174,24 @@ export default function App() {
     return () => { cancelled = true }
   }, [user])
 
+  // Resolve the investor-onboarding gate once the user is known. A locally-remembered completion
+  // wins immediately (so it works before supabase_investor_profile.sql is run); otherwise check
+  // the profile blob's `completed` flag.
+  useEffect(() => {
+    if (!user) { const t = setTimeout(() => setInvestorOnboarded(null), 0); return () => clearTimeout(t) }
+    let cancelled = false
+    let local = false
+    try { local = localStorage.getItem('so_investor_onboarded') === '1' } catch { /* private mode */ }
+    if (local) { const t = setTimeout(() => setInvestorOnboarded(true), 0); return () => clearTimeout(t) }
+    import('./communityDB').then(({ getInvestorProfile }) => {
+      if (cancelled) return
+      getInvestorProfile(user.id)
+        .then(p => { if (!cancelled) setInvestorOnboarded(!!(p && p.completed)) })
+        .catch(() => { if (!cancelled) setInvestorOnboarded(false) })
+    })
+    return () => { cancelled = true }
+  }, [user])
+
   // Offline awareness (CROSS-003) — a banner instead of silent failures on flaky networks.
   useEffect(() => {
     const up = () => setOnline(true), down = () => setOnline(false)
@@ -226,6 +247,12 @@ export default function App() {
   // Investor opens a pitch → jump into the community feed focused on that post (where the DM
   // button lives), reusing the existing deep-link focus mechanism.
   const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
+  // Investor finished (or is leaving) onboarding.
+  const finishInvestorOnboarding = () => {
+    try { localStorage.setItem('so_investor_onboarded', '1') } catch { /* private mode */ }
+    setInvestorOnboarded(true)
+    setView('invest')
+  }
 
   // Wait for the stored session before rendering, so the header never
   // flashes "Sign in" for a logged-in user. Show the spinner (not a blank
@@ -268,16 +295,30 @@ export default function App() {
       />
     )
   } else if (view === 'invest') {
-    screen = (
-      <Invest
-        user={user}
-        onHome={() => setView('oracle')}
-        onAccount={goAccount}
-        onSignIn={goSignIn}
-        onOpenPitch={openPitchInCommunity}
-        onSwitchToFounder={() => chooseRole('founder')}
-      />
-    )
+    // Required, no-skip investor onboarding gate: a signed-in investor must finish onboarding
+    // before the deal-flow dashboard renders. Anonymous visitors can still browse.
+    if (user && investorOnboarded === null) {
+      screen = <Loading />
+    } else if (user && investorOnboarded === false) {
+      screen = (
+        <InvestorOnboarding
+          user={user}
+          onComplete={finishInvestorOnboarding}
+          onExit={() => setView('gateway')}
+        />
+      )
+    } else {
+      screen = (
+        <Invest
+          user={user}
+          onHome={() => setView('oracle')}
+          onAccount={goAccount}
+          onSignIn={goSignIn}
+          onOpenPitch={openPitchInCommunity}
+          onSwitchToFounder={() => chooseRole('founder')}
+        />
+      )
+    }
   } else if (view === 'auth') {
     screen = (
       <Auth
