@@ -109,13 +109,6 @@ function MultiSelect({ f, value = [], onChange }) {
           })}
         </div>
       )}
-      {value.length > 0 && <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
-        {value.map(o => (
-          <span key={o} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:'var(--r-pill)', background:'var(--accent-weak)', color:'var(--accent)', fontSize:12.5, fontWeight:600 }}>
-            {o}<button type="button" onClick={()=>toggle(o)} aria-label={`Remove ${o}`} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--accent)', fontSize:13, lineHeight:1, padding:0 }}>✕</button>
-          </span>
-        ))}
-      </div>}
     </div>
   );
 }
