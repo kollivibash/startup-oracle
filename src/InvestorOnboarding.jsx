@@ -12,31 +12,30 @@ const BORDER = 'rgba(15,23,42,.14)';
 const STEPS = [
   { id:'about', title:'About you', sub:'Founders see this at the top of your investor profile.', fields:[
     { k:'fullName', label:'Full name', type:'text', ph:'e.g. Rohan Mehta', req:true, full:true },
-    { k:'title',    label:'Title',     type:'text', ph:'Partner', req:true },
     { k:'firm',     label:'Firm / fund', type:'text', ph:'e.g. Indus Capital' },
-    { k:'location', label:'Location',  type:'text', ph:'Bengaluru, India', full:true },
+    { k:'location', label:'Location',  type:'text', ph:'Bengaluru, India', req:true },
     { k:'linkedin', label:'LinkedIn',  type:'text', ph:'linkedin.com/in/…' },
     { k:'website',  label:'Website',   type:'text', ph:'induscapital.vc' },
   ] },
   { id:'cred', title:'Credentials', sub:'Track record builds trust before the first reply.', fields:[
-    { k:'yearsInvesting',  label:'Years investing', type:'select', req:true, options:['< 1 yr','1–3 yrs','3–7 yrs','7–15 yrs','15+ yrs'] },
+    { k:'yearsInvesting',  label:'Years investing', type:'select', options:['< 1 yr','1–3 yrs','3–7 yrs','7–15 yrs','15+ yrs'] },
     { k:'background',      label:'Your background', type:'multi', options:['Operator','Ex-founder','Engineer','Product','Banking','Consulting','Academia','Domain expert'], full:true },
     { k:'aum',             label:'Assets under management', type:'select', options:['Personal','< ₹10 Cr','₹10–100 Cr','₹100–500 Cr','₹500 Cr+'] },
     { k:'companiesBacked', label:'Companies backed', type:'select', options:['0–5','6–15','16–40','40+'] },
     { k:'notableExits',    label:'Notable exits or marquee bets (optional)', type:'text', ph:'e.g. Ledgerly (acq. 2024), Stacklane (Series C)', full:true },
   ] },
   { id:'invest', title:'How you invest', sub:'We use this to route deals that match your check and stage.', fields:[
-    { k:'investorType',  label:'Investor type', type:'select', req:true, options:['Angel','Syndicate lead','Scout','Micro-VC','VC fund','Family office','CVC'] },
-    { k:'typicalTicket', label:'Typical ticket', type:'select', req:true, options:['₹5–25 L','₹25 L–1 Cr','₹1–5 Cr','₹5–15 Cr','₹15 Cr+'] },
+    { k:'investorType',  label:'Investor type', type:'select', options:['Angel','Syndicate lead','Scout','Micro-VC','VC fund','Family office','CVC'] },
+    { k:'typicalTicket', label:'Typical ticket', type:'select', options:['₹5–25 L','₹25 L–1 Cr','₹1–5 Cr','₹5–15 Cr','₹15 Cr+'] },
     { k:'followOn',      label:'Follow-on reserves', type:'select', options:['None','0.5×','1×','2×+'] },
-    { k:'stagesYouBack', label:'Stages you back', type:'multi', req:true, options:['Idea','Prototype','Pre-seed','Seed','Series A','Series B+'], full:true },
+    { k:'stagesYouBack', label:'Stages you back', type:'multi', options:['Idea','Prototype','Pre-seed','Seed','Series A','Series B+'], full:true },
     { k:'leadOrFollow',  label:'Lead or follow', type:'select', options:['Lead rounds','Co-lead','Follow only','Either'] },
     { k:'decisionSpeed', label:'Decision speed', type:'select', options:['< 1 week','1–2 weeks','2–4 weeks','4+ weeks'] },
   ] },
   { id:'focus', title:'Where you focus', sub:'Pick the sectors, models and geographies you actually write checks in.', fields:[
-    { k:'sectors',        label:'Sectors', type:'multi', req:true, options:['Fintech','SaaS','Healthtech','AI · ML','Consumer','Climate','Deeptech','Edtech','Devtools','Infra','Marketplaces','Cybersecurity'], full:true },
+    { k:'sectors',        label:'Sectors', type:'multi', options:['Fintech','SaaS','Healthtech','AI · ML','Consumer','Climate','Deeptech','Edtech','Devtools','Infra','Marketplaces','Cybersecurity'], full:true },
     { k:'businessModels', label:'Business models', type:'multi', options:['B2B SaaS','B2C','Marketplace','D2C','API / Infra','Hardware','Services + software'], full:true },
-    { k:'geographies',    label:'Geographies', type:'multi', req:true, options:['India','SEA','MENA','US','Europe','LATAM','Africa','Global'], full:true },
+    { k:'geographies',    label:'Geographies', type:'multi', options:['India','SEA','MENA','US','Europe','LATAM','Africa','Global'], full:true },
     { k:'dealBreakers',   label:'Deal-breakers', type:'multi', options:['Solo founder','No technical co-founder','Pre-revenue','Regulated markets','Hardware-heavy','Crypto','Adtech'], full:true },
   ] },
   { id:'help', title:'How you help', sub:'Founders increasingly pick capital by what comes with it.', fields:[
@@ -46,7 +45,7 @@ const STEPS = [
     { k:'preferredApproach', label:'Preferred way to be approached', type:'multi', options:['Warm intro','Cold email OK','In-app pitch','Demo first'], full:true },
   ] },
   { id:'thesis', title:'Your thesis', sub:'A short note founders will read before they reach out.', fields:[
-    { k:'thesis',     label:'Your investing thesis', type:'textarea', req:true, ph:'I back technical founders building infrastructure for Indian SMBs. I look for distribution insight and capital efficiency.', full:true },
+    { k:'thesis',     label:'Your investing thesis', type:'textarea', ph:'I back technical founders building infrastructure for Indian SMBs. I look for distribution insight and capital efficiency.', full:true },
     { k:'antiThesis', label:"What you don't invest in", type:'textarea', ph:'Pure consumer social, ad-driven media, anything that needs heavy balance-sheet capital to work.', full:true },
   ] },
 ];
