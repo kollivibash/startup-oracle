@@ -1000,8 +1000,9 @@ function ComposerModal({ me, onClose, onPosted }) {
   const toolBtn = { display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:6, border:'none', background:'transparent', color:'rgba(0,0,0,.65)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:F };
   const fin = { width:'100%', border:'1px solid rgba(0,0,0,.18)', borderRadius:8, padding:'10px 12px', fontSize:14, fontFamily:F, outline:'none', boxSizing:'border-box' };
   const pf = {
-    lbl:  { display:'flex', flexDirection:'column', gap:4, fontSize:11, fontWeight:700, letterSpacing:'.3px', textTransform:'uppercase', color:'rgba(0,0,0,.5)', flex:'1 1 150px' },
-    ctrl: { ...fin, fontWeight:600, color:'rgba(0,0,0,.82)' },
+    lbl:  { display:'flex', flexDirection:'column', gap:5, fontSize:11, fontWeight:700, letterSpacing:'.4px', textTransform:'uppercase', color:'rgba(15,23,42,.62)', flex:'1 1 150px' },
+    ctrl: { ...fin, fontWeight:600, color:'var(--ink)' },
+    req:  { color:'var(--accent)', marginLeft:2 },
   };
   const modeChip = active => ({ padding:'6px 12px', borderRadius:99, border:'1px solid', borderColor: active?'rgba(0,0,0,.9)':'rgba(0,0,0,.15)', background: active?'rgba(0,0,0,.9)':'transparent', color: active?'#fff':'rgba(0,0,0,.6)', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:F });
 
@@ -1040,20 +1041,31 @@ function ComposerModal({ me, onClose, onPosted }) {
               {pollOpts.length < 4 && <button onClick={()=>setPollOpts(p=>[...p,''])} style={{ alignSelf:'flex-start', background:'none', border:'none', color:'#2563EB', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:F }}>+ Add option</button>}
             </div>
           ) : mode === 'pitch' ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
-              <input autoFocus value={pitchTitle} onChange={e=>setPitchTitle(e.target.value)} placeholder={'Pitch title — e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...fin, fontWeight:700, fontSize:15 }}/>
-              <textarea value={body} onChange={e=>setBody(e.target.value)} rows={5} maxLength={5000}
-                placeholder="The pitch: the problem, your solution, traction, why now — and why an investor should back you." style={{ ...fin, resize:'vertical', lineHeight:1.6 }}/>
+            <div style={{ display:'flex', flexDirection:'column', gap:13 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:8, background:'var(--accent-weak)', border:'1px solid rgba(37,99,235,.22)' }}>
+                <span style={{ fontSize:14 }} aria-hidden="true">💡</span>
+                <span style={{ fontSize:12.5, fontWeight:600, color:'var(--accent)', lineHeight:1.4 }}>Pitch to investors — they’ll see this in the deal-flow. Attach your deck below.</span>
+              </div>
+              <label style={pf.lbl}>Pitch title<span style={pf.req} aria-hidden="true">*</span>
+                <input autoFocus value={pitchTitle} onChange={e=>setPitchTitle(e.target.value)} aria-required="true" placeholder={'e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...pf.ctrl, fontWeight:700, fontSize:15 }}/>
+              </label>
+              <label style={pf.lbl}>The pitch<span style={pf.req} aria-hidden="true">*</span>
+                <textarea value={body} onChange={e=>setBody(e.target.value)} aria-required="true" rows={5} maxLength={5000}
+                  placeholder="The problem, your solution, traction, why now — and why an investor should back you." style={{ ...pf.ctrl, resize:'vertical', lineHeight:1.6, textTransform:'none', letterSpacing:'normal' }}/>
+                <span style={{ alignSelf:'flex-end', fontSize:10.5, fontWeight:600, color: body.length>4800?'var(--danger)':'var(--ink-3)', textTransform:'none', letterSpacing:'normal' }}>{body.length}/5000</span>
+              </label>
               <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
                 <label style={pf.lbl}>Category<select value={pitchCat} onChange={e=>setPitchCat(e.target.value)} style={pf.ctrl}>{PITCH_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label>
                 <label style={pf.lbl}>Stage<select value={pitchStage} onChange={e=>setPitchStage(e.target.value)} style={pf.ctrl}>{PITCH_STAGES.map(s=><option key={s}>{s}</option>)}</select></label>
               </div>
               <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                <label style={pf.lbl}>Seeking *<input value={pitchAmount} onChange={e=>setPitchAmount(e.target.value)} placeholder="₹50,00,000" maxLength={40} style={pf.ctrl}/></label>
+                <label style={pf.lbl}>Seeking<span style={pf.req} aria-hidden="true">*</span><input value={pitchAmount} onChange={e=>setPitchAmount(e.target.value)} aria-required="true" placeholder="₹50,00,000" maxLength={40} style={pf.ctrl}/></label>
                 <label style={pf.lbl}>Equity offered<input value={pitchEquity} onChange={e=>setPitchEquity(e.target.value)} placeholder="e.g. 8%" maxLength={20} style={pf.ctrl}/></label>
               </div>
-              <label style={{ ...pf.lbl, flex:'1 1 100%' }}>Website / demo (optional)<input value={pitchWebsite} onChange={e=>setPitchWebsite(e.target.value)} placeholder="https://…" maxLength={200} style={pf.ctrl}/></label>
-              <div style={{ fontSize:12, color:'rgba(0,0,0,.5)', lineHeight:1.5 }}>Attach your deck, one-pager or prototype below — investors can open them from your pitch.</div>
+              <label style={{ ...pf.lbl, flex:'1 1 100%' }}>Website / demo <span style={{ fontWeight:600, textTransform:'none', letterSpacing:'normal', color:'var(--ink-3)' }}>(optional)</span>
+                <input value={pitchWebsite} onChange={e=>setPitchWebsite(e.target.value)} type="url" placeholder="https://…" maxLength={200} style={pf.ctrl}/>
+              </label>
+              <div style={{ fontSize:12, color:'var(--ink-2)', lineHeight:1.5 }}>📎 Attach your deck, one-pager or prototype below — investors can open them from your pitch.</div>
             </div>
           ) : (
             <>
