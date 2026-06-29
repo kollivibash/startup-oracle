@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
+import InvestorProfileSections from "./InvestorProfileSections";
 
 const F = "'DM Sans',system-ui,sans-serif";
 const FD = "var(--font-display)";   // Plus Jakarta Sans — display headings (unified ramp)
@@ -2142,12 +2143,14 @@ function ProfileView({ uid, me, notify, onProfileSaved, posts, followingIds, pen
   const [requests, setRequests] = useState(null);
   const [peopleModal, setPeopleModal] = useState(null); // 'followers' | 'following'
   const [editing, setEditing] = useState(false);
+  const [investorProfile, setInvestorProfile] = useState(null);
   const linkBtn = { background:'none', border:'none', color:GREEN, fontWeight:600, fontSize:13.5, cursor:'pointer', fontFamily:F, padding:0 };
 
   useEffect(() => {
     let on = true;
     fetchProfile(uid).then(p => on && setProf(p));
     fetchFollowCounts(uid).then(c => on && setCounts(c));
+    getInvestorProfile(uid).then(p => on && setInvestorProfile(p?.completed ? p : null));
     if (me && uid === me.id) {
       fetchFollowRequests(uid).then(r => on && setRequests(r));
       fetchProfileViewers(uid).then(v => on && setViewers(v));
@@ -2262,6 +2265,8 @@ function ProfileView({ uid, me, notify, onProfileSaved, posts, followingIds, pen
           </div>
         )}
       </div>
+
+      <InvestorProfileSections profile={investorProfile} name={name} isSelf={isSelf} onPitch={!isSelf ? requireAuth(()=>openDM({ id:uid, name, avatar_url:avatar })) : null}/>
 
       {(!isSelf || tab === 'ideas') && (
         <>
