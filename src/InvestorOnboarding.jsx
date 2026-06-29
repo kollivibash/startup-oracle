@@ -18,10 +18,10 @@ const STEPS = [
     { k:'website',  label:'Website',   type:'text', ph:'induscapital.vc' },
   ] },
   { id:'cred', title:'Credentials', sub:'Track record builds trust before the first reply.', fields:[
-    { k:'yearsInvesting',  label:'Years investing', type:'select', options:['< 1 yr','1–3 yrs','3–7 yrs','7–15 yrs','15+ yrs'] },
-    { k:'background',      label:'Your background', type:'multi', options:['Operator','Ex-founder','Engineer','Product','Banking','Consulting','Academia','Domain expert'], full:true },
-    { k:'aum',             label:'Assets under management', type:'select', options:['Personal','< ₹10 Cr','₹10–100 Cr','₹100–500 Cr','₹500 Cr+'] },
-    { k:'companiesBacked', label:'Companies backed', type:'select', options:['0–5','6–15','16–40','40+'] },
+    { k:'yearsInvesting',  label:'Years investing', type:'select', options:['< 1 yr','1–3 yrs','3–7 yrs','7–15 yrs','15+ yrs'], req:true },
+    { k:'background',      label:'Your background', type:'multi', options:['Operator','Ex-founder','Engineer','Product','Banking','Consulting','Academia','Domain expert','Others'], full:true, req:true },
+    { k:'aum',             label:'Assets under management', type:'select', options:['Personal','< ₹10 Cr','₹10–100 Cr','₹100–500 Cr','₹500 Cr+'], req:true },
+    { k:'companiesBacked', label:'Companies backed', type:'select', options:['0–5','6–15','16–40','40+'], req:true },
     { k:'notableExits',    label:'Notable exits or marquee bets (optional)', type:'text', ph:'e.g. Ledgerly (acq. 2024), Stacklane (Series C)', full:true },
   ] },
   { id:'invest', title:'How you invest', sub:'We use this to route deals that match your check and stage.', fields:[
