@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile, getAccountType, setFounderAiReport } from "./communityDB";
-import { fetchVerifiedIds } from "./billingDB";
-import { loadIdeas } from "./ideasDB";
+import { fetchVerifiedIds, startReport } from "./billingDB";
+import { saveIdea } from "./ideasDB";
+import { generateMasterReport } from "./reportEngine";
 import InvestorProfileSections from "./InvestorProfileSections";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -898,14 +899,14 @@ const PITCH_STAGES = ['Idea','Prototype','MVP','Early Revenue','Scaling'];
 
 const URL_RE = /(https?:\/\/[^\s]+)/i;
 
-function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
+function ComposerModal({ me, onClose, onPosted }) {
   const [mode, setMode] = useState('post'); // post | poll | article | pitch
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
-  // A pitch must be backed by an AI analysis (a validated idea) — investors see its score + report.
-  const [ideas, setIdeas] = useState(null);   // null = loading, [] = none
-  const [pickedIdeaId, setPickedIdeaId] = useState('');
-  useEffect(() => { let on = true; loadIdeas(me?.id).then(rows => on && setIdeas(Array.isArray(rows) ? rows.filter(r => r?.sections && (r?.score != null || r?.meta)) : [])).catch(() => on && setIdeas([])); return () => { on = false; }; }, [me]);
-  const pickedIdea = (ideas || []).find(i => String(i.id) === String(pickedIdeaId)) || null;
+  // A pitch must pass an AI analysis — it runs inline as the step after typing, and the resulting
+  // Oracle Score + report are what investors see. null = not started; then { sections, meta }.
+  const [valBusy, setValBusy] = useState(false);
+  const [valProgress, setValProgress] = useState(0);   // sections done, 0–6
+  const [valResult, setValResult] = useState(null);    // { sections, meta } once validated
   const [body, setBody] = useState('');
   const [artTitle, setArtTitle] = useState('');
   const [pollQ, setPollQ] = useState('');
@@ -941,7 +942,7 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
   const canPost = mode === 'poll'
     ? (pollQ.trim() && pollOpts.filter(o => o.trim()).length >= 2)
     : mode === 'pitch'
-      ? (pitchTitle.trim() && body.trim() && pitchAmount.trim() && pickedIdea)
+      ? (pitchTitle.trim() && body.trim() && pitchAmount.trim())
       : mode === 'article'
         ? (artTitle.trim() && body.trim())
         : (body.trim() || files.length > 0);
@@ -970,7 +971,33 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
       }
 
       if (mode === 'pitch') {
-        const aiScore = pickedIdea?.score ?? pickedIdea?.meta?.overallScore ?? null;
+        const title = pitchTitle.trim().slice(0, 120);
+        const bodyText = body.trim();
+
+        // Mandatory AI validation runs HERE, after typing — investors only see vetted pitches.
+        // Reuse an already-run validation for this attempt (e.g. after a transient post failure),
+        // otherwise run the analysis on the pitch now.
+        let result = valResult;
+        if (!result) {
+          setValBusy(true); setErr(''); setValProgress(0);
+          let grant = null;
+          try { grant = await startReport(); } catch { /* fails open when billing is dormant */ }
+          const pitchForm = { name: title, oneliner: bodyText.slice(0, 240), category: pitchCat, stage: pitchStage, problem: bodyText, solution: '', market: '', edge: '' };
+          try {
+            result = await generateMasterReport(pitchForm, d => setValProgress(d), { grant });
+          } catch (e) {
+            setValBusy(false); setBusy(false);
+            setErr(e?.message?.includes('PERMISSION') || /403/.test(e?.message||'') ? 'AI validation is temporarily unavailable. Please try again later.' : (e?.message || 'Validation failed. Please try again.'));
+            return;
+          }
+          if (!result?.sections || !result?.meta) { setValBusy(false); setBusy(false); setErr('Validation could not score your pitch. Please refine it and try again.'); return; }
+          setValResult(result);
+          setValBusy(false);
+          // Save the analysis to the founder's ideas too, so it lives in their account.
+          saveIdea(me.id, { form: pitchForm, meta: result.meta, sections: result.sections }).catch(() => {});
+        }
+
+        const aiScore = result.meta?.overallScore ?? null;
         const meta = {
           pitch: true,
           category: pitchCat,
@@ -979,15 +1006,12 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
           equity: pitchEquity.trim().slice(0, 20),
           website: pitchWebsite.trim().slice(0, 200),
           aiScore,                       // lightweight — for the deal-flow card badge
-          aiReportId: pickedIdea?.id ?? null,
+          validated: true,
         };
-        const title = pitchTitle.trim().slice(0, 120);
-        const bodyText = body.trim();
-        // Mirror the score + a report snapshot onto the (public) founder_profile so investors,
+        // Mirror the score + report snapshot onto the (public) founder_profile so investors,
         // who can't read the owner-only ideas table, see the Oracle Score + report on the deal-page.
         if (aiScore != null) {
-          const snapshot = { title: pickedIdea.title, sections: pickedIdea.sections, meta: pickedIdea.meta };
-          setFounderAiReport(me.id, { oracleScore: aiScore, aiReport: snapshot }).catch(() => {});
+          setFounderAiReport(me.id, { oracleScore: aiScore, aiReport: { title, sections: result.sections, meta: result.meta } }).catch(() => {});
         }
         const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind: 'pitch', meta, visibility });
         onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: bodyText, media, kind: 'pitch', meta, ...baseNew });
@@ -1060,33 +1084,14 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
             <div style={{ display:'flex', flexDirection:'column', gap:13 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:8, background:'var(--accent-weak)', border:'1px solid rgba(37,99,235,.22)' }}>
                 <span style={{ fontSize:14 }} aria-hidden="true">💡</span>
-                <span style={{ fontSize:12.5, fontWeight:600, color:'var(--accent)', lineHeight:1.4 }}>Pitch to investors — they’ll see this in the deal-flow. Attach your deck below.</span>
+                <span style={{ fontSize:12.5, fontWeight:600, color:'var(--accent)', lineHeight:1.4 }}>{valResult ? `AI validated · Oracle Score ${valResult.meta?.overallScore ?? '—'}. Publish to share with investors.` : 'After you write your pitch, the next step runs a mandatory AI validation — investors see the Oracle Score + report.'}</span>
               </div>
 
-              {/* Mandatory AI analysis — investors see the score + report on your deal-page. */}
-              {ideas === null ? (
-                <div style={{ fontSize:12.5, color:'var(--ink-3)', padding:'10px 0' }}>Loading your AI analyses…</div>
-              ) : ideas.length === 0 ? (
-                <div style={{ padding:'13px 14px', borderRadius:8, border:'1px solid rgba(37,99,235,.25)', background:'var(--accent-weak)', display:'flex', flexDirection:'column', gap:9 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'var(--ink)' }}>An AI analysis is required to pitch</div>
-                  <div style={{ fontSize:12.5, color:'var(--ink-2)', lineHeight:1.5 }}>Investors only see vetted startups. Run a free AI validation first — its Oracle Score and report appear on your pitch.</div>
-                  <button type="button" onClick={onAnalyse} style={{ alignSelf:'flex-start', padding:'8px 16px', borderRadius:99, background:'var(--accent)', color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>✦ Analyse my idea →</button>
-                </div>
-              ) : (
-                <label style={{ ...pf.lbl, flex:'1 1 100%' }}>AI analysis<span style={pf.req} aria-hidden="true">*</span>
-                  <select value={pickedIdeaId} onChange={e=>setPickedIdeaId(e.target.value)} aria-required="true" style={{ ...pf.ctrl, color: pickedIdeaId ? 'var(--ink)' : 'var(--ink-3)' }}>
-                    <option value="" disabled>Attach a validated idea…</option>
-                    {ideas.map(i => <option key={i.id} value={i.id} style={{ color:'var(--ink)' }}>{(i.title||'Untitled idea')}{(i.score ?? i.meta?.overallScore) != null ? ` — Oracle Score ${i.score ?? i.meta?.overallScore}` : ''}</option>)}
-                  </select>
-                  <span style={{ fontWeight:600, textTransform:'none', letterSpacing:'normal', color:'var(--ink-3)', fontSize:11.5 }}>Investors will see this score and the full AI report on your profile.</span>
-                </label>
-              )}
-
               <label style={pf.lbl}>Pitch title<span style={pf.req} aria-hidden="true">*</span>
-                <input autoFocus value={pitchTitle} onChange={e=>setPitchTitle(e.target.value)} aria-required="true" placeholder={'e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...pf.ctrl, fontWeight:700, fontSize:15 }}/>
+                <input autoFocus value={pitchTitle} onChange={e=>{ setPitchTitle(e.target.value); setValResult(null); }} aria-required="true" placeholder={'e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...pf.ctrl, fontWeight:700, fontSize:15 }}/>
               </label>
               <label style={pf.lbl}>The pitch<span style={pf.req} aria-hidden="true">*</span>
-                <textarea value={body} onChange={e=>setBody(e.target.value)} aria-required="true" rows={5} maxLength={5000}
+                <textarea value={body} onChange={e=>{ setBody(e.target.value); setValResult(null); }} aria-required="true" rows={5} maxLength={5000}
                   placeholder="The problem, your solution, traction, why now — and why an investor should back you." style={{ ...pf.ctrl, resize:'vertical', lineHeight:1.6, textTransform:'none', letterSpacing:'normal' }}/>
                 <span style={{ alignSelf:'flex-end', fontSize:10.5, fontWeight:600, color: body.length>4800?'var(--danger)':'var(--ink-3)', textTransform:'none', letterSpacing:'normal' }}>{body.length}/5000</span>
               </label>
@@ -1134,6 +1139,13 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
 
           <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Add tags: AI, SaaS, FinTech…" maxLength={120}
             style={{ width:'100%', height:36, borderRadius:4, padding:'0 12px', fontSize:13, border:'1px solid rgba(0,0,0,.15)', background:'rgba(0,0,0,.02)', outline:'none', margin:'12px 0 0', fontFamily:F, boxSizing:'border-box' }}/>
+          {mode === 'pitch' && valBusy && (
+            <div style={{ marginTop:12, padding:'12px 14px', borderRadius:8, background:'var(--accent-weak)', border:'1px solid rgba(37,99,235,.22)' }}>
+              <div style={{ fontSize:12.5, fontWeight:700, color:'var(--accent)', marginBottom:8 }}>🔎 Validating your pitch with AI… {valProgress}/6 sections</div>
+              <div style={{ height:6, borderRadius:99, background:'rgba(37,99,235,.15)', overflow:'hidden' }}><div style={{ height:'100%', width:`${Math.round((valProgress/6)*100)}%`, background:'var(--accent)', transition:'width .4s' }}/></div>
+              <div style={{ fontSize:11.5, color:'var(--ink-2)', marginTop:7 }}>This usually takes under a minute — please keep this open.</div>
+            </div>
+          )}
           {err && <div style={{ fontSize:12.5, color:'#DC2626', marginTop:8 }}>{err}</div>}
         </div>
 
@@ -1149,7 +1161,7 @@ function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
           <button onClick={onClose} style={{ fontSize:13, fontWeight:600, color:'rgba(0,0,0,.5)', background:'none', border:'none', cursor:'pointer', fontFamily:F, marginRight:4 }}>Cancel</button>
           <button onClick={submit} disabled={busy || !canPost}
             style={{ padding:'8px 22px', borderRadius:99, background:'rgba(0,0,0,.9)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer', opacity:(canPost&&!busy)?1:.5, fontFamily:F }}>
-            {busy ? (mode==='pitch'?'Publishing…':'Posting…') : (mode==='pitch'?'Publish pitch':'Post')}
+            {valBusy ? `Validating… ${valProgress}/6` : busy ? (mode==='pitch'?'Publishing…':'Posting…') : (mode==='pitch'?(valResult?'Publish pitch':'Validate & publish'):'Post')}
           </button>
         </div>
       </div>
@@ -3170,7 +3182,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
       {/* Composer modal */}
       {composerOpen && user && (
-        <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }} onAnalyse={()=>{ setComposerOpen(false); onSubmitIdea?.(); }}/>
+        <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
       )}
 
       {/* Edit-post modal */}

@@ -13,11 +13,15 @@ when picked while logged out). A **pitch** is a `community_posts` row with `kind
 fields in `meta` (`{ pitch, category, stage, amount, equity, website, aiScore, aiReportId }`) + uploaded
 files in `media` — it shows in BOTH the founder feed and the investor dashboard. Pitches are open
 deal-flow (every pitch visible to all investors). The composer has a 4th "💡 Pitch" mode.
-**Pitching requires an AI analysis:** the Pitch composer makes the founder attach one of their validated
-ideas (loadIdeas) — no analysis, no pitch (it links to "Analyse my idea"). On publish, the idea's
-Oracle Score + a report snapshot are mirrored onto the (public) `profiles.founder_profile` via
-`setFounderAiReport`, so investors — who CAN'T read the owner-only `ideas` table — see the Oracle Score
-(deal-flow card badge + sidebar) and can open the full AI report from the founder's deal-page.
+**Pitching requires an AI analysis (runs inline):** in the 💡 Pitch composer the founder writes the
+pitch, then the primary button is **"Validate & publish"** — clicking it runs `generateMasterReport`
+on the pitch (via `startReport` for the grant/quota, same engine as SubmitIdea) with a 0–6 progress
+bar, and only posts once a scored report comes back (no validation → no pitch). The resulting Oracle
+Score + a report snapshot are mirrored onto the (public) `profiles.founder_profile` via
+`setFounderAiReport` (and `saveIdea` keeps it in the founder's account), so investors — who CAN'T read
+the owner-only `ideas` table — see the Oracle Score (deal-flow card badge + deal-page sidebar) and open
+the full AI report from the founder's deal-page (the shared MasterReport, returning via
+`reportReturnView`). The pitch `meta` carries `aiScore`. Needs a working `GEMINI_API_KEY`.
 `fetchPitches()` powers the dashboard.
 Picking Investor first runs a **required 6-step onboarding** (`InvestorOnboarding.jsx`, saved to
 `profiles.investor_profile`); the `invest` dashboard is gated until it's completed.
