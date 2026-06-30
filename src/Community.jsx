@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile, getAccountType } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
 import InvestorProfileSections from "./InvestorProfileSections";
 
@@ -2150,7 +2150,11 @@ function ProfileView({ uid, me, notify, onProfileSaved, posts, followingIds, pen
     let on = true;
     fetchProfile(uid).then(p => on && setProf(p));
     fetchFollowCounts(uid).then(c => on && setCounts(c));
-    getInvestorProfile(uid).then(p => on && setInvestorProfile(p?.completed ? p : null));
+    // Only show investor sections on an INVESTOR's profile — a founder who once tried investor
+    // onboarding must not show investor stats on their founder profile. Gate on account_type.
+    Promise.all([getAccountType(uid), getInvestorProfile(uid)])
+      .then(([type, p]) => on && setInvestorProfile(type === 'investor' && p?.completed ? p : null))
+      .catch(() => on && setInvestorProfile(null));
     if (me && uid === me.id) {
       fetchFollowRequests(uid).then(r => on && setRequests(r));
       fetchProfileViewers(uid).then(v => on && setViewers(v));
