@@ -39,6 +39,7 @@ const Legal        = lazyWithRetry(() => import('./Legal'))
 const Invest       = lazyWithRetry(() => import('./Invest'))
 const InvestorOnboarding = lazyWithRetry(() => import('./InvestorOnboarding'))
 const InvestorProfile = lazyWithRetry(() => import('./InvestorProfile'))
+const FounderOnboarding = lazyWithRetry(() => import('./FounderOnboarding'))
 
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest', 'investorProfile']
 
@@ -84,6 +85,10 @@ export default function App() {
   const [acctType, setAcctType] = useState(() => { try { return localStorage.getItem('so_account_type') } catch { return null } })
   // Investor onboarding gate: null = unknown (still checking), false = must onboard, true = done.
   const [investorOnboarded, setInvestorOnboarded] = useState(null)
+  // Founder onboarding gate: same tri-state. `founderOnboardDue` = the user just chose "Founder"
+  // at the gateway, so we owe them the (required) onboarding before the community renders.
+  const [founderOnboarded, setFounderOnboarded] = useState(null)
+  const [founderOnboardDue, setFounderOnboardDue] = useState(() => { try { return localStorage.getItem('so_founder_onboard_due') === '1' } catch { return false } })
   // Pre-filled answers when an existing investor re-opens onboarding from their profile to edit.
   const [investorEditData, setInvestorEditData] = useState(null)
   // Founder viewing an investor's full (Figma) profile, and a queued DM to open in the community.
@@ -220,6 +225,24 @@ export default function App() {
     return () => { cancelled = true }
   }, [user])
 
+  // Resolve the founder-onboarding gate (same approach as the investor one, keyed by user id).
+  // If they've already onboarded, drop any stale "due" flag so the community never re-gates them.
+  useEffect(() => {
+    if (!user) { const t = setTimeout(() => setFounderOnboarded(null), 0); return () => clearTimeout(t) }
+    let cancelled = false
+    const done = () => { setFounderOnboarded(true); setFounderOnboardDue(false); try { localStorage.removeItem('so_founder_onboard_due') } catch { /* private mode */ } }
+    let local = false
+    try { local = localStorage.getItem(`so_founder_onboarded_${user.id}`) === '1' } catch { /* private mode */ }
+    if (local) { const t = setTimeout(done, 0); return () => clearTimeout(t) }
+    import('./communityDB').then(({ getFounderProfile }) => {
+      if (cancelled) return
+      getFounderProfile(user.id)
+        .then(p => { if (cancelled) return; if (p && p.completed) done(); else setFounderOnboarded(false) })
+        .catch(() => { if (!cancelled) setFounderOnboarded(false) })
+    })
+    return () => { cancelled = true }
+  }, [user])
+
   // Offline awareness (CROSS-003) — a banner instead of silent failures on flaky networks.
   useEffect(() => {
     const up = () => setOnline(true), down = () => setOnline(false)
@@ -270,6 +293,11 @@ export default function App() {
     } else {
       try { localStorage.setItem('so_account_type_pending', '1') } catch { /* private mode */ }
     }
+    // Picking Founder at the gateway owes a one-time required onboarding before the community.
+    if (type === 'founder') {
+      try { localStorage.setItem('so_founder_onboard_due', '1') } catch { /* private mode */ }
+      setFounderOnboardDue(true)
+    }
     goAuth(type === 'investor' ? 'invest' : 'community')
   }
   // Investor opens a pitch → jump into the community feed focused on that post (where the DM
@@ -285,6 +313,15 @@ export default function App() {
     setInvestorOnboarded(true)
     setView('invest')
   }
+  // Founder finished onboarding → into the community. Clear the "due" gate either way.
+  const clearFounderDue = () => { try { localStorage.removeItem('so_founder_onboard_due') } catch { /* private mode */ } setFounderOnboardDue(false) }
+  const finishFounderOnboarding = () => {
+    try { localStorage.setItem(`so_founder_onboarded_${user.id}`, '1') } catch { /* private mode */ }
+    setFounderOnboarded(true)
+    clearFounderDue()
+    setView('community')
+  }
+  const exitFounderOnboarding = () => { clearFounderDue(); setView('gateway') }
 
   // Wait for the stored session before rendering, so the header never
   // flashes "Sign in" for a logged-in user. Show the spinner (not a blank
@@ -316,7 +353,16 @@ export default function App() {
   } else if (view === 'submit') {
     screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} onSignIn={() => goAuth('submit')} />
   } else if (view === 'community') {
-    screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} onViewInvestor={openInvestorProfile} pendingDM={pendingDM} onConsumePendingDM={() => setPendingDM(null)} />
+    // Gateway-only founder onboarding: when a signed-in founder arrived via "Continue as Founder"
+    // and hasn't onboarded, require it before the feed. Anyone reaching the community another way
+    // (founderOnboardDue false) — or anonymous visitors — go straight in.
+    if (user && founderOnboardDue && founderOnboarded === null) {
+      screen = <Loading />
+    } else if (user && founderOnboardDue && founderOnboarded === false) {
+      screen = <FounderOnboarding user={user} onComplete={finishFounderOnboarding} onExit={exitFounderOnboarding} />
+    } else {
+      screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} onViewInvestor={openInvestorProfile} pendingDM={pendingDM} onConsumePendingDM={() => setPendingDM(null)} />
+    }
   } else if (view === 'gateway') {
     screen = (
       <Gateway

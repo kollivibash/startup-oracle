@@ -15,6 +15,11 @@ it shows in BOTH the founder feed and the investor dashboard. Pitches are open d
 visible to all investors). The composer has a 4th "💡 Pitch" mode; `fetchPitches()` powers the dashboard.
 Picking Investor first runs a **required 6-step onboarding** (`InvestorOnboarding.jsx`, saved to
 `profiles.investor_profile`); the `invest` dashboard is gated until it's completed.
+Picking **Founder** at the gateway likewise runs a **required 6-step onboarding** (`FounderOnboarding.jsx`,
+saved to `profiles.founder_profile`) before the community feed renders — **gateway-only**: it's gated
+via a `localStorage.so_founder_onboard_due` flag set in `chooseRole('founder')`, so founders who reach
+the community another way (or anonymously) are NOT blocked. saveFounderProfile also mirrors
+name/startup→company/role/tagline→bio/location onto the profile.
 
 **Live URL:** https://startup-oracle-seven.vercel.app
 **Hosting:** Vercel (auto-deploys from `main`)
@@ -84,6 +89,20 @@ src/
                      getInvestorProfile + a localStorage `so_investor_onboarded` fallback). Answers save
                      to `profiles.investor_profile` (jsonb) via saveInvestorProfile; single-choice fields
                      are dropdowns, multi-choice are multi-select (checkbox) dropdowns.
+  InvestorProfile.jsx — the investor profile page (Figma layout: sticky header, avatar+name hero, stat
+                     strip, scroll-spy tabs Thesis/Focus/Style/Credentials/Value-Add). Dual-mode: self
+                     (`My profile` from the dashboard → Edit profile, re-opens onboarding pre-filled) and
+                     founder-facing (`investorView` in App.jsx → "Pitch {name}" + a Send-Pitch CTA that
+                     opens a DM). Community `goProfile` routes investor accounts here.
+  InvestorProfileSections.jsx — the same investor sections rendered inline on a community ProfileView
+                     (founder viewing an investor); gated on account_type==='investor' + completed.
+  FounderOnboarding.jsx — 6-step founder onboarding wizard (About you / Your startup / Traction & team /
+                     Your background / What you're building / What you're looking for). REQUIRED at the
+                     gateway: gated in App.jsx via `so_founder_onboard_due` + getFounderProfile (+ a
+                     localStorage `so_founder_onboarded_<uid>` fallback). Answers save to
+                     `profiles.founder_profile` (jsonb) via saveFounderProfile. Same primitives as the
+                     investor wizard (dropdowns + multi-select w/ flip-up) plus prefixed inputs
+                     (linkedin.com/in/ · x.com/ · https://) and conditional raising fields.
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
                      `type=recovery`); **in-app-webview detection** (hides OAuth + shows email-first
@@ -197,6 +216,10 @@ api/ (Vercel serverless — keys live here, never in the client bundle)
                                     onboarding (InvestorOnboarding.jsx). Until run, onboarding works
                                     in-session (a localStorage flag remembers completion) but doesn't
                                     persist across devices. Idempotent.
+22. supabase_founder_profile.sql      `profiles.founder_profile` (jsonb) for the 6-step founder
+                                    onboarding (FounderOnboarding.jsx). Same as investor_profile — until
+                                    run, onboarding works in-session but doesn't persist across devices.
+                                    Idempotent.
 ```
 \* `post_reactions` and `connections` tables exist but their UI was removed (see Constraints).
 All community/billing DB calls **degrade gracefully** if a column/table/RPC is missing, so the

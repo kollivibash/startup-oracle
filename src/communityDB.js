@@ -414,6 +414,26 @@ export async function saveInvestorProfile(userId, profile) {
   return updateProfile(userId, fields);
 }
 
+// Founder onboarding profile (supabase_founder_profile.sql). Same shape/approach as the investor
+// one; mirrors name/startup/role/tagline/location onto the profile so the community profile +
+// headline reflect them.
+export async function getFounderProfile(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles').select('founder_profile').eq('id', userId).single();
+  if (error || !data) return null;
+  return data.founder_profile || null;
+}
+export async function saveFounderProfile(userId, profile) {
+  const fields = { founder_profile: { ...profile, completed: true } };
+  if (profile.fullName)    fields.name = profile.fullName;
+  if (profile.startupName) fields.company = profile.startupName;
+  if (profile.roleTitle)   fields.role = profile.roleTitle;
+  if (profile.tagline)     fields.bio = profile.tagline;
+  if (profile.location)    fields.location = profile.location;
+  // Degrades to a no-op (drops the unknown column) until supabase_founder_profile.sql is run.
+  return updateProfile(userId, fields);
+}
+
 // Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).
 export async function syncAuthMeta(meta) {
   const { error } = await supabase.auth.updateUser({ data: meta });
