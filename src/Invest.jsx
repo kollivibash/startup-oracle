@@ -41,18 +41,20 @@ function Avatar({ name, id, url, sz=42 }) {
 
 const metaChip = { display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:'var(--r-pill)', background:'rgba(15,23,42,.05)', fontSize:'var(--t-xs)', fontWeight:600, color:'var(--ink-2)' };
 
-function PitchCard({ post, onOpen }) {
+function PitchCard({ post, onOpen, onViewFounder }) {
   const a = post.author || {};
   const m = post.meta || {};
   const body = (post.body || '').trim();
   const excerpt = body.length > 170 ? body.slice(0,170)+'…' : body;
   const docs = (post.media || []).length;
   const title = post.title || 'Untitled pitch';
+  const viewFounder = onViewFounder ? () => onViewFounder(post.user_id) : undefined;
   return (
     <article style={{ background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-lg)', padding:20, display:'flex', flexDirection:'column', gap:13, boxShadow:'var(--sh-1)', transition:'box-shadow .2s var(--ease), transform .2s var(--ease)' }}
       onMouseEnter={e=>{ e.currentTarget.style.boxShadow='var(--sh-2)'; e.currentTarget.style.transform='translateY(-3px)'; }}
       onMouseLeave={e=>{ e.currentTarget.style.boxShadow='var(--sh-1)'; e.currentTarget.style.transform='none'; }}>
-      <div style={{ display:'flex', gap:11, alignItems:'center' }}>
+      <div onClick={viewFounder} style={{ display:'flex', gap:11, alignItems:'center', cursor: viewFounder ? 'pointer' : 'default' }}
+        title={viewFounder ? `View ${a.name||'founder'}'s profile` : undefined}>
         <Avatar name={a.name} id={post.user_id} url={a.avatar_url} sz={44}/>
         <div style={{ minWidth:0 }}>
           <div style={{ fontSize:'var(--t-sm)', fontWeight:700, color:'var(--ink)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name || 'Founder'}</div>
@@ -91,7 +93,7 @@ function PitchCard({ post, onOpen }) {
   );
 }
 
-export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch, onSwitchToFounder, onMyProfile }) {
+export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch, onViewFounder, onSwitchToFounder, onMyProfile }) {
   const [pitches, setPitches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('All');
@@ -205,7 +207,7 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch,
           <>
             <div aria-live="polite" className="sr-only">{shown.length} pitches shown</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:18 }}>
-              {shown.map(p => <PitchCard key={p.id} post={p} onOpen={onOpenPitch}/>)}
+              {shown.map(p => <PitchCard key={p.id} post={p} onOpen={onOpenPitch} onViewFounder={onViewFounder}/>)}
             </div>
           </>
         )}

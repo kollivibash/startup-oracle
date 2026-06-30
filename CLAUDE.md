@@ -103,6 +103,11 @@ src/
                      `profiles.founder_profile` (jsonb) via saveFounderProfile. Same primitives as the
                      investor wizard (dropdowns + multi-select w/ flip-up) plus prefixed inputs
                      (linkedin.com/in/ · x.com/ · https://) and conditional raising fields.
+  FounderProfile.jsx — the founder's investor-facing "deal page" (Figma layout: sticky identity
+                     sidebar w/ startup + Actively-Raising card + section nav, and scrolling The Pitch /
+                     Traction / Team / The Ask sections). Reached from the deal-flow: an investor taps a
+                     pitch card's founder → `founderView` in App.jsx → "Express Interest" opens a DM
+                     (pendingDM). Data from getFounderProfile; omits fields onboarding doesn't collect.
   Auth.jsx         — sign in/up (Google, GitHub, email/password); **password reset** (forgot →
                      resetPasswordForEmail; recovery link → set-new-password screen via App.jsx
                      `type=recovery`); **in-app-webview detection** (hides OAuth + shows email-first

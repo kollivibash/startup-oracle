@@ -40,6 +40,7 @@ const Invest       = lazyWithRetry(() => import('./Invest'))
 const InvestorOnboarding = lazyWithRetry(() => import('./InvestorOnboarding'))
 const InvestorProfile = lazyWithRetry(() => import('./InvestorProfile'))
 const FounderOnboarding = lazyWithRetry(() => import('./FounderOnboarding'))
+const FounderProfile = lazyWithRetry(() => import('./FounderProfile'))
 
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest', 'investorProfile']
 
@@ -94,6 +95,8 @@ export default function App() {
   // Founder viewing an investor's full (Figma) profile, and a queued DM to open in the community.
   const [publicInvestorId, setPublicInvestorId] = useState(null)
   const [pendingDM, setPendingDM] = useState(null)
+  // Investor viewing a founder's full (Figma) deal-page from the deal-flow.
+  const [publicFounderId, setPublicFounderId] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -305,8 +308,10 @@ export default function App() {
   const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
   // Founder taps an investor (in the community) → show the investor's full Figma profile.
   const openInvestorProfile = (id) => { setPublicInvestorId(id); setView('investorView') }
-  // "Pitch" an investor from that profile → open a DM with them back in the community.
-  const pitchInvestor = (meta) => { setPendingDM(meta); setView('community') }
+  // Investor taps a founder (in the deal-flow) → show the founder's full Figma deal-page.
+  const openFounderProfile = (id) => { setPublicFounderId(id); setView('founderView') }
+  // Express interest / "Pitch" from a profile → open a DM with that person in the community.
+  const openProfileDM = (meta) => { setPendingDM(meta); setView('community') }
   // Investor finished (or is leaving) onboarding.
   const finishInvestorOnboarding = () => {
     try { localStorage.setItem(`so_investor_onboarded_${user.id}`, '1') } catch { /* private mode */ }
@@ -393,6 +398,7 @@ export default function App() {
           onAccount={goAccount}
           onSignIn={goSignIn}
           onOpenPitch={openPitchInCommunity}
+          onViewFounder={openFounderProfile}
           onSwitchToFounder={() => chooseRole('founder')}
           onMyProfile={user ? () => setView('investorProfile') : null}
         />
@@ -429,7 +435,20 @@ export default function App() {
           backLabel="← Back"
           onHome={() => setView('oracle')}
           onBack={() => setView('community')}
-          onPitch={pitchInvestor}
+          onPitch={openProfileDM}
+        />
+      : null
+  } else if (view === 'founderView') {
+    // An investor viewing a founder's full deal-page (Figma layout, "Express Interest" CTA).
+    screen = publicFounderId
+      ? <FounderProfile
+          user={user}
+          targetId={publicFounderId}
+          isSelf={false}
+          backLabel="← Deal Flow"
+          onHome={() => setView('oracle')}
+          onBack={() => setView('invest')}
+          onExpressInterest={openProfileDM}
         />
       : null
   } else if (view === 'auth') {
