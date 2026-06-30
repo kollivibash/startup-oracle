@@ -41,7 +41,7 @@ function Avatar({ name, id, url, sz=42 }) {
 
 const metaChip = { display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:'var(--r-pill)', background:'rgba(15,23,42,.05)', fontSize:'var(--t-xs)', fontWeight:600, color:'var(--ink-2)' };
 
-function PitchCard({ post, onOpen, onViewFounder }) {
+function PitchCard({ post, onViewFounder, onMessage }) {
   const a = post.author || {};
   const m = post.meta || {};
   const body = (post.body || '').trim();
@@ -49,6 +49,7 @@ function PitchCard({ post, onOpen, onViewFounder }) {
   const docs = (post.media || []).length;
   const title = post.title || 'Untitled pitch';
   const viewFounder = onViewFounder ? () => onViewFounder(post.user_id) : undefined;
+  const message = onMessage ? () => onMessage({ id: post.user_id, name: a.name, avatar_url: a.avatar_url }) : undefined;
   return (
     <article style={{ background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-lg)', padding:20, display:'flex', flexDirection:'column', gap:13, boxShadow:'var(--sh-1)', transition:'box-shadow .2s var(--ease), transform .2s var(--ease)' }}
       onMouseEnter={e=>{ e.currentTarget.style.boxShadow='var(--sh-2)'; e.currentTarget.style.transform='translateY(-3px)'; }}
@@ -82,19 +83,23 @@ function PitchCard({ post, onOpen, onViewFounder }) {
         {docs > 0 && <span style={metaChip}><ClipIcon/>{docs} file{docs!==1?'s':''}</span>}
       </div>
 
-      <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:2, paddingTop:13, borderTop:'1px solid var(--line)' }}>
-        <button onClick={()=>onOpen(post.id)} aria-label={`View and message about “${title}”`}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:2, paddingTop:13, borderTop:'1px solid var(--line)', flexWrap:'wrap' }}>
+        <button onClick={viewFounder} aria-label={`View ${a.name||'founder'}'s deal page`}
           style={{ padding:'9px 18px', borderRadius:'var(--r)', background:'var(--ink)', color:'#fff', border:'none', fontSize:'var(--t-sm)', fontWeight:700, cursor:'pointer', fontFamily:SANS, display:'inline-flex', alignItems:'center', gap:7 }}>
-          View &amp; message <span aria-hidden="true">→</span>
+          View deal page <span aria-hidden="true">→</span>
         </button>
+        {message && <button onClick={message} aria-label={`Message ${a.name||'the founder'}`}
+          style={{ padding:'9px 16px', borderRadius:'var(--r)', background:'var(--surface)', color:'var(--ink)', border:'1px solid var(--line)', fontSize:'var(--t-sm)', fontWeight:700, cursor:'pointer', fontFamily:SANS }}>
+          ✦ Message
+        </button>}
         {m.website && <a href={m.website.startsWith('http')?m.website:`https://${m.website}`} target="_blank" rel="noreferrer noopener"
-          style={{ fontSize:'var(--t-sm)', fontWeight:600, color:'var(--accent)', textDecoration:'none' }}>Visit site ↗</a>}
+          style={{ fontSize:'var(--t-sm)', fontWeight:600, color:'var(--accent)', textDecoration:'none', marginLeft:'auto' }}>Visit site ↗</a>}
       </div>
     </article>
   );
 }
 
-export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch, onViewFounder, onSwitchToFounder, onMyProfile }) {
+export default function Invest({ user, onHome, onAccount, onSignIn, onViewFounder, onMessage, onMyProfile }) {
   const [pitches, setPitches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('All');
@@ -139,7 +144,6 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch,
             <span className="inv-badge" style={{ fontSize:10, fontWeight:800, letterSpacing:'.6px', textTransform:'uppercase', padding:'4px 9px', borderRadius:'var(--r-pill)', background:'var(--accent-weak)', color:'var(--accent)', flexShrink:0 }}>Investor</span>
           </div>
           <nav style={{ display:'flex', alignItems:'center', gap:'clamp(12px,3vw,18px)', flexShrink:0 }}>
-            {onSwitchToFounder && <button onClick={onSwitchToFounder} style={{ ...navBtn, color:'var(--ink-2)' }}>Founder view</button>}
             {user && onMyProfile && <button onClick={onMyProfile} style={{ ...navBtn, color:'var(--ink)' }}>My profile</button>}
             {user
               ? <button onClick={onAccount} style={{ ...navBtn, color:'var(--ink-2)' }}>Account</button>
@@ -193,22 +197,17 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch,
           <div style={{ textAlign:'center', padding:'64px 24px', background:'var(--surface)', border:'1px dashed var(--line)', borderRadius:'var(--r-lg)' }}>
             <div aria-hidden="true" style={{ fontSize:34, marginBottom:12 }}>💡</div>
             <h2 style={{ fontFamily:DISPLAY, fontSize:'var(--t-lg)', fontWeight:800, margin:'0 0 8px' }}>{pitches.length === 0 ? 'No pitches yet' : 'No matches'}</h2>
-            <p style={{ fontSize:'var(--t-sm)', color:'var(--ink-2)', maxWidth:400, margin:'0 auto 18px', lineHeight:'var(--lh)' }}>
+            <p style={{ fontSize:'var(--t-sm)', color:'var(--ink-2)', maxWidth:400, margin:'0 auto', lineHeight:'var(--lh)' }}>
               {pitches.length === 0
-                ? 'Founders haven’t pitched yet. Check back soon — or switch to the founder side and post the first one.'
+                ? 'No founders are raising just yet. Check back soon — new pitches show up here the moment they’re validated.'
                 : 'Try a different category or search term.'}
             </p>
-            {pitches.length === 0 && onSwitchToFounder && (
-              <button onClick={onSwitchToFounder} style={{ padding:'11px 22px', borderRadius:'var(--r)', background:'var(--ink)', color:'#fff', border:'none', fontSize:'var(--t-sm)', fontWeight:700, cursor:'pointer', fontFamily:SANS }}>
-                Switch to founder side
-              </button>
-            )}
           </div>
         ) : (
           <>
             <div aria-live="polite" className="sr-only">{shown.length} pitches shown</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:18 }}>
-              {shown.map(p => <PitchCard key={p.id} post={p} onOpen={onOpenPitch} onViewFounder={onViewFounder}/>)}
+              {shown.map(p => <PitchCard key={p.id} post={p} onViewFounder={onViewFounder} onMessage={onMessage}/>)}
             </div>
           </>
         )}

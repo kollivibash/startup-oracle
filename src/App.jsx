@@ -41,6 +41,7 @@ const InvestorOnboarding = lazyWithRetry(() => import('./InvestorOnboarding'))
 const InvestorProfile = lazyWithRetry(() => import('./InvestorProfile'))
 const FounderOnboarding = lazyWithRetry(() => import('./FounderOnboarding'))
 const FounderProfile = lazyWithRetry(() => import('./FounderProfile'))
+const MessageModal = lazyWithRetry(() => import('./MessageModal'))
 
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest', 'investorProfile']
 
@@ -97,6 +98,9 @@ export default function App() {
   const [pendingDM, setPendingDM] = useState(null)
   // Investor viewing a founder's full (Figma) deal-page from the deal-flow.
   const [publicFounderId, setPublicFounderId] = useState(null)
+  // Investor → founder DM, shown as a self-contained modal over the investor surface (deal-flow /
+  // deal-page) so messaging never drops the investor into the founder community feed.
+  const [dmTarget, setDmTarget] = useState(null)
   // Where the shared MasterReport returns to (account by default; founderView when an investor
   // opens a founder's AI report from their deal-page). Pre-filled answers for editing the founder profile.
   const [reportReturnView, setReportReturnView] = useState('account')
@@ -307,15 +311,20 @@ export default function App() {
     }
     goAuth(type === 'investor' ? 'invest' : 'community')
   }
-  // Investor opens a pitch → jump into the community feed focused on that post (where the DM
-  // button lives), reusing the existing deep-link focus mechanism.
-  const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
   // Founder taps an investor (in the community) → show the investor's full Figma profile.
   const openInvestorProfile = (id) => { setPublicInvestorId(id); setView('investorView') }
   // Investor taps a founder (in the deal-flow) → show the founder's full Figma deal-page.
   const openFounderProfile = (id) => { setPublicFounderId(id); setView('founderView') }
-  // Express interest / "Pitch" from a profile → open a DM with that person in the community.
+  // Founder "Pitch" from an investor's profile → open a DM with that investor in the community
+  // (the founder IS a community member, so this stays on the founder side).
   const openProfileDM = (meta) => { setPendingDM(meta); setView('community') }
+  // Investor "Express Interest" / message → open the self-contained DM modal (NOT the community),
+  // keeping investors entirely within the deal-flow surface. Auth-gate: send them to sign in first.
+  const openDealDM = (meta) => {
+    if (!meta?.id) return
+    if (!user) { setAfterAuth('invest'); setView('auth'); return }
+    setDmTarget(meta)
+  }
   // Investor finished (or is leaving) onboarding.
   const finishInvestorOnboarding = () => {
     try { localStorage.setItem(`so_investor_onboarded_${user.id}`, '1') } catch { /* private mode */ }
@@ -401,9 +410,8 @@ export default function App() {
           onHome={() => setView('oracle')}
           onAccount={goAccount}
           onSignIn={goSignIn}
-          onOpenPitch={openPitchInCommunity}
           onViewFounder={openFounderProfile}
-          onSwitchToFounder={() => chooseRole('founder')}
+          onMessage={openDealDM}
           onMyProfile={user ? () => setView('investorProfile') : null}
         />
       )
@@ -454,7 +462,7 @@ export default function App() {
           backLabel={founderSelf ? '← Back' : '← Deal Flow'}
           onHome={() => setView('oracle')}
           onBack={() => setView(founderSelf ? 'community' : 'invest')}
-          onExpressInterest={founderSelf ? null : openProfileDM}
+          onExpressInterest={founderSelf ? null : openDealDM}
           onEdit={(data) => { setFounderEditData(data || null); setView('founderEdit') }}
           onViewReport={(snap) => { setActiveIdea(snap); setReportReturnView('founderView'); setView('report') }}
         />
@@ -517,6 +525,11 @@ export default function App() {
       <ErrorBoundary resetKey={view} onReset={() => setView('oracle')}>
         <Suspense fallback={<Loading />}>{screen}</Suspense>
       </ErrorBoundary>
+      {dmTarget && user && (
+        <Suspense fallback={null}>
+          <MessageModal key={dmTarget.id} user={user} peer={dmTarget} onClose={() => setDmTarget(null)} />
+        </Suspense>
+      )}
     </>
   )
 }
