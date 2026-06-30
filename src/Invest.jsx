@@ -91,7 +91,7 @@ function PitchCard({ post, onOpen }) {
   );
 }
 
-export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch, onSwitchToFounder }) {
+export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch, onSwitchToFounder, onMyProfile }) {
   const [pitches, setPitches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('All');
@@ -137,8 +137,9 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onOpenPitch,
           </div>
           <nav style={{ display:'flex', alignItems:'center', gap:'clamp(12px,3vw,18px)', flexShrink:0 }}>
             {onSwitchToFounder && <button onClick={onSwitchToFounder} style={{ ...navBtn, color:'var(--ink-2)' }}>Founder view</button>}
+            {user && onMyProfile && <button onClick={onMyProfile} style={{ ...navBtn, color:'var(--ink)' }}>My profile</button>}
             {user
-              ? <button onClick={onAccount} style={{ ...navBtn, color:'var(--ink)' }}>Account</button>
+              ? <button onClick={onAccount} style={{ ...navBtn, color:'var(--ink-2)' }}>Account</button>
               : <button onClick={onSignIn} style={{ ...navBtn, color:'var(--ink)' }}>Sign in</button>}
           </nav>
         </div>

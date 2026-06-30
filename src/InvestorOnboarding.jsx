@@ -121,9 +121,9 @@ function MultiSelect({ f, value = [], onChange }) {
   );
 }
 
-export default function InvestorOnboarding({ user, onComplete, onExit }) {
+export default function InvestorOnboarding({ user, onComplete, onExit, initial, editing }) {
   const [step, setStep] = useState(0);
-  const [data, setData] = useState({});
+  const [data, setData] = useState(initial || {});
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
   const s = STEPS[step];
@@ -182,7 +182,7 @@ export default function InvestorOnboarding({ user, onComplete, onExit }) {
           <button onClick={back} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, fontWeight:600, color:'var(--ink-2)', fontFamily:F, padding:'10px 4px' }}>← Back</button>
           <button onClick={next} disabled={!canContinue || busy}
             style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'13px 26px', borderRadius:'var(--r)', background:'var(--ink)', color:'#fff', border:'none', fontSize:'var(--t-sm)', fontWeight:700, cursor:'pointer', fontFamily:F, opacity:(canContinue && !busy) ? 1 : .45 }}>
-            {busy ? 'Saving…' : isLast ? 'Create profile' : 'Continue'}<span aria-hidden="true">→</span>
+            {busy ? 'Saving…' : isLast ? (editing ? 'Save changes' : 'Create profile') : 'Continue'}<span aria-hidden="true">→</span>
           </button>
         </div>
       </main>

@@ -17,8 +17,9 @@ const Pricing      = lazy(() => import('./Pricing'))
 const Legal        = lazy(() => import('./Legal'))
 const Invest       = lazy(() => import('./Invest'))
 const InvestorOnboarding = lazy(() => import('./InvestorOnboarding'))
+const InvestorProfile = lazy(() => import('./InvestorProfile'))
 
-const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest']
+const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest', 'investorProfile']
 
 // Minimal full-screen fallback while a lazy view's chunk downloads.
 function Loading() {
@@ -62,6 +63,8 @@ export default function App() {
   const [acctType, setAcctType] = useState(() => { try { return localStorage.getItem('so_account_type') } catch { return null } })
   // Investor onboarding gate: null = unknown (still checking), false = must onboard, true = done.
   const [investorOnboarded, setInvestorOnboarded] = useState(null)
+  // Pre-filled answers when an existing investor re-opens onboarding from their profile to edit.
+  const [investorEditData, setInvestorEditData] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -317,9 +320,31 @@ export default function App() {
           onSignIn={goSignIn}
           onOpenPitch={openPitchInCommunity}
           onSwitchToFounder={() => chooseRole('founder')}
+          onMyProfile={user ? () => setView('investorProfile') : null}
         />
       )
     }
+  } else if (view === 'investorProfile') {
+    // The investor's own profile (their onboarding answers). Requires a session.
+    screen = user
+      ? <InvestorProfile
+          user={user}
+          onHome={() => setView('oracle')}
+          onBack={() => setView('invest')}
+          onEdit={(data) => { setInvestorEditData(data || null); setView('investorEdit') }}
+        />
+      : null
+  } else if (view === 'investorEdit') {
+    // Re-run onboarding pre-filled, to edit an existing investor profile.
+    screen = user
+      ? <InvestorOnboarding
+          user={user}
+          initial={investorEditData}
+          editing
+          onComplete={() => { setInvestorOnboarded(true); setView('investorProfile') }}
+          onExit={() => setView('investorProfile')}
+        />
+      : null
   } else if (view === 'auth') {
     screen = (
       <Auth
