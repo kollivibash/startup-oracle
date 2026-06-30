@@ -8,16 +8,37 @@ import { supabase } from './supabaseClient'
 // Code-split the heavy views so the landing page ships a small initial bundle —
 // each chunk loads on demand when its view is first opened. Home stays eager
 // (it's the default screen, so lazy-loading it would just add a loading flash).
-const SubmitIdea   = lazy(() => import('./SubmitIdea'))
-const Community    = lazy(() => import('./Community'))
-const Auth         = lazy(() => import('./Auth'))
-const Account      = lazy(() => import('./Account'))
-const MasterReport = lazy(() => import('./MasterReport'))
-const Pricing      = lazy(() => import('./Pricing'))
-const Legal        = lazy(() => import('./Legal'))
-const Invest       = lazy(() => import('./Invest'))
-const InvestorOnboarding = lazy(() => import('./InvestorOnboarding'))
-const InvestorProfile = lazy(() => import('./InvestorProfile'))
+//
+// lazyWithRetry: after a new deploy, chunk filenames change hash, so an old tab's
+// dynamic import can 404 mid-session (e.g. finishing onboarding → loading the Invest
+// chunk). That surfaced as the ErrorBoundary "Something went wrong". Instead, reload
+// once to pull the fresh bundle; the time-gate prevents a reload loop if it's a real
+// failure (offline, genuinely broken chunk).
+const lazyWithRetry = (factory) => lazy(async () => {
+  try { return await factory() }
+  catch (err) {
+    try {
+      const KEY = 'so_chunk_reload_at'
+      const last = Number(sessionStorage.getItem(KEY) || 0)
+      if (Date.now() - last > 10000) {
+        sessionStorage.setItem(KEY, String(Date.now()))
+        window.location.reload()
+        return new Promise(() => {})   // halt rendering until the reload takes over
+      }
+    } catch { /* private mode — fall through to surface the error */ }
+    throw err
+  }
+})
+const SubmitIdea   = lazyWithRetry(() => import('./SubmitIdea'))
+const Community    = lazyWithRetry(() => import('./Community'))
+const Auth         = lazyWithRetry(() => import('./Auth'))
+const Account      = lazyWithRetry(() => import('./Account'))
+const MasterReport = lazyWithRetry(() => import('./MasterReport'))
+const Pricing      = lazyWithRetry(() => import('./Pricing'))
+const Legal        = lazyWithRetry(() => import('./Legal'))
+const Invest       = lazyWithRetry(() => import('./Invest'))
+const InvestorOnboarding = lazyWithRetry(() => import('./InvestorOnboarding'))
+const InvestorProfile = lazyWithRetry(() => import('./InvestorProfile'))
 
 const PERSISTED_VIEWS = ['oracle', 'submit', 'community', 'account', 'pricing', 'terms', 'privacy', 'gateway', 'invest', 'investorProfile']
 
