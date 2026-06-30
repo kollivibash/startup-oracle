@@ -85,7 +85,10 @@ function MultiSelect({ f, value = [], onChange }) {
   const ref = useRef(null);
   useEffect(() => { const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
   const toggle = o => onChange(value.includes(o) ? value.filter(x => x !== o) : [...value, o]);
-  const summary = value.length ? (value.length <= 3 ? value.join(', ') : `${value.slice(0,3).join(', ')} +${value.length-3}`) : 'Select all that apply…';
+  const summary = !value.length ? 'Select all that apply…'
+    : (f.options?.length && value.length === f.options.length) ? `All selected (${value.length})`
+    : value.length <= 3 ? value.join(', ')
+    : `${value.slice(0,2).join(', ')} +${value.length-2} more`;
   const openMenu = () => {
     if (!open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
