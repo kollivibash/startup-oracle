@@ -58,21 +58,23 @@ function Avatar({ name, url, sz = 80 }) {
 // Matches the Figma investor-profile design: hero + stat strip, scroll-spy section tabs,
 // and Thesis / Focus / Style / Credentials / Value-Add cards. Self view → Edit button,
 // no "pitch" CTA. Every block is omitted when its onboarding answer is blank.
-export default function InvestorProfile({ user, onBack, onHome, onEdit }) {
+export default function InvestorProfile({ user, targetId, isSelf: isSelfProp, onBack, onHome, onEdit, onPitch, backLabel = '← Dashboard' }) {
+  const viewId = targetId || user?.id;
+  const isSelf = isSelfProp !== undefined ? isSelfProp : (!targetId || targetId === user?.id);
   const [prof, setProf] = useState(null);
   const [p, setP] = useState(null);          // investor_profile blob
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState('thesis');
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!viewId) return undefined;
     let on = true;
-    Promise.all([fetchProfile(user.id), getInvestorProfile(user.id)])
+    Promise.all([fetchProfile(viewId), getInvestorProfile(viewId)])
       .then(([pr, ip]) => { if (on) { setProf(pr); setP(ip); } })
       .catch(() => {})
       .finally(() => { if (on) setLoading(false); });
     return () => { on = false; };
-  }, [user]);
+  }, [viewId]);
 
   // Scroll-spy: highlight the section nearest the top.
   useEffect(() => {
@@ -92,9 +94,11 @@ export default function InvestorProfile({ user, onBack, onHome, onEdit }) {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 96, behavior: 'smooth' });
   };
 
-  const name = p?.fullName || prof?.name || user?.user_metadata?.name || 'Investor';
-  const avatar = prof?.avatar_url || user?.user_metadata?.avatar_url || null;
+  const name = p?.fullName || prof?.name || (isSelf ? user?.user_metadata?.name : null) || 'Investor';
+  const firstName = name.split(' ')[0];
+  const avatar = prof?.avatar_url || (isSelf ? user?.user_metadata?.avatar_url : null) || null;
   const role = [p?.investorType, p?.firm].filter(Boolean).join(' · ');
+  const pitch = () => onPitch?.({ id: viewId, name, avatar_url: avatar });
   const navBtn = { background:'none', border:'none', cursor:'pointer', fontFamily:F, fontSize:'var(--t-sm)', fontWeight:600, whiteSpace:'nowrap', color:'var(--ink-2)' };
 
   const stats = p ? [
@@ -118,9 +122,11 @@ export default function InvestorProfile({ user, onBack, onHome, onEdit }) {
       {/* Sticky top bar */}
       <header style={{ position:'sticky', top:0, zIndex:30, background:'color-mix(in srgb, var(--bg) 92%, transparent)', backdropFilter:'blur(8px)', borderBottom:`1px solid ${BORDER}` }}>
         <div style={{ maxWidth:1060, margin:'0 auto', height:52, padding:'0 clamp(14px,4vw,24px)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-          <button onClick={onBack} style={navBtn}>← Dashboard</button>
+          <button onClick={onBack} style={navBtn}>{backLabel}</button>
           <button onClick={onHome} style={{ ...navBtn, fontFamily:SERIF, fontSize:14, fontWeight:600, letterSpacing:'.8px', textTransform:'uppercase', color:'var(--ink)' }}>Startup Oracle</button>
-          <button onClick={() => onEdit(p)} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:'var(--t-sm)', fontWeight:700, color:'#fff', background:'var(--accent)', padding:'7px 16px', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', fontFamily:F }}>✎ Edit profile</button>
+          {isSelf
+            ? <button onClick={() => onEdit(p)} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:'var(--t-sm)', fontWeight:700, color:'#fff', background:'var(--accent)', padding:'7px 16px', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', fontFamily:F }}>✎ Edit profile</button>
+            : onPitch && <button onClick={pitch} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:'var(--t-sm)', fontWeight:700, color:'#fff', background:'var(--accent)', padding:'7px 16px', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', fontFamily:F }}>✦ Pitch {firstName}</button>}
         </div>
       </header>
 
@@ -260,8 +266,17 @@ export default function InvestorProfile({ user, onBack, onHome, onEdit }) {
               </div>
             )}
 
-            {p?.completed && (
+            {p?.completed && isSelf && (
               <p style={{ textAlign:'center', fontSize:12.5, color:'var(--ink-3)', margin:'8px 0 0' }}>This is how founders see your profile when you appear in their deal-flow.</p>
+            )}
+            {p?.completed && !isSelf && onPitch && (
+              <div style={{ background:'var(--ink)', borderRadius:'var(--r-lg)', padding:'24px 28px', display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:16, marginTop:2 }}>
+                <div>
+                  <div style={{ color:'#fff', fontWeight:700, fontSize:17, fontFamily:FD }}>Ready to pitch {firstName}?</div>
+                  <div style={{ color:'rgba(255,255,255,.5)', fontSize:13, marginTop:4 }}>Send your pitch through Startup Oracle{has(p.decisionSpeed) ? ` — typical decision speed is ${p.decisionSpeed}.` : '.'}</div>
+                </div>
+                <button onClick={pitch} style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#fff', background:'var(--accent)', padding:'11px 22px', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', fontFamily:F }}>Send Pitch →</button>
+              </div>
             )}
           </main>
         </>

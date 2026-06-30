@@ -2431,7 +2431,7 @@ function OpeningsView({ onSubmitIdea }) {
   );
 }
 
-export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, onLogout, focusPostId, onConsumeFocus }) {
+export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, onLogout, focusPostId, onConsumeFocus, onViewInvestor, pendingDM, onConsumePendingDM }) {
   const [view, setView] = useState('feed');         // feed | profile | messages
   const [pid, setPid] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -2692,6 +2692,13 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     setDmUser(peer);
   }, [user, onSignIn]);
 
+  // A founder arriving from an investor's profile with "Send Pitch" → open that DM once.
+  useEffect(() => {
+    if (!pendingDM || !user) return undefined;
+    const t = setTimeout(() => { openDM(pendingDM); onConsumePendingDM?.(); }, 0);
+    return () => clearTimeout(t);
+  }, [pendingDM, user, openDM, onConsumePendingDM]);
+
   // payload: string (legacy) or { text, media, replyTo, forwarded }
   const handleSend = useCallback(async (peerId, payload) => {
     if (!user) return;
@@ -2819,7 +2826,17 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   const openNotif = n => { setBellOpen(false); if (n.post_id) focusPost(n.post_id); else if (n.actor?.id) goProfile(n.actor.id); };
   const toggleR = id => { setROpen(p=>p===id?null:id); setCOpen(null); };
   const toggleC = id => { setCOpen(p=>p===id?null:id); setROpen(null); };
-  const goProfile = uid => { setPid(uid); setView('profile'); };
+  // Investor accounts get the full standalone investor profile (so founders can pitch them);
+  // everyone else opens the in-community profile. Self always opens in-community.
+  const goProfile = uid => {
+    if (onViewInvestor && uid && uid !== user?.id) {
+      getAccountType(uid)
+        .then(t => { if (t === 'investor') onViewInvestor(uid); else { setPid(uid); setView('profile'); } })
+        .catch(() => { setPid(uid); setView('profile'); });
+      return;
+    }
+    setPid(uid); setView('profile');
+  };
   const goFeed = () => setView('feed');
   const goMessages = () => { if (!user) return onSignIn?.(); setView('messages'); };
   const goOpenings = () => setView('openings');

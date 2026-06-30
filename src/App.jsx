@@ -86,6 +86,9 @@ export default function App() {
   const [investorOnboarded, setInvestorOnboarded] = useState(null)
   // Pre-filled answers when an existing investor re-opens onboarding from their profile to edit.
   const [investorEditData, setInvestorEditData] = useState(null)
+  // Founder viewing an investor's full (Figma) profile, and a queued DM to open in the community.
+  const [publicInvestorId, setPublicInvestorId] = useState(null)
+  const [pendingDM, setPendingDM] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -272,6 +275,10 @@ export default function App() {
   // Investor opens a pitch → jump into the community feed focused on that post (where the DM
   // button lives), reusing the existing deep-link focus mechanism.
   const openPitchInCommunity = (id) => { setDeepPost(id); setView('community') }
+  // Founder taps an investor (in the community) → show the investor's full Figma profile.
+  const openInvestorProfile = (id) => { setPublicInvestorId(id); setView('investorView') }
+  // "Pitch" an investor from that profile → open a DM with them back in the community.
+  const pitchInvestor = (meta) => { setPendingDM(meta); setView('community') }
   // Investor finished (or is leaving) onboarding.
   const finishInvestorOnboarding = () => {
     try { localStorage.setItem(`so_investor_onboarded_${user.id}`, '1') } catch { /* private mode */ }
@@ -309,7 +316,7 @@ export default function App() {
   } else if (view === 'submit') {
     screen = <SubmitIdea onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onAccount={goAccount} onPricing={() => setView('pricing')} onSignIn={() => goAuth('submit')} />
   } else if (view === 'community') {
-    screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} />
+    screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} onViewInvestor={openInvestorProfile} pendingDM={pendingDM} onConsumePendingDM={() => setPendingDM(null)} />
   } else if (view === 'gateway') {
     screen = (
       <Gateway
@@ -364,6 +371,19 @@ export default function App() {
           editing
           onComplete={() => { setInvestorOnboarded(true); setView('investorProfile') }}
           onExit={() => setView('investorProfile')}
+        />
+      : null
+  } else if (view === 'investorView') {
+    // A founder viewing an investor's full profile (Figma layout, "Pitch" CTA).
+    screen = publicInvestorId
+      ? <InvestorProfile
+          user={user}
+          targetId={publicInvestorId}
+          isSelf={false}
+          backLabel="← Back"
+          onHome={() => setView('oracle')}
+          onBack={() => setView('community')}
+          onPitch={pitchInvestor}
         />
       : null
   } else if (view === 'auth') {
