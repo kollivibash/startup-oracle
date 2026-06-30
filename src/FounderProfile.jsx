@@ -44,7 +44,7 @@ function Avatar({ name, url, sz }) {
 // The founder's "deal page" — what an investor sees in the deal-flow (Figma founder-profile design):
 // sticky identity sidebar (startup, raising, CTAs, section nav) + scrolling The Pitch / Traction /
 // Team / The Ask sections. Dual-mode: viewer (investor → Express Interest = DM) and self (Edit).
-export default function FounderProfile({ user, targetId, isSelf: isSelfProp, onBack, onHome, onEdit, onExpressInterest, backLabel = '← Deal Flow' }) {
+export default function FounderProfile({ user, targetId, isSelf: isSelfProp, onBack, onHome, onEdit, onExpressInterest, onViewReport, backLabel = '← Deal Flow' }) {
   const viewId = targetId || user?.id;
   const isSelf = isSelfProp !== undefined ? isSelfProp : (!targetId || targetId === user?.id);
   const [prof, setProf] = useState(null);
@@ -148,6 +148,16 @@ export default function FounderProfile({ user, targetId, isSelf: isSelfProp, onB
                 </div>
               )}
 
+              {p?.oracleScore != null && (
+                <div style={{ margin: '0 24px 18px', borderRadius: 'var(--r)', background: 'var(--bg)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}><span style={{ color: 'var(--accent)' }}>★</span> Oracle Score</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <span style={{ width: 80, height: 6, borderRadius: 99, background: 'rgba(15,23,42,.10)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${Math.min(100, Math.max(0, p.oracleScore))}%`, background: 'var(--accent)' }} /></span>
+                    <span style={{ fontSize: 13, fontWeight: 800, fontFamily: FD, color: 'var(--ink)' }}>{p.oracleScore}</span>
+                  </span>
+                </div>
+              )}
+
               {raisingActive(p) && has(p?.amountSeeking) && (
                 <div style={{ margin: '0 24px 18px', borderRadius: 'var(--r)', border: '1px solid rgba(37,99,235,.18)', background: 'rgba(37,99,235,.04)', padding: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -162,6 +172,9 @@ export default function FounderProfile({ user, targetId, isSelf: isSelfProp, onB
                 {isSelf
                   ? <button onClick={() => onEdit(p)} style={{ ...blueBtn, width: '100%' }}>✎ Edit profile</button>
                   : onExpressInterest && <button onClick={express} style={{ ...blueBtn, width: '100%' }}>✦ Express Interest</button>}
+                {p?.aiReport?.sections && onViewReport && (
+                  <button onClick={() => onViewReport(p.aiReport)} style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 13, fontWeight: 600, color: 'var(--ink-2)', background: 'transparent', border: '1px solid rgba(15,23,42,.12)', padding: '11px 18px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontFamily: F }}>↗ View AI Report</button>
+                )}
               </div>
             </div>
 

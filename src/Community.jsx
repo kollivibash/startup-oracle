@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile, getAccountType } from "./communityDB";
+import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile, getAccountType, setFounderAiReport } from "./communityDB";
 import { fetchVerifiedIds } from "./billingDB";
+import { loadIdeas } from "./ideasDB";
 import InvestorProfileSections from "./InvestorProfileSections";
 
 const F = "'DM Sans',system-ui,sans-serif";
@@ -897,9 +898,14 @@ const PITCH_STAGES = ['Idea','Prototype','MVP','Early Revenue','Scaling'];
 
 const URL_RE = /(https?:\/\/[^\s]+)/i;
 
-function ComposerModal({ me, onClose, onPosted }) {
-  const [mode, setMode] = useState('post'); // post | poll | article
+function ComposerModal({ me, onClose, onPosted, onAnalyse }) {
+  const [mode, setMode] = useState('post'); // post | poll | article | pitch
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
+  // A pitch must be backed by an AI analysis (a validated idea) — investors see its score + report.
+  const [ideas, setIdeas] = useState(null);   // null = loading, [] = none
+  const [pickedIdeaId, setPickedIdeaId] = useState('');
+  useEffect(() => { let on = true; loadIdeas(me?.id).then(rows => on && setIdeas(Array.isArray(rows) ? rows.filter(r => r?.sections && (r?.score != null || r?.meta)) : [])).catch(() => on && setIdeas([])); return () => { on = false; }; }, [me]);
+  const pickedIdea = (ideas || []).find(i => String(i.id) === String(pickedIdeaId)) || null;
   const [body, setBody] = useState('');
   const [artTitle, setArtTitle] = useState('');
   const [pollQ, setPollQ] = useState('');
@@ -935,7 +941,7 @@ function ComposerModal({ me, onClose, onPosted }) {
   const canPost = mode === 'poll'
     ? (pollQ.trim() && pollOpts.filter(o => o.trim()).length >= 2)
     : mode === 'pitch'
-      ? (pitchTitle.trim() && body.trim() && pitchAmount.trim())
+      ? (pitchTitle.trim() && body.trim() && pitchAmount.trim() && pickedIdea)
       : mode === 'article'
         ? (artTitle.trim() && body.trim())
         : (body.trim() || files.length > 0);
@@ -964,6 +970,7 @@ function ComposerModal({ me, onClose, onPosted }) {
       }
 
       if (mode === 'pitch') {
+        const aiScore = pickedIdea?.score ?? pickedIdea?.meta?.overallScore ?? null;
         const meta = {
           pitch: true,
           category: pitchCat,
@@ -971,9 +978,17 @@ function ComposerModal({ me, onClose, onPosted }) {
           amount: pitchAmount.trim().slice(0, 40),
           equity: pitchEquity.trim().slice(0, 20),
           website: pitchWebsite.trim().slice(0, 200),
+          aiScore,                       // lightweight — for the deal-flow card badge
+          aiReportId: pickedIdea?.id ?? null,
         };
         const title = pitchTitle.trim().slice(0, 120);
         const bodyText = body.trim();
+        // Mirror the score + a report snapshot onto the (public) founder_profile so investors,
+        // who can't read the owner-only ideas table, see the Oracle Score + report on the deal-page.
+        if (aiScore != null) {
+          const snapshot = { title: pickedIdea.title, sections: pickedIdea.sections, meta: pickedIdea.meta };
+          setFounderAiReport(me.id, { oracleScore: aiScore, aiReport: snapshot }).catch(() => {});
+        }
         const row = await createPost(me.id, { title, body: bodyText, tags: tagArr, media, kind: 'pitch', meta, visibility });
         onPosted({ id: row.id, created_at: row.created_at, user_id: me.id, title, body: bodyText, media, kind: 'pitch', meta, ...baseNew });
         return onClose();
@@ -1047,6 +1062,26 @@ function ComposerModal({ me, onClose, onPosted }) {
                 <span style={{ fontSize:14 }} aria-hidden="true">💡</span>
                 <span style={{ fontSize:12.5, fontWeight:600, color:'var(--accent)', lineHeight:1.4 }}>Pitch to investors — they’ll see this in the deal-flow. Attach your deck below.</span>
               </div>
+
+              {/* Mandatory AI analysis — investors see the score + report on your deal-page. */}
+              {ideas === null ? (
+                <div style={{ fontSize:12.5, color:'var(--ink-3)', padding:'10px 0' }}>Loading your AI analyses…</div>
+              ) : ideas.length === 0 ? (
+                <div style={{ padding:'13px 14px', borderRadius:8, border:'1px solid rgba(37,99,235,.25)', background:'var(--accent-weak)', display:'flex', flexDirection:'column', gap:9 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'var(--ink)' }}>An AI analysis is required to pitch</div>
+                  <div style={{ fontSize:12.5, color:'var(--ink-2)', lineHeight:1.5 }}>Investors only see vetted startups. Run a free AI validation first — its Oracle Score and report appear on your pitch.</div>
+                  <button type="button" onClick={onAnalyse} style={{ alignSelf:'flex-start', padding:'8px 16px', borderRadius:99, background:'var(--accent)', color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:F }}>✦ Analyse my idea →</button>
+                </div>
+              ) : (
+                <label style={{ ...pf.lbl, flex:'1 1 100%' }}>AI analysis<span style={pf.req} aria-hidden="true">*</span>
+                  <select value={pickedIdeaId} onChange={e=>setPickedIdeaId(e.target.value)} aria-required="true" style={{ ...pf.ctrl, color: pickedIdeaId ? 'var(--ink)' : 'var(--ink-3)' }}>
+                    <option value="" disabled>Attach a validated idea…</option>
+                    {ideas.map(i => <option key={i.id} value={i.id} style={{ color:'var(--ink)' }}>{(i.title||'Untitled idea')}{(i.score ?? i.meta?.overallScore) != null ? ` — Oracle Score ${i.score ?? i.meta?.overallScore}` : ''}</option>)}
+                  </select>
+                  <span style={{ fontWeight:600, textTransform:'none', letterSpacing:'normal', color:'var(--ink-3)', fontSize:11.5 }}>Investors will see this score and the full AI report on your profile.</span>
+                </label>
+              )}
+
               <label style={pf.lbl}>Pitch title<span style={pf.req} aria-hidden="true">*</span>
                 <input autoFocus value={pitchTitle} onChange={e=>setPitchTitle(e.target.value)} aria-required="true" placeholder={'e.g. "AI copilot for Indian SMBs"'} maxLength={120} style={{ ...pf.ctrl, fontWeight:700, fontSize:15 }}/>
               </label>
@@ -1674,14 +1709,14 @@ function DMPanel({ peer, msgs, chat, onClose }) {
 }
 
 // ── Left sidebar ─────────────────────────────────────────────────────────────
-function LeftBar({ me, myProfile, posts, followerCount, followingCount, onOpenPeople, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds }) {
+function LeftBar({ me, myProfile, posts, followerCount, followingCount, onOpenPeople, unread, view, goFeed, goProfile, goMessages, goOpenings, onPost, requireAuth, verifiedIds, onMyFounderProfile }) {
   const myPosts = me ? posts.filter(p=>p.user_id===me.id) : [];
   const tagCounts = useMemo(() => {
     const c = {};
     posts.forEach(p=>(p.tags||[]).forEach(t=>{ c[t]=(c[t]||0)+1; }));
     return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,4);
   }, [posts]);
-  const navIco = { home:NAV_ICONS.home, profile:'M12 12a4 4 0 100-8 4 4 0 000 8Zm-7 8a7 7 0 0114 0', network:NAV_ICONS.network, messages:NAV_ICONS.messages, openings:NAV_ICONS.openings };
+  const navIco = { home:NAV_ICONS.home, profile:'M12 12a4 4 0 100-8 4 4 0 000 8Zm-7 8a7 7 0 0114 0', network:NAV_ICONS.network, messages:NAV_ICONS.messages, openings:NAV_ICONS.openings, dealpage:'M3 7h18v13H3zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2' };
 
   return (
     <div style={{ width:238, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
@@ -1715,6 +1750,7 @@ function LeftBar({ me, myProfile, posts, followerCount, followingCount, onOpenPe
           {[
             ['feed','Browse Ideas','home', goFeed],
             ['profile','My Profile','profile', me?()=>goProfile(me.id):requireAuth(()=>{})],
+            ...(me && onMyFounderProfile ? [['dealpage','My deal page','dealpage', onMyFounderProfile]] : []),
             ['messages','Messages','messages', goMessages],
             ['openings','Openings','openings', goOpenings],
           ].map(([id,label,ico,fn])=>{
@@ -2431,7 +2467,7 @@ function OpeningsView({ onSubmitIdea }) {
   );
 }
 
-export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, onLogout, focusPostId, onConsumeFocus, onViewInvestor, pendingDM, onConsumePendingDM }) {
+export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAccount, onLogout, focusPostId, onConsumeFocus, onViewInvestor, pendingDM, onConsumePendingDM, onMyFounderProfile }) {
   const [view, setView] = useState('feed');         // feed | profile | messages
   const [pid, setPid] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -3015,7 +3051,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
       {/* 3-column layout */}
       <div className="comm-page" style={{ maxWidth:1128, margin:'0 auto', padding:'20px 16px', display:'flex', gap:16, alignItems:'flex-start' }}>
         <div className="comm-left" style={{ display:'block' }}>
-          <LeftBar me={meUser} myProfile={myProfile} posts={posts} followerCount={followerCount} followingCount={followingIds.size} onOpenPeople={t=>requireAuth(()=>setSidePeople(t))()} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds}/>
+          <LeftBar me={meUser} myProfile={myProfile} posts={posts} followerCount={followerCount} followingCount={followingIds.size} onOpenPeople={t=>requireAuth(()=>setSidePeople(t))()} unread={unread} view={view==='profile'&&pid===user?.id?'profile-self':view} goFeed={goFeed} goProfile={goProfile} goMessages={goMessages} goOpenings={goOpenings} onPost={()=>setComposerOpen(true)} requireAuth={requireAuth} verifiedIds={verifiedIds} onMyFounderProfile={onMyFounderProfile}/>
         </div>
 
         <div style={{ flex:1, minWidth:0, maxWidth:view==='messages'?'none':600 }}>
@@ -3134,7 +3170,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
 
       {/* Composer modal */}
       {composerOpen && user && (
-        <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }}/>
+        <ComposerModal me={meUser} onClose={()=>setComposerOpen(false)} onPosted={p=>{ setPosts(prev=>[p,...prev]); setView('feed'); }} onAnalyse={()=>{ setComposerOpen(false); onSubmitIdea?.(); }}/>
       )}
 
       {/* Edit-post modal */}

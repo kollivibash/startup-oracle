@@ -76,6 +76,7 @@ function PitchCard({ post, onOpen, onViewFounder }) {
       )}
 
       <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+        {m.aiScore != null && <span style={{ ...metaChip, background:'var(--accent-weak)', border:'1px solid rgba(37,99,235,.22)', color:'var(--accent)', fontWeight:700 }}>★ Oracle {m.aiScore}</span>}
         {m.category && <span style={metaChip}><TagIcon/>{m.category}</span>}
         {m.stage && <span style={metaChip}><LayersIcon/>{m.stage}</span>}
         {docs > 0 && <span style={metaChip}><ClipIcon/>{docs} file{docs!==1?'s':''}</span>}

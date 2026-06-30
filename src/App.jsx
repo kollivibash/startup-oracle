@@ -97,6 +97,10 @@ export default function App() {
   const [pendingDM, setPendingDM] = useState(null)
   // Investor viewing a founder's full (Figma) deal-page from the deal-flow.
   const [publicFounderId, setPublicFounderId] = useState(null)
+  // Where the shared MasterReport returns to (account by default; founderView when an investor
+  // opens a founder's AI report from their deal-page). Pre-filled answers for editing the founder profile.
+  const [reportReturnView, setReportReturnView] = useState('account')
+  const [founderEditData, setFounderEditData] = useState(null)
   const [deepPost, setDeepPost] = useState(() => {
     try { const m = window.location.hash.match(/^#\/idea\/([\w-]+)/); return m ? m[1] : null } catch { return null }
   })
@@ -340,7 +344,7 @@ export default function App() {
         data={activeIdea.sections}
         meta={activeIdea.meta}
         ideaName={activeIdea.title}
-        onBack={() => { setView('account'); setActiveIdea(null); }}
+        onBack={() => { setView(reportReturnView); setActiveIdea(null); }}
       />
     )
   } else if (view === 'account') {
@@ -350,7 +354,7 @@ export default function App() {
           onHome={() => setView('oracle')}
           onLogout={handleLogout}
           onSubmitIdea={() => setView('submit')}
-          onViewReport={idea => { setActiveIdea(idea); setView('report'); }}
+          onViewReport={idea => { setActiveIdea(idea); setReportReturnView('account'); setView('report'); }}
         />
       : null
   } else if (view === 'pricing') {
@@ -366,7 +370,7 @@ export default function App() {
     } else if (user && founderOnboardDue && founderOnboarded === false) {
       screen = <FounderOnboarding user={user} onComplete={finishFounderOnboarding} onExit={exitFounderOnboarding} />
     } else {
-      screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} onViewInvestor={openInvestorProfile} pendingDM={pendingDM} onConsumePendingDM={() => setPendingDM(null)} />
+      screen = <Community onSubmitIdea={() => goAuth('submit')} onHome={() => setView('oracle')} user={user} onLogout={handleLogout} onSignIn={goSignIn} onAccount={goAccount} focusPostId={deepPost} onConsumeFocus={() => setDeepPost(null)} onViewInvestor={openInvestorProfile} pendingDM={pendingDM} onConsumePendingDM={() => setPendingDM(null)} onMyFounderProfile={user ? () => openFounderProfile(user.id) : null} />
     }
   } else if (view === 'gateway') {
     screen = (
@@ -439,16 +443,31 @@ export default function App() {
         />
       : null
   } else if (view === 'founderView') {
-    // An investor viewing a founder's full deal-page (Figma layout, "Express Interest" CTA).
+    // A founder's full deal-page. Self (from the community → Edit / View AI report) or an investor
+    // viewing it from the deal-flow (→ Express Interest opens a DM).
+    const founderSelf = !!user && publicFounderId === user.id
     screen = publicFounderId
       ? <FounderProfile
           user={user}
           targetId={publicFounderId}
-          isSelf={false}
-          backLabel="← Deal Flow"
+          isSelf={founderSelf}
+          backLabel={founderSelf ? '← Back' : '← Deal Flow'}
           onHome={() => setView('oracle')}
-          onBack={() => setView('invest')}
-          onExpressInterest={openProfileDM}
+          onBack={() => setView(founderSelf ? 'community' : 'invest')}
+          onExpressInterest={founderSelf ? null : openProfileDM}
+          onEdit={(data) => { setFounderEditData(data || null); setView('founderEdit') }}
+          onViewReport={(snap) => { setActiveIdea(snap); setReportReturnView('founderView'); setView('report') }}
+        />
+      : null
+  } else if (view === 'founderEdit') {
+    // Re-run founder onboarding pre-filled, to edit an existing founder deal-page.
+    screen = user
+      ? <FounderOnboarding
+          user={user}
+          initial={founderEditData}
+          editing
+          onComplete={() => { setFounderOnboarded(true); setView('founderView') }}
+          onExit={() => setView('founderView')}
         />
       : null
   } else if (view === 'auth') {

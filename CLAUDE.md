@@ -10,9 +10,15 @@ Founder → the community feed; Investor → the deal-flow dashboard (`invest` v
 choice is saved on `profiles.account_type` (`founder`|`investor`, switchable — re-pick at the gateway),
 seeded into `localStorage.so_account_type` and persisted after login (queued via `so_account_type_pending`
 when picked while logged out). A **pitch** is a `community_posts` row with `kind:'pitch'` and structured
-fields in `meta` (`{ pitch, category, stage, amount, equity, website }`) + uploaded files in `media` —
-it shows in BOTH the founder feed and the investor dashboard. Pitches are open deal-flow (every pitch
-visible to all investors). The composer has a 4th "💡 Pitch" mode; `fetchPitches()` powers the dashboard.
+fields in `meta` (`{ pitch, category, stage, amount, equity, website, aiScore, aiReportId }`) + uploaded
+files in `media` — it shows in BOTH the founder feed and the investor dashboard. Pitches are open
+deal-flow (every pitch visible to all investors). The composer has a 4th "💡 Pitch" mode.
+**Pitching requires an AI analysis:** the Pitch composer makes the founder attach one of their validated
+ideas (loadIdeas) — no analysis, no pitch (it links to "Analyse my idea"). On publish, the idea's
+Oracle Score + a report snapshot are mirrored onto the (public) `profiles.founder_profile` via
+`setFounderAiReport`, so investors — who CAN'T read the owner-only `ideas` table — see the Oracle Score
+(deal-flow card badge + sidebar) and can open the full AI report from the founder's deal-page.
+`fetchPitches()` powers the dashboard.
 Picking Investor first runs a **required 6-step onboarding** (`InvestorOnboarding.jsx`, saved to
 `profiles.investor_profile`); the `invest` dashboard is gated until it's completed.
 Picking **Founder** at the gateway likewise runs a **required 6-step onboarding** (`FounderOnboarding.jsx`,

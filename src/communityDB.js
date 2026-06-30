@@ -434,6 +434,17 @@ export async function saveFounderProfile(userId, profile) {
   return updateProfile(userId, fields);
 }
 
+// Merge an AI-analysis result (Oracle score + a report snapshot) into the founder's profile so
+// investors — who CAN'T read the owner-only `ideas` table — can see the score + report on the
+// founder's deal-page. Read-modify-write to avoid clobbering the onboarding answers.
+export async function setFounderAiReport(userId, { oracleScore, aiReport }) {
+  if (!userId) return { ok: false };
+  let current = null;
+  try { current = await getFounderProfile(userId); } catch { /* pre-migration / not set */ }
+  const merged = { ...(current || {}), oracleScore, aiReport };
+  return updateProfile(userId, { founder_profile: merged });
+}
+
 // Keeps name/avatar in the auth session metadata so they show app-wide (header, composer…).
 export async function syncAuthMeta(meta) {
   const { error } = await supabase.auth.updateUser({ data: meta });
