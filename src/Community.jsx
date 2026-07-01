@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { fetchPosts, fetchPostById, createPost, updatePost, deletePost, ratePost, uploadPostFile, fetchSuggestions, addSuggestion, likeSuggestion, fetchFollowState, setFollow, fetchFollowList, fetchFollowCounts, fetchFollowRequests, respondFollowRequest, fetchRatingsReceived, fetchConversations, fetchOlderMessages, FEED_PAGE, DM_PAGE, sendMessage, markConversationRead, clearConversation, toggleMessageReaction, setMessageDeletedFor, setMessageDeleted, subscribeToMessages, subscribeTyping, subscribeToCommunity, subscribeToInbox, subscribeToThread, fetchProfile, createNotification, fetchNotifications, markNotificationsRead, fetchSavedPosts, setSavedPost, repost as repostPost, updateProfile, syncAuthMeta, uploadProfileImage, recordProfileView, fetchProfileViewers, fetchPeopleYouMayKnow, searchProfiles, votePoll, unfurlLink, fetchMutualFollowers, fetchMutualFollowersBatch, getInvestorProfile, getAccountType, setFounderAiReport } from "./communityDB";
-import { fetchVerifiedIds, startReport } from "./billingDB";
+import { fetchVerifiedIds, startReport, refundValidation } from "./billingDB";
 import { saveIdea } from "./ideasDB";
 import { generateMasterReport } from "./reportEngine";
 import InvestorProfileSections from "./InvestorProfileSections";
@@ -925,6 +925,12 @@ function ComposerModal({ me, onClose, onPosted }) {
   const [err, setErr] = useState('');
   const imgInput = useRef(null);
   const docInput = useRef(null);
+  // Cancelling mid-validation (✕ / backdrop / Escape / Cancel — they all unmount this modal)
+  // must actually stop the in-flight AI analysis, not just hide the UI while it keeps running
+  // in the background and silently posts the pitch once it resolves.
+  const cancelledRef = useRef(false);
+  const abortRef = useRef(null);
+  useEffect(() => () => { cancelledRef.current = true; abortRef.current?.abort(); }, []);
 
   useEffect(() => () => files.forEach(f => f.preview && URL.revokeObjectURL(f.preview)), [files]);
 
@@ -980,22 +986,34 @@ function ComposerModal({ me, onClose, onPosted }) {
         let result = valResult;
         if (!result) {
           setValBusy(true); setErr(''); setValProgress(0);
-          let grant = null;
-          try { grant = await startReport(); } catch { /* fails open when billing is dormant */ }
+          const r = await startReport().catch(() => ({ allowed: true, reason: 'billing_off', grant: null }));
+          if (!r.allowed) {
+            setValBusy(false); setBusy(false);
+            setErr(r.reason === 'month_limit' ? "You've used this month's validations — they reset next month." : "You've used your free validation. Subscribe to keep pitching.");
+            return;
+          }
+          const consumedNow = r.reason !== 'billing_off'; // a real quota unit was spent — refund if we bail below
+          const ctrl = new AbortController();
+          abortRef.current = ctrl;
           const pitchForm = { name: title, oneliner: bodyText.slice(0, 240), category: pitchCat, stage: pitchStage, problem: bodyText, solution: '', market: '', edge: '' };
           try {
-            result = await generateMasterReport(pitchForm, d => setValProgress(d), { grant });
+            result = await generateMasterReport(pitchForm, d => { if (!cancelledRef.current) setValProgress(d); }, { grant: r.grant, signal: ctrl.signal });
           } catch (e) {
+            if (cancelledRef.current || e?.name === 'AbortError') { if (consumedNow) refundValidation(); return; }
             setValBusy(false); setBusy(false);
             setErr(e?.message?.includes('PERMISSION') || /403/.test(e?.message||'') ? 'AI validation is temporarily unavailable. Please try again later.' : (e?.message || 'Validation failed. Please try again.'));
             return;
           }
+          // The modal was closed while the analysis was in flight — it finished anyway, but the
+          // founder never approved publishing it, so stop here instead of posting behind their back.
+          if (cancelledRef.current) { if (consumedNow) refundValidation(); return; }
           if (!result?.sections || !result?.meta) { setValBusy(false); setBusy(false); setErr('Validation could not score your pitch. Please refine it and try again.'); return; }
           setValResult(result);
           setValBusy(false);
           // Save the analysis to the founder's ideas too, so it lives in their account.
           saveIdea(me.id, { form: pitchForm, meta: result.meta, sections: result.sections }).catch(() => {});
         }
+        if (cancelledRef.current) return;
 
         const aiScore = result.meta?.overallScore ?? null;
         const meta = {
