@@ -187,7 +187,11 @@ export default function FounderOnboarding({ user, onComplete, onExit }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--ink)', fontFamily: F }}>
-      <style>{`@media (max-width:560px){ .fo-grid{grid-template-columns:1fr!important} }`}</style>
+      <style>{`
+        @media (max-width:560px){ .fo-grid{grid-template-columns:1fr!important} }
+        @keyframes foStepIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        .fo-step{animation:foStepIn .3s cubic-bezier(.16,1,.3,1) both}
+      `}</style>
 
       {/* Sticky header + segmented progress */}
       <header style={{ position: 'sticky', top: 0, zIndex: 30, background: 'color-mix(in srgb, var(--bg) 94%, transparent)', backdropFilter: 'blur(8px)', borderBottom: '1px solid var(--line)' }}>
@@ -202,6 +206,7 @@ export default function FounderOnboarding({ user, onComplete, onExit }) {
 
       {/* Body */}
       <main style={{ maxWidth: 600, margin: '0 auto', padding: 'clamp(28px,5vw,40px) clamp(16px,5vw,24px) 120px' }}>
+        <div key={step} className="fo-step">
         <div style={{ marginBottom: 26 }}>
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '0 0 8px' }}>Step {step + 1} of {STEPS.length}</p>
           <h1 style={{ fontFamily: FD, fontSize: 'clamp(24px,5vw,30px)', fontWeight: 800, letterSpacing: 'var(--tracking-tight)', lineHeight: 'var(--lh-tight)', margin: '0 0 6px' }}>{s.title}</h1>
@@ -212,6 +217,7 @@ export default function FounderOnboarding({ user, onComplete, onExit }) {
           <div className="fo-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '18px 16px' }}>
             {fields.map(f => <div key={f.k} style={{ gridColumn: f.full ? '1 / -1' : 'auto' }}>{renderField(f)}</div>)}
           </div>
+        </div>
         </div>
 
         {step < 2 && (

@@ -90,7 +90,11 @@ const StageCard = ({ label, desc, selected, onSelect }) => (
   </div>
 );
 const Btn = ({ children, onClick, disabled, secondary, style:s={} }) => (
-  <button onClick={onClick} disabled={disabled} style={{ background:secondary?C.white:(disabled?C.border:C.black), color:secondary?C.black:(disabled?C.muted:C.white), border:secondary?`1.5px solid ${C.border}`:'none', borderRadius:BR, padding:'16px 28px', fontSize:16, fontWeight:700, cursor:disabled?'not-allowed':'pointer', fontFamily:F, transition:'background 0.15s', ...s }}>{children}</button>
+  <button onClick={onClick} disabled={disabled}
+    onMouseDown={e=>{ if(!disabled) e.currentTarget.style.transform='scale(.97)'; }}
+    onMouseUp={e=>{ e.currentTarget.style.transform='scale(1)'; }}
+    onMouseLeave={e=>{ e.currentTarget.style.transform='scale(1)'; }}
+    style={{ background:secondary?C.white:(disabled?C.border:C.black), color:secondary?C.black:(disabled?C.muted:C.white), border:secondary?`1.5px solid ${C.border}`:'none', borderRadius:BR, padding:'16px 28px', fontSize:16, fontWeight:700, cursor:disabled?'not-allowed':'pointer', fontFamily:F, transition:'background 0.15s, transform 0.1s ease', ...s }}>{children}</button>
 );
 const StepHeader = ({ label, title, subtitle }) => (
   <div style={{ marginBottom:44 }}>

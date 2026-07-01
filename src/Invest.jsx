@@ -135,7 +135,11 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onViewFounde
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', color:'var(--ink)', fontFamily:SANS }}>
-      <style>{`@media (max-width:480px){ .inv-badge{display:none} }`}</style>
+      <style>{`
+        @media (max-width:480px){ .inv-badge{display:none} }
+        @keyframes invFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        .inv-fade-up{animation:invFadeUp .35s cubic-bezier(.16,1,.3,1) both}
+      `}</style>
       {/* Top bar */}
       <header style={{ position:'sticky', top:0, zIndex:20, background:'var(--surface)', borderBottom:'1px solid var(--line)' }}>
         <div style={{ maxWidth:1060, margin:'0 auto', height:60, padding:'0 clamp(14px,4vw,28px)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
@@ -207,7 +211,11 @@ export default function Invest({ user, onHome, onAccount, onSignIn, onViewFounde
           <>
             <div aria-live="polite" className="sr-only">{shown.length} pitches shown</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:18 }}>
-              {shown.map(p => <PitchCard key={p.id} post={p} onViewFounder={onViewFounder} onMessage={onMessage}/>)}
+              {shown.map((p,i) => (
+                <div key={p.id} className="inv-fade-up" style={{ animationDelay:`${Math.min(i,8)*45}ms` }}>
+                  <PitchCard post={p} onViewFounder={onViewFounder} onMessage={onMessage}/>
+                </div>
+              ))}
             </div>
           </>
         )}

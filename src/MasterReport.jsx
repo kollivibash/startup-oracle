@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const REPORT = [
   { id: "validation", label: "Validation", icon: "◈", subs: ["Summary", "Scores", "Market", "Financials", "Roadmap", "Journey"] },
@@ -98,17 +98,40 @@ const SCORE_FIELDS = [
   ["originalityScore", "Originality"],
 ];
 
+// Counts up from 0 to `target` on mount (ease-out cubic) — the score reveal is the
+// most dramatic moment in the report, so it's worth animating rather than snapping in.
+// Driven by rAF (not CSS), so it must check prefers-reduced-motion itself.
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    const to = Number(target) || 0;
+    const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let raf;
+    const start = performance.now();
+    const tick = (now) => {
+      if (reduced) { setVal(to); return; }
+      const p = Math.min(1, (now - start) / duration);
+      setVal(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
 const ScoreRing = ({ score = 0 }) => {
+  const animated = useCountUp(score);
   const r = 52, circ = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(100, Number(score) || 0)) / 100;
+  const pct = Math.max(0, Math.min(100, animated)) / 100;
   return (
     <div className="relative h-[128px] w-[128px] shrink-0">
       <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
         <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" className="stroke-neutral-200" />
-        <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round" className="stroke-neutral-900 transition-all duration-700" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} />
+        <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round" className="stroke-neutral-900" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span style={FD} className="text-[34px] font-extrabold leading-none tracking-tight">{score ?? 0}</span>
+        <span style={FD} className="text-[34px] font-extrabold leading-none tracking-tight">{animated}</span>
         <span className="mt-0.5 text-[11px] font-medium text-neutral-400">/ 100</span>
       </div>
     </div>
@@ -116,6 +139,10 @@ const ScoreRing = ({ score = 0 }) => {
 };
 
 function ScoreOverview({ meta }) {
+  // Sub-score bars grow from 0 → final width on mount (the transition-all class below
+  // does the animating; this just delays the target width past first paint so it's visible).
+  const [grown, setGrown] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setGrown(true), 50); return () => clearTimeout(t); }, []);
   if (!meta) return null;
   const fields = SCORE_FIELDS.filter(([k]) => meta[k] != null);
   return (
@@ -138,7 +165,7 @@ function ScoreOverview({ meta }) {
                   <span className="font-bold text-neutral-900">{meta[k]}</span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
-                  <div className="h-full rounded-full bg-neutral-900 transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, Number(meta[k]) || 0))}%` }} />
+                  <div className="h-full rounded-full bg-neutral-900 transition-all duration-700" style={{ width: grown ? `${Math.max(0, Math.min(100, Number(meta[k]) || 0))}%` : '0%' }} />
                 </div>
               </div>
             ))}

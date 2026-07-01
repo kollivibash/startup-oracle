@@ -92,7 +92,7 @@ function NavBtn({ icon, label, active, onClick, badge }) {
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={NAV_ICONS[icon]}/></svg>
       <span style={{ fontSize:11, fontWeight: active?700:500 }}>{label}</span>
       {active && <span style={{ position:'absolute', bottom:-8, left:10, right:10, height:2.5, background:GREEN, borderRadius:3 }}/>}
-      {badge > 0 && <span style={{ position:'absolute', top:-1, right:8, minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px', border:'1.5px solid #fff' }}>{badge}</span>}
+      {badge > 0 && <span key={badge} className="badge-pop" style={{ position:'absolute', top:-1, right:8, minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px', border:'1.5px solid #fff' }}>{badge}</span>}
     </button>
   );
 }
@@ -1349,7 +1349,7 @@ function MsgBubble({ m, mine, peer, me, msgs, isLastMine, onImage, onReact, onRe
   );
 
   return (
-    <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+    <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} className="msg-pop"
       style={{ display:'flex', gap:8, maxWidth:'82%', alignSelf:mine?'flex-end':'flex-start', flexDirection:mine?'row-reverse':'row', alignItems:'flex-end' }}>
       {!mine && <Av name={peer.name} uid={peer.id} url={peer.avatar_url} sz={26}/>}
       <div style={{ display:'flex', flexDirection:'column', alignItems:mine?'flex-end':'flex-start', minWidth:0 }}>
@@ -2962,13 +2962,19 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
   return (
     <div style={{ minHeight:'100vh', background:BG, fontFamily:F, fontSize:14, color:'rgba(0,0,0,.9)' }}>
       {toast && (
-        <div role="status" style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:1200, maxWidth:'90vw', background:'#1f2937', color:'#fff', borderRadius:10, padding:'11px 18px', fontSize:13.5, fontWeight:600, boxShadow:'0 8px 28px rgba(0,0,0,.28)' }}>{toast}</div>
+        <div role="status" className="toast-in" style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:1200, maxWidth:'90vw', background:'#1f2937', color:'#fff', borderRadius:10, padding:'11px 18px', fontSize:13.5, fontWeight:600, boxShadow:'0 8px 28px rgba(0,0,0,.28)' }}>{toast}</div>
       )}
       <style>{`
         *{box-sizing:border-box}
         ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#c0bfbc;border-radius:3px}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
         .fade-up{animation:fadeUp .18s ease both}
+        @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+        .toast-in{animation:toastIn .25s cubic-bezier(.16,1,.3,1) both}
+        @keyframes badgePop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+        .badge-pop{animation:badgePop .35s cubic-bezier(.34,1.56,.64,1) both}
+        @keyframes msgPop{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+        .msg-pop{animation:msgPop .22s cubic-bezier(.16,1,.3,1) both}
         @keyframes lbIn{from{opacity:0}to{opacity:1}}
         @keyframes lbImgIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
         @keyframes lbThumb{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -3148,8 +3154,10 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
                   {!search && tab==='all' && <button onClick={()=>setComposerOpen(true)} style={{ marginTop:16, padding:'9px 20px', borderRadius:'var(--r-pill)', background:'var(--ink)', color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:F }}>Share an idea</button>}
                 </div>
               )}
-              {shown.map(p=>(
-                <PostCard key={p.id} post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id} highlight={focusId===p.id} saved={savedIds.has(p.id)}/>
+              {shown.map((p,i)=>(
+                <div key={p.id} className="fade-up" style={{ animationDelay:`${Math.min(i,8)*45}ms` }}>
+                  <PostCard post={p} {...cardProps} onTR={()=>toggleR(p.id)} onTC={()=>toggleC(p.id)} rOpen={rOpen===p.id} cOpen={cOpen===p.id} highlight={focusId===p.id} saved={savedIds.has(p.id)}/>
+                </div>
               ))}
               {!loading && hasMore && shown.length > 0 && (
                 <button onClick={loadMore} disabled={loadingMore} style={{ ...card, padding:'14px', textAlign:'center', fontSize:13.5, fontWeight:700, color:'rgba(0,0,0,.6)', cursor:loadingMore?'default':'pointer', border:'none', fontFamily:F }}>
@@ -3233,7 +3241,7 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
         </button>
         <button className={'mobnav-btn'+(view==='messages'?' on':'')} onClick={goMessages}>
           ✉<span>Messages</span>
-          {unread>0 && <span style={{ position:'absolute', top:4, right:'28%', minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{unread}</span>}
+          {unread>0 && <span key={unread} className="badge-pop" style={{ position:'absolute', top:4, right:'28%', minWidth:15, height:15, background:'#DC2626', color:'#fff', borderRadius:8, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{unread}</span>}
         </button>
         <button className={'mobnav-btn'+(view==='profile'&&pid===user?.id?' on':'')} onClick={user ? ()=>goProfile(user.id) : requireAuth(()=>{})}>◉<span>Profile</span></button>
       </div>

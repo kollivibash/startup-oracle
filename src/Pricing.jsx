@@ -40,6 +40,9 @@ function PlanCard({ plan, price, per, sub, recommended, selected, busy, isSubscr
       </div>
       <div style={{ fontSize: 13, color: "rgba(0,0,0,.5)", marginTop: 4, minHeight: 18 }}>{sub}</div>
       <button onClick={(e) => { e.stopPropagation(); if (isSel) onSubscribe(plan); else onSelect(plan); }} disabled={!!busy || isSubscribed}
+        onMouseDown={e=>{ if(!busy && !isSubscribed) e.currentTarget.style.transform='scale(.97)'; }}
+        onMouseUp={e=>{ e.currentTarget.style.transform='scale(1)'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.transform='scale(1)'; }}
         style={{ width: "100%", marginTop: 18, padding: "13px", borderRadius: 10, border: isSel ? "none" : `1.5px solid ${INK}`, background: isSel ? INK : "transparent", color: isSel ? "#fff" : INK, fontSize: 14.5, fontWeight: 700, cursor: busy || isSubscribed ? "default" : "pointer", opacity: busy && busy !== plan ? 0.5 : 1, fontFamily: F, transition: "all .15s var(--ease)" }}>
         {isSubscribed ? "You're subscribed" : busy === plan ? "Opening checkout…" : isSel ? "Subscribe" : "Choose this plan"}
       </button>

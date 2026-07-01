@@ -65,6 +65,18 @@ const Spinner = () => (
   </svg>
 );
 
+// Shared primary submit button (used by every form below) — adds a small press
+// animation on top of the existing loading/disabled treatment.
+const SubmitBtn = ({ onClick, loading, label, loadingLabel }) => (
+  <button onClick={onClick} disabled={loading}
+    onMouseDown={e=>{ if(!loading) e.currentTarget.style.transform='scale(.98)'; }}
+    onMouseUp={e=>{ e.currentTarget.style.transform='scale(1)'; }}
+    onMouseLeave={e=>{ e.currentTarget.style.transform='scale(1)'; }}
+    style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'background 0.15s, color 0.15s, transform 0.1s ease', fontFamily:F, marginTop:4 }}>
+    {loading ? <span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>{loadingLabel}</span> : label}
+  </button>
+);
+
 const SocialBtn = ({ icon, label, onClick, variant='primary' }) => {
   const [hov, setHov] = useState(false);
   const secondary = variant === 'secondary';   // GitHub is de-emphasized vs Google (AUTH-009)
@@ -228,10 +240,7 @@ const SignIn = ({ onSwitch, onSuccess, afterAuth, onForgot, onPhone, webview }) 
           placeholder="Your password" error={errors.pass}
           right={<button type="button" onClick={onForgot} style={{ background:'none', border:'none', padding:0, fontSize:12, color:C.body, fontWeight:600, cursor:'pointer', fontFamily:F }}>Forgot password?</button>}/>
       </div>
-      <button onClick={submit} disabled={loading}
-        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
-        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Signing in…</span>:'Sign In →'}
-      </button>
+      <SubmitBtn onClick={submit} loading={loading} label="Sign In →" loadingLabel="Signing in…"/>
       <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
         Don't have an account?{' '}
         <span onClick={onSwitch} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Create one free</span>
@@ -331,10 +340,7 @@ const SignUp = ({ onSwitch, onSuccess, afterAuth, onPhone, webview }) => {
         </div>
         {errors.agree && <div style={{ fontSize:12, color:C.error, marginTop:-16, marginBottom:16, fontWeight:500 }}>{errors.agree}</div>}
       </div>
-      <button onClick={submit} disabled={loading}
-        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F }}>
-        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Creating account…</span>:'Create Account →'}
-      </button>
+      <SubmitBtn onClick={submit} loading={loading} label="Create Account →" loadingLabel="Creating account…"/>
       <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
         Already have an account?{' '}
         <span onClick={onSwitch} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Sign in</span>
@@ -413,10 +419,7 @@ const ForgotPassword = ({ onBack }) => {
       </div>
       <Field label="Email" type="email" value={email} onChange={v=>{setEmail(v);setError('');}}
         placeholder="you@example.com" error={error}/>
-      <button onClick={submit} disabled={loading}
-        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
-        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Sending…</span>:'Send reset link →'}
-      </button>
+      <SubmitBtn onClick={submit} loading={loading} label="Send reset link →" loadingLabel="Sending…"/>
       <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
         Remembered it?{' '}
         <span onClick={onBack} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Back to sign in</span>
@@ -473,10 +476,7 @@ const ResetPassword = ({ onDone }) => {
       <StrengthBar password={pass}/>
       <Field label="Confirm password" type="password" value={confirm} onChange={v=>{setConfirm(v);setErrors(e=>({...e,confirm:''}));}}
         placeholder="Re-enter your password" error={errors.confirm}/>
-      <button onClick={submit} disabled={loading}
-        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
-        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>Updating…</span>:'Update password →'}
-      </button>
+      <SubmitBtn onClick={submit} loading={loading} label="Update password →" loadingLabel="Updating…"/>
     </div>
   );
 };
@@ -522,10 +522,8 @@ const PhoneAuth = ({ onBack, onSuccess }) => {
       {step==='phone'
         ? <Field label="Phone number" type="tel" value={phone} onChange={v=>{setPhone(v);setError('');}} placeholder="+91 98765 43210" error={error}/>
         : <Field label="Verification code" type="text" value={code} onChange={v=>{setCode(v);setError('');}} placeholder="6-digit code" error={error}/>}
-      <button onClick={step==='phone'?send:verify} disabled={loading}
-        style={{ width:'100%', background:loading?C.light:C.black, color:loading?C.muted:C.white, border:'none', borderRadius:4, padding:'15px 24px', fontSize:15, fontWeight:700, cursor:loading?'not-allowed':'pointer', transition:'all 0.15s', fontFamily:F, marginTop:4 }}>
-        {loading?<span style={{ display:'inline-flex', alignItems:'center', gap:10 }}><Spinner/>{step==='phone'?'Sending…':'Verifying…'}</span>:(step==='phone'?'Send code →':'Verify →')}
-      </button>
+      <SubmitBtn onClick={step==='phone'?send:verify} loading={loading}
+        label={step==='phone'?'Send code →':'Verify →'} loadingLabel={step==='phone'?'Sending…':'Verifying…'}/>
       <p style={{ textAlign:'center', marginTop:28, fontSize:14, color:C.muted }}>
         {step==='code' && <span onClick={()=>{setStep('phone');setError('');}} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3, marginRight:14 }}>Change number</span>}
         <span onClick={onBack} style={{ color:C.black, fontWeight:700, cursor:'pointer', textDecoration:'underline', textUnderlineOffset:3 }}>Back to sign in</span>

@@ -63,11 +63,15 @@ function OutlineBtn({ children, onClick, danger }) {
 
 function PrimaryBtn({ children, onClick, disabled, type }) {
   const [hov, setHov] = useState(false)
+  const [pressed, setPressed] = useState(false)
   return (
-    <button type={type} onClick={onClick} disabled={disabled} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+    <button type={type} onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPressed(false) }}
+      onMouseDown={() => !disabled && setPressed(true)} onMouseUp={() => setPressed(false)}
       style={{ fontSize:13, fontWeight:600, borderRadius:8, padding:'7px 16px', cursor: disabled ? 'not-allowed' : 'pointer',
-        border:'none', transition:'background .15s', opacity: disabled ? 0.4 : 1,
-        background: hov && !disabled ? '#1F2937' : '#111827', color:'#fff', fontFamily:F }}>
+        border:'none', transition:'background .15s, transform .1s ease', opacity: disabled ? 0.4 : 1,
+        background: hov && !disabled ? '#1F2937' : '#111827', color:'#fff', fontFamily:F,
+        transform: pressed && !disabled ? 'scale(.96)' : 'scale(1)' }}>
       {children}
     </button>
   )

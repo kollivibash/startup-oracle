@@ -157,7 +157,11 @@ export default function InvestorOnboarding({ user, onComplete, onExit, initial, 
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', color:'var(--ink)', fontFamily:F }}>
-      <style>{`@media (max-width:640px){ .io-grid{grid-template-columns:1fr!important} }`}</style>
+      <style>{`
+        @media (max-width:640px){ .io-grid{grid-template-columns:1fr!important} }
+        @keyframes ioStepIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        .io-step{animation:ioStepIn .3s cubic-bezier(.16,1,.3,1) both}
+      `}</style>
 
       <nav style={{ height:68, padding:'0 clamp(20px,5vw,48px)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <span style={{ fontFamily:SERIF, fontSize:20, fontWeight:600, letterSpacing:'1.6px', textTransform:'uppercase', whiteSpace:'nowrap' }}>Startup Oracle</span>
@@ -165,17 +169,19 @@ export default function InvestorOnboarding({ user, onComplete, onExit, initial, 
       </nav>
 
       <main style={{ maxWidth:860, margin:'0 auto', padding:'clamp(20px,4vw,40px) clamp(16px,5vw,32px) 80px' }}>
+        <div key={step} className="io-step">
         <div style={{ fontSize:11, fontWeight:700, letterSpacing:'1.2px', textTransform:'uppercase', color:'var(--ink-3)', marginBottom:14 }}>
           Investor onboarding · Step {step + 1} of {STEPS.length}
         </div>
         <h1 style={{ fontFamily:FD, fontSize:'clamp(30px,5vw,44px)', fontWeight:800, letterSpacing:'var(--tracking-tight)', lineHeight:'var(--lh-tight)', margin:'0 0 8px' }}>{s.title}</h1>
         <p style={{ fontSize:'var(--t-base)', color:'var(--ink-2)', margin:'0 0 22px', lineHeight:'var(--lh)' }}>{s.sub}</p>
+        </div>
 
         <div role="progressbar" aria-valuenow={step + 1} aria-valuemin={1} aria-valuemax={STEPS.length} style={{ display:'flex', gap:8, marginBottom:30 }}>
           {STEPS.map((_, i) => <div key={i} style={{ flex:1, height:4, borderRadius:99, background: i <= step ? 'var(--ink)' : 'var(--line)' }}/>)}
         </div>
 
-        <div style={{ background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-lg)', boxShadow:'var(--sh-1)', padding:'clamp(22px,4vw,34px)' }}>
+        <div key={step} className="io-step" style={{ background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-lg)', boxShadow:'var(--sh-1)', padding:'clamp(22px,4vw,34px)' }}>
           <div className="io-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'20px 16px' }}>
             {s.fields.map(f => <div key={f.k} style={{ gridColumn: f.full ? '1 / -1' : 'auto' }}>{renderField(f)}</div>)}
           </div>
