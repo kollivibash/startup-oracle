@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const INK = '#0A0A0F';
 const SERIF = "'Cormorant Garamond', Georgia, serif";
@@ -28,26 +28,73 @@ const InkBtn = ({ children, onClick, size='sm' }) => (
 );
 
 const STEPS = [
-  { title:'Post your idea', body:'Write a one-line pitch or a full concept. No pitch deck required — plain English is enough to get started.' },
-  { title:'Get an AI verdict', body:'A 6-section deep-dive scores your idea on market, feasibility, and edge — the same Oracle Score investors see on your profile.' },
-  { title:'Get discovered', body:'Validated pitches surface in the investor deal-flow. Investors read your score, open the full report, and reach out directly.' },
+  {
+    title:'Post your idea',
+    body:'Write a one-line pitch or a full concept — category, stage, what you’re raising, and a deck if you have one. No polish required; plain English gets you started.',
+    meta:'Takes about 2 minutes',
+  },
+  {
+    title:'Get an AI verdict',
+    body:'A 6-section deep-dive — Executive Summary, Market & Opportunity, Product & Traction, Team & Execution, Competitive Edge, and Risks & Ops — produces the Oracle Score that shows up on your profile.',
+    meta:'6 sections scored in under a minute',
+  },
+  {
+    title:'Get discovered',
+    body:'Validated pitches surface in the open investor deal-flow with your score attached. Investors open your full report and message you directly — no cold outreach needed.',
+    meta:'Visible to every investor on the platform',
+  },
 ];
 
-function HowItWorks() {
+// Reveals its content with a staggered fade-up the first time it scrolls into view
+// (prefers-reduced-motion collapses all transitions to ~instant globally, see index.css).
+function useRevealOnce(threshold=0.25) {
+  const ref = useRef(null);
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setRevealed(true); io.disconnect(); } }, { threshold });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [threshold]);
+  return [ref, revealed];
+}
+
+function StepCard({ step, index, revealed }) {
+  const [hover, setHover] = useState(false);
+  const EASE = 'cubic-bezier(.16,1,.3,1)';
+  const delay = index * 130;
   return (
-    <section style={{ padding:'clamp(64px,9vw,108px) clamp(20px,5vw,48px)', maxWidth:1180, margin:'0 auto', width:'100%' }}>
+    <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+      style={{ flex:'1 1 240px', minWidth:220,
+        opacity: revealed ? 1 : 0,
+        transform: revealed ? 'translateY(0)' : 'translateY(24px)',
+        transition:`opacity .65s ${EASE} ${delay}ms, transform .65s ${EASE} ${delay}ms` }}>
+      <div style={{ fontFamily:SERIF, fontSize:44, lineHeight:1, marginBottom:12, color: hover ? 'rgba(0,0,0,.32)' : 'rgba(0,0,0,.14)', transition:'color .25s ease' }}>
+        {String(index+1).padStart(2,'0')}
+      </div>
+      <div aria-hidden="true" style={{ height:2, background:INK, marginBottom:18,
+        width: revealed ? (hover ? 42 : 28) : 0,
+        transition:`width .5s ${EASE} ${delay+150}ms` }}/>
+      <div style={{ fontSize:16, fontWeight:600, color:INK, marginBottom:10 }}>{step.title}</div>
+      <p style={{ fontSize:13, fontWeight:300, color:'rgba(0,0,0,.42)', lineHeight:1.85, margin:'0 0 14px' }}>{step.body}</p>
+      <div style={{ paddingTop:12, borderTop:'1px solid rgba(0,0,0,.08)', fontSize:10.5, fontWeight:700, letterSpacing:'0.5px', textTransform:'uppercase', color:'rgba(0,0,0,.32)' }}>
+        {step.meta}
+      </div>
+    </div>
+  );
+}
+
+function HowItWorks() {
+  const [ref, revealed] = useRevealOnce();
+  return (
+    <section ref={ref} style={{ padding:'clamp(64px,9vw,108px) clamp(20px,5vw,48px)', maxWidth:1180, margin:'0 auto', width:'100%' }}>
       <div style={{ textAlign:'center', marginBottom:56 }}>
         <div style={{ fontSize:9, letterSpacing:'1.98px', textTransform:'uppercase', color:'rgba(0,0,0,.28)', marginBottom:16 }}>How it works</div>
         <div style={{ fontFamily:SERIF, fontSize:'clamp(28px,4vw,40px)', fontWeight:500, color:INK }}>From idea to inbox</div>
       </div>
       <div style={{ display:'flex', gap:'clamp(28px,5vw,56px)', flexWrap:'wrap' }}>
-        {STEPS.map((s,i)=>(
-          <div key={s.title} style={{ flex:'1 1 240px', minWidth:220 }}>
-            <div style={{ fontFamily:SERIF, fontSize:44, color:'rgba(0,0,0,.14)', marginBottom:14, lineHeight:1 }}>{String(i+1).padStart(2,'0')}</div>
-            <div style={{ fontSize:16, fontWeight:600, color:INK, marginBottom:10 }}>{s.title}</div>
-            <p style={{ fontSize:13, fontWeight:300, color:'rgba(0,0,0,.42)', lineHeight:1.85, margin:0 }}>{s.body}</p>
-          </div>
-        ))}
+        {STEPS.map((s,i)=><StepCard key={s.title} step={s} index={i} revealed={revealed}/>)}
       </div>
     </section>
   );
