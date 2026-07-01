@@ -506,6 +506,7 @@ export default function App() {
         onGateway={() => setView('gateway')}
         onCommunity={() => goAuth('community')}
         onAnalyse={() => goAuth('submit')}
+        onInvest={() => setView('invest')}
         onSignIn={goSignIn}
         onAccount={goAccount}
         onPricing={() => setView('pricing')}
