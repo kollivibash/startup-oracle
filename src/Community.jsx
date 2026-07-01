@@ -2886,7 +2886,6 @@ export default function Community({ onSubmitIdea, onHome, user, onSignIn, onAcco
     if (n.type === 'reply') return `${name} replied to your comment`;
     if (n.type === 'repost') return `${name} reposted your idea`;
     if (n.type === 'follow_accept') return `${name} accepted your follow request`;
-    if (n.type === 'connect_accept') return `${name} accepted your connection request`;
     return `${name} interacted with your idea`;
   };
   const openNotif = n => { setBellOpen(false); if (n.post_id) focusPost(n.post_id); else if (n.actor?.id) goProfile(n.actor.id); };

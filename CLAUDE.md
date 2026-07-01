@@ -16,7 +16,10 @@ deal-flow (every pitch visible to all investors). The composer has a 4th "💡 P
 **Pitching requires an AI analysis (runs inline):** in the 💡 Pitch composer the founder writes the
 pitch, then the primary button is **"Validate & publish"** — clicking it runs `generateMasterReport`
 on the pitch (via `startReport` for the grant/quota, same engine as SubmitIdea) with a 0–6 progress
-bar, and only posts once a scored report comes back (no validation → no pitch). The resulting Oracle
+bar, and only posts once a scored report comes back (no validation → no pitch — and closing the
+composer mid-validation properly aborts the in-flight generation + refunds the consumed validation
+credit, via an AbortController + a cancelled-ref checked at every step before the mirror/post; it
+used to keep running in the background and post anyway). The resulting Oracle
 Score + a report snapshot are mirrored onto the (public) `profiles.founder_profile` via
 `setFounderAiReport` (and `saveIdea` keeps it in the founder's account), so investors — who CAN'T read
 the owner-only `ideas` table — see the Oracle Score (deal-flow card badge + deal-page sidebar) and open
@@ -87,12 +90,28 @@ src/
   WelcomeSlides.jsx— first-run 3-slide intro carousel (Validate / Community / Free to start); shown once
                      on first visit + once after signup (localStorage `so_welcome_seen`/`so_welcome_pending`),
                      replayable via Home's "How it works" link. Distinct from the in-feed OnboardingCard.
-  Home.jsx         — landing (serif hero; CTAs: "Build Community" → gateway, "Analyse Idea", "Pricing")
+  Home.jsx         — landing: serif hero (CTAs "Build Community" → gateway, "Analyse Idea", "Pricing"),
+                     a 3-card split (Community / Analyse Idea / **For Investors** → `invest`, anon,
+                     no auth gate), an animated 3-step "How it works" (scroll-reveal + hover, see
+                     Design System), a live "What founders are building" strip (dynamically imports
+                     communityDB to fetch real pitches — hidden entirely if there are none, on
+                     purpose: an empty/sparse stats-style section reads worse than no section), and a
+                     footer (Terms/Privacy — `target="_blank"`, since `#/legal/*` hash routes are only
+                     read by App.jsx at initial mount, not on live hash change).
   Gateway.jsx      — Founder/Investor role chooser shown after "Build Community"; sets account_type and
                      routes Founder→community / Investor→invest. Doubles as the role switcher.
-  Invest.jsx       — investor deal-flow dashboard (`invest` view): grid of pitch cards (fetchPitches),
-                     category filter chips + search, "View & message →" deep-links into the community
-                     feed focused on that pitch (where the DM button lives). Anon-browsable.
+  Invest.jsx       — investor deal-flow dashboard (`invest` view): grid of pitch cards (fetchPitches,
+                     staggered fade-in), category filter chips + search, "View deal page →" opens the
+                     founder's FounderProfile deal-page (NOT the community), "✦ Message" opens
+                     MessageModal.jsx. Anon-browsable.
+  MessageModal.jsx — self-contained investor↔founder DM overlay (a modal, not a view): lets an investor
+                     message a founder without ever being routed into the founder community feed.
+                     Reuses the `messages` table + realtime from communityDB (fetchConversations/
+                     sendMessage/subscribeToMessages) and mirrors the BUG-007 message-request rule
+                     (one message until the other side replies). Opened via App.jsx's `openDealDM`
+                     (auth-gated: sends a signed-out investor to `auth` first). Founder→investor DMs
+                     ("Pitch" from an investor's profile) still open inside the community as before —
+                     the founder IS a community member, so that side never changed.
   InvestorOnboarding.jsx — 6-step investor onboarding wizard (About you / Credentials / How you invest /
                      Where you focus / How you help / Your thesis). REQUIRED, no-skip: a signed-in
                      investor must finish before the `invest` dashboard renders (gated in App.jsx via
@@ -324,6 +343,16 @@ add Vercel env vars `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_MON
   `@media print` block (Save-as-PDF), plus `input,textarea,select,button{font-family:inherit}` so
   controls stay on the ramp. Most components still use inline styles (legacy) with hardcoded values —
   migrate them to `var(--token)` as you touch them.
+- **Motion**: beyond the global polish above, several components layer their own local `<style>`
+  keyframes (scoped by class name, not tokens): Home's scroll-triggered reveals (IntersectionObserver
+  + CSS transition — respects reduced-motion automatically since it's a `transition`), Community's
+  `.fade-up`/`.badge-pop`/`.msg-pop`/`.toast-in` and Invest's `.inv-fade-up` (feed/deal-flow cards
+  stagger in via a per-index `animationDelay`; new DM messages and notification badges pop via
+  key-remount), the Founder/Investor onboarding wizards' `.fo-step`/`.io-step` (step content
+  fades+slides on `step` change, via `key={step}`), and MasterReport's Oracle Score ring (counts up
+  from 0 via `requestAnimationFrame` on mount — **this one is JS-driven, not CSS, so it explicitly
+  checks `prefers-reduced-motion` itself** rather than relying on the global CSS override). Primary
+  buttons across Auth/SubmitIdea/Account/Pricing share a small press/lift micro-interaction.
 - **Fonts (UNIFIED type ramp)**: one ramp everywhere — **DM Sans** (`var(--font)`) for body/UI,
   **Plus Jakarta Sans** (`var(--font-display)`) for headings/display/numbers. Forms (Auth/SubmitIdea/
   Account/Pricing) and the report (MasterReport) were migrated off Jakarta-for-everything onto this

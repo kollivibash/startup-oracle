@@ -14,14 +14,6 @@ export async function fetchMyBilling(userId) {
   return { ...def, ...data };
 }
 
-// Atomically consume one validation. Fails OPEN (allowed) if billing isn't set up
-// yet, so the app keeps working until the SQL migration is run.
-export async function consumeValidation() {
-  const { data, error } = await supabase.rpc("consume_validation");
-  if (error) { if (!billingMissing(error)) console.error("consumeValidation failed", error); return { allowed: true, reason: "billing_off" }; }
-  return data || { allowed: true };
-}
-
 // Server-authoritative start of a report: /api/start-report consumes one validation
 // AND returns a short-lived grant that authorizes the report's /api/generate calls
 // (RPT-003). Fails OPEN (e.g. /api absent under `vite dev`) so local/pre-config still

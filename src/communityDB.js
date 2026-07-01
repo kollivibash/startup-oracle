@@ -63,16 +63,6 @@ export async function fetchPitches({ before = null, limit = FEED_PAGE } = {}) {
   return [];
 }
 
-export async function reactToPost(userId, postId, type) {
-  if (!type) {
-    const { error } = await supabase.from('post_reactions').delete().eq('post_id', postId).eq('user_id', userId);
-    if (error) console.error('removeReaction failed', error);
-    return;
-  }
-  const { error } = await supabase.from('post_reactions').upsert({ post_id: postId, user_id: userId, type }, { onConflict: 'post_id,user_id' });
-  if (error) console.error('reactToPost failed', error);
-}
-
 export async function fetchSavedPosts(userId) {
   if (!userId) return new Set();
   const { data, error } = await supabase.from('saved_posts').select('post_id').eq('user_id', userId);
@@ -583,72 +573,11 @@ export async function markConversationRead(userId, peerId) {
   if (error) console.error('markConversationRead failed', error);
 }
 
-// ── Connections + network ───────────────────────────────────────────────────────
+// ── Network (profile views) ─────────────────────────────────────────────────────
+// The "connections / My Network" feature (followers + following only now) and post
+// reactions/Like were removed on purpose (Rate 1–10 replaces reactions) — their DB
+// tables still exist but nothing in the UI calls them anymore.
 const connMissing = e => /relation|does not exist|schema cache|connections|profile_views/i.test(e?.message || '');
-
-// Returns { accepted:Set<otherId>, outgoing:Set, incoming:Set } for the user.
-export async function fetchConnectionState(userId) {
-  const empty = { accepted: new Set(), outgoing: new Set(), incoming: new Set() };
-  if (!userId) return empty;
-  const { data, error } = await supabase
-    .from('connections').select('requester_id, addressee_id, status')
-    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-  if (error) { if (!connMissing(error)) console.error('fetchConnectionState failed', error); return empty; }
-  const out = { accepted: new Set(), outgoing: new Set(), incoming: new Set() };
-  for (const r of data || []) {
-    const other = r.requester_id === userId ? r.addressee_id : r.requester_id;
-    if (r.status === 'accepted') out.accepted.add(other);
-    else if (r.requester_id === userId) out.outgoing.add(other);
-    else out.incoming.add(other);
-  }
-  return out;
-}
-
-export async function sendConnect(userId, targetId, note = '') {
-  const { error } = await supabase.from('connections').insert({ requester_id: userId, addressee_id: targetId, status: 'pending', note });
-  if (error && error.code !== '23505') console.error('sendConnect failed', error);
-}
-
-export async function respondConnection(userId, requesterId, accept) {
-  const q = accept
-    ? supabase.from('connections').update({ status: 'accepted' }).eq('requester_id', requesterId).eq('addressee_id', userId)
-    : supabase.from('connections').delete().eq('requester_id', requesterId).eq('addressee_id', userId);
-  const { error } = await q;
-  if (error) console.error('respondConnection failed', error);
-}
-
-export async function removeConnection(userId, otherId) {
-  const { error } = await supabase.from('connections')
-    .delete().or(`and(requester_id.eq.${userId},addressee_id.eq.${otherId}),and(requester_id.eq.${otherId},addressee_id.eq.${userId})`);
-  if (error) console.error('removeConnection failed', error);
-}
-
-export async function fetchConnectionRequests(userId) {
-  if (!userId) return [];
-  const { data, error } = await supabase.from('connections')
-    .select('note, created_at, person:profiles!connections_requester_id_fkey(id, name, avatar_url, bio)')
-    .eq('addressee_id', userId).eq('status', 'pending').order('created_at', { ascending: false });
-  if (error) { if (!connMissing(error)) console.error('fetchConnectionRequests failed', error); return []; }
-  return (data || []).map(r => ({ ...r.person, note: r.note, requested_at: r.created_at })).filter(p => p?.id);
-}
-
-export async function fetchConnectionCount(userId) {
-  if (!userId) return 0;
-  const { count, error } = await supabase.from('connections')
-    .select('*', { count: 'exact', head: true }).eq('status', 'accepted')
-    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-  if (error) return 0;
-  return count ?? 0;
-}
-
-export async function fetchConnections(userId) {
-  if (!userId) return [];
-  const { data, error } = await supabase.from('connections')
-    .select('requester_id, addressee_id, requester:profiles!connections_requester_id_fkey(id, name, avatar_url, bio), addressee:profiles!connections_addressee_id_fkey(id, name, avatar_url, bio)')
-    .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-  if (error) { if (!connMissing(error)) console.error('fetchConnections failed', error); return []; }
-  return (data || []).map(r => (r.requester_id === userId ? r.addressee : r.requester)).filter(Boolean);
-}
 
 export async function recordProfileView(viewerId, viewedId) {
   if (!viewerId || !viewedId || viewerId === viewedId) return;
